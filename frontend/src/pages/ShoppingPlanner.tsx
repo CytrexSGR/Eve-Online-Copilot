@@ -998,15 +998,41 @@ export default function ShoppingPlanner() {
     alert('Copied to clipboard in EVE Multibuy format!');
   };
 
-  // Group items by region (exclude products - they are shown in Products section)
-  const itemsByRegion = selectedList?.items?.reduce((acc, item) => {
-    // Skip products (is_product=true with no parent) - they are displayed in Products section
-    if (item.is_product && !item.parent_item_id) return acc;
-    const region = item.target_region || 'unassigned';
-    if (!acc[region]) acc[region] = [];
-    acc[region].push(item);
-    return acc;
-  }, {} as Record<string, ShoppingItem[]>) || {};
+  // Group and aggregate items by region (exclude products - they are shown in Products section)
+  // Aggregate items with same type_id and region to combine quantities
+  const itemsByRegion = (() => {
+    if (!selectedList?.items) return {};
+
+    // First aggregate by type_id + region
+    const aggregated: Record<string, Record<number, ShoppingItem & { aggregatedQuantity: number }>> = {};
+
+    for (const item of selectedList.items) {
+      // Skip products (is_product=true with no parent) - they are displayed in Products section
+      if (item.is_product && !item.parent_item_id) continue;
+
+      const region = item.target_region || 'unassigned';
+      if (!aggregated[region]) aggregated[region] = {};
+
+      if (aggregated[region][item.type_id]) {
+        // Add to existing item's quantity
+        aggregated[region][item.type_id].aggregatedQuantity += item.quantity;
+      } else {
+        // First occurrence of this type_id in this region
+        aggregated[region][item.type_id] = { ...item, aggregatedQuantity: item.quantity };
+      }
+    }
+
+    // Convert to array format, using aggregatedQuantity
+    const result: Record<string, ShoppingItem[]> = {};
+    for (const region of Object.keys(aggregated)) {
+      result[region] = Object.values(aggregated[region]).map(item => ({
+        ...item,
+        quantity: item.aggregatedQuantity,
+        total_volume: (item.volume_per_unit || 0) * item.aggregatedQuantity
+      }));
+    }
+    return result;
+  })();
 
   if (isLoading) {
     return (
