@@ -50,6 +50,18 @@ class ItemRunsUpdate(BaseModel):
     me_level: int = 10
 
 
+class SubProductDecision(BaseModel):
+    type_id: int
+    item_name: str
+    quantity: int
+    decision: str  # 'buy' or 'build'
+
+
+class ApplyMaterialsRequest(BaseModel):
+    materials: List[dict]
+    sub_product_decisions: List[SubProductDecision]
+
+
 # Shopping List Endpoints
 @router.post("/lists")
 async def create_shopping_list(request: ShoppingListCreate):
@@ -516,6 +528,53 @@ async def get_transport_options(
 async def update_item_runs(item_id: int, request: ItemRunsUpdate):
     """Update runs and ME level for a product item"""
     result = shopping_service.update_item_runs(item_id, request.runs, request.me_level)
+    if not result:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return result
+
+
+# ============================================================
+# Material Calculation Endpoints
+# ============================================================
+
+@router.post("/items/{item_id}/calculate-materials")
+async def calculate_materials(item_id: int):
+    """
+    Calculate materials for a product item.
+    Returns materials and sub-products (items that can also be built).
+    User must decide 'buy' or 'build' for sub-products before applying.
+    """
+    result = shopping_service.calculate_materials(item_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Item not found or not a product")
+    return result
+
+
+@router.post("/items/{item_id}/apply-materials")
+async def apply_materials(item_id: int, request: ApplyMaterialsRequest):
+    """
+    Apply calculated materials to shopping list.
+    - Deletes existing child materials
+    - Adds new materials with parent_item_id
+    - For sub-products marked 'build': recursively calculate their materials
+    """
+    result = shopping_service.apply_materials(
+        parent_item_id=item_id,
+        materials=request.materials,
+        sub_product_decisions=[sp.model_dump() for sp in request.sub_product_decisions]
+    )
+    if 'error' in result:
+        raise HTTPException(status_code=404, detail=result['error'])
+    return result
+
+
+@router.get("/items/{item_id}/with-materials")
+async def get_item_with_materials(item_id: int):
+    """
+    Get a product item with its full materials hierarchy.
+    Includes nested sub-products and their materials.
+    """
+    result = shopping_service.get_product_with_materials(item_id)
     if not result:
         raise HTTPException(status_code=404, detail="Item not found")
     return result

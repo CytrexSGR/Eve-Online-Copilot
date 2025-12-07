@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, BarChart3, RefreshCw, MousePointer, Eye, ArrowUpDown, Package, Truck } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, BarChart3, RefreshCw, MousePointer, Eye, ArrowUpDown, Package, Truck, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
 import { api } from '../api';
 import { formatISK, formatQuantity } from '../utils/format';
 
@@ -23,10 +23,50 @@ interface ShoppingItem {
   target_price: number | null;
   actual_price: number | null;
   is_purchased: boolean;
+  is_product?: boolean;
+  runs?: number;
+  me_level?: number;
+  parent_item_id?: number | null;
+  build_decision?: string | null;
+  output_per_run?: number;
+  materials?: ShoppingItem[];
+  sub_products?: ShoppingItem[];
+  materials_calculated?: boolean;
+}
+
+interface CalculateMaterialsResponse {
+  product: {
+    id: number;
+    type_id: number;
+    item_name: string;
+    runs: number;
+    me_level: number;
+    output_per_run: number;
+    total_output: number;
+  };
+  materials: Array<{
+    type_id: number;
+    item_name: string;
+    quantity: number;
+    base_quantity: number;
+    volume: number;
+    has_blueprint: boolean;
+  }>;
+  sub_products: Array<{
+    type_id: number;
+    item_name: string;
+    quantity: number;
+    base_quantity: number;
+    volume: number;
+    has_blueprint: boolean;
+    default_decision: string;
+  }>;
 }
 
 interface ShoppingListDetail extends ShoppingList {
   items: ShoppingItem[];
+  products?: ShoppingItem[];
+  standalone_items?: ShoppingItem[];
 }
 
 interface RegionData {
@@ -106,6 +146,8 @@ interface CargoSummary {
     item_name: string;
     runs: number;
     total_volume: number;
+    me_level: number;
+    output_per_run: number;
   }>;
   materials: {
     total_items: number;
@@ -575,6 +617,10 @@ export default function ShoppingPlanner() {
   const [interactionMode, setInteractionMode] = useState<'select' | 'orders'>('select');
   const [orderPopup, setOrderPopup] = useState<{ typeId: number; itemName: string; region: string } | null>(null);
   const [compareSort, setCompareSort] = useState<'name' | 'quantity'>('name');
+  const [showSubProductModal, setShowSubProductModal] = useState(false);
+  const [pendingMaterials, setPendingMaterials] = useState<CalculateMaterialsResponse | null>(null);
+  const [subProductDecisions, setSubProductDecisions] = useState<Record<number, 'buy' | 'build'>>({});
+  const [expandedProducts, setExpandedProducts] = useState<Set<number>>(new Set());
 
   // Fetch all shopping lists
   const { data: lists, isLoading } = useQuery<ShoppingList[]>({
@@ -715,6 +761,82 @@ export default function ShoppingPlanner() {
       queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
     },
   });
+
+  // Calculate materials mutation
+  const calculateMaterials = useMutation({
+    mutationFn: async (itemId: number) => {
+      const response = await api.post<CalculateMaterialsResponse>(`/api/shopping/items/${itemId}/calculate-materials`);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      if (data.sub_products.length > 0) {
+        // Show modal for sub-product decisions
+        setPendingMaterials(data);
+        const defaults: Record<number, 'buy' | 'build'> = {};
+        data.sub_products.forEach(sp => { defaults[sp.type_id] = 'buy'; });
+        setSubProductDecisions(defaults);
+        setShowSubProductModal(true);
+      } else {
+        // No sub-products, apply directly
+        applyMaterials.mutate({
+          itemId: data.product.id,
+          materials: data.materials,
+          subProductDecisions: []
+        });
+      }
+    },
+  });
+
+  // Apply materials mutation
+  const applyMaterials = useMutation({
+    mutationFn: async ({ itemId, materials, subProductDecisions }: {
+      itemId: number;
+      materials: Array<{ type_id: number; item_name: string; quantity: number }>;
+      subProductDecisions: Array<{ type_id: number; item_name: string; quantity: number; decision: string }>;
+    }) => {
+      const response = await api.post(`/api/shopping/items/${itemId}/apply-materials`, {
+        materials,
+        sub_product_decisions: subProductDecisions
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      setShowSubProductModal(false);
+      setPendingMaterials(null);
+      queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-cargo', selectedListId] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
+    },
+  });
+
+  // Handle apply materials with sub-product decisions
+  const handleApplyWithDecisions = () => {
+    if (!pendingMaterials) return;
+    const subDecisions = pendingMaterials.sub_products.map(sp => ({
+      type_id: sp.type_id,
+      item_name: sp.item_name,
+      quantity: sp.quantity,
+      decision: subProductDecisions[sp.type_id] || 'buy'
+    }));
+    applyMaterials.mutate({
+      itemId: pendingMaterials.product.id,
+      materials: pendingMaterials.materials,
+      subProductDecisions: subDecisions
+    });
+  };
+
+  // Toggle product expansion
+  const toggleProductExpanded = (productId: number) => {
+    setExpandedProducts(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  };
 
   // Update item region mutation with optimistic updates
   // This prevents table row shifting during re-renders which caused wrong row selection
@@ -1013,69 +1135,196 @@ export default function ShoppingPlanner() {
                 </div>
               </div>
 
-              {/* Products Section - for setting runs and ME */}
-              {cargoSummary && cargoSummary.products && cargoSummary.products.length > 0 && (
+              {/* Products Section - with material calculation */}
+              {selectedList?.products && selectedList.products.length > 0 && (
                 <div className="card" style={{ marginBottom: 16 }}>
                   <div className="card-header">
                     <span className="card-title">
                       <Package size={18} style={{ marginRight: 8 }} />
-                      Products ({cargoSummary.products.length})
+                      Products ({selectedList.products.length})
                     </span>
                   </div>
                   <div style={{ padding: 16 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {cargoSummary.products.map((product) => (
-                        <div
-                          key={product.type_id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '12px 16px',
-                            background: 'var(--bg-dark)',
-                            borderRadius: 8
-                          }}
-                        >
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{product.item_name}</div>
-                            <div className="neutral" style={{ fontSize: 12 }}>
-                              Volume: {product.total_volume ? `${(product.total_volume / 1000).toFixed(1)}K m³` : 'N/A'}
+                      {selectedList.products.map((product) => (
+                        <div key={product.id} style={{ borderRadius: 8, overflow: 'hidden' }}>
+                          {/* Product Header */}
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '12px 16px',
+                              background: 'var(--bg-dark)',
+                              borderRadius: product.materials_calculated ? '8px 8px 0 0' : 8
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              {product.materials_calculated && (
+                                <button
+                                  onClick={() => toggleProductExpanded(product.id)}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: 'var(--text-secondary)',
+                                    cursor: 'pointer',
+                                    padding: 4
+                                  }}
+                                >
+                                  {expandedProducts.has(product.id) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                </button>
+                              )}
+                              <div>
+                                <div style={{ fontWeight: 600 }}>{product.item_name}</div>
+                                <div className="neutral" style={{ fontSize: 12 }}>
+                                  {product.runs || 1} runs × {product.output_per_run || 1} = {(product.runs || 1) * (product.output_per_run || 1)} units
+                                  {product.materials_calculated && (
+                                    <span className="badge badge-green" style={{ marginLeft: 8, fontSize: 10 }}>
+                                      Materials calculated
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <label style={{ fontSize: 12 }}>Runs:</label>
-                              <input
-                                type="number"
-                                min="1"
-                                max="1000"
-                                defaultValue={product.runs || 1}
-                                style={{
-                                  width: 70,
-                                  padding: '4px 8px',
-                                  borderRadius: 4,
-                                  border: '1px solid var(--border-color)',
-                                  background: 'var(--bg-darker)',
-                                  color: 'inherit'
-                                }}
-                                onBlur={(e) => {
-                                  const newRuns = parseInt(e.target.value) || 1;
-                                  if (newRuns !== product.runs) {
-                                    // Find item ID from selectedList
-                                    const item = selectedList?.items?.find(i => i.type_id === product.type_id);
-                                    if (item) {
-                                      updateItemRuns.mutate({ itemId: item.id, runs: newRuns, meLevel: 10 });
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <label style={{ fontSize: 12 }}>Runs:</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="1000"
+                                  defaultValue={product.runs || 1}
+                                  style={{
+                                    width: 60,
+                                    padding: '4px 8px',
+                                    borderRadius: 4,
+                                    border: '1px solid var(--border-color)',
+                                    background: 'var(--bg-darker)',
+                                    color: 'inherit'
+                                  }}
+                                  onBlur={(e) => {
+                                    const newRuns = parseInt(e.target.value) || 1;
+                                    if (newRuns !== product.runs) {
+                                      updateItemRuns.mutate({ itemId: product.id, runs: newRuns, meLevel: product.me_level || 10 });
                                     }
-                                  }
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    (e.target as HTMLInputElement).blur();
-                                  }
-                                }}
-                              />
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      (e.target as HTMLInputElement).blur();
+                                    }
+                                  }}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <label style={{ fontSize: 12 }}>ME:</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="10"
+                                  defaultValue={product.me_level || 10}
+                                  style={{
+                                    width: 50,
+                                    padding: '4px 8px',
+                                    borderRadius: 4,
+                                    border: '1px solid var(--border-color)',
+                                    background: 'var(--bg-darker)',
+                                    color: 'inherit'
+                                  }}
+                                  onBlur={(e) => {
+                                    const newME = parseInt(e.target.value) || 10;
+                                    if (newME !== product.me_level) {
+                                      updateItemRuns.mutate({ itemId: product.id, runs: product.runs || 1, meLevel: newME });
+                                    }
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      (e.target as HTMLInputElement).blur();
+                                    }
+                                  }}
+                                />
+                              </div>
+                              <button
+                                className="btn btn-primary"
+                                style={{ padding: '6px 12px', fontSize: 12 }}
+                                onClick={() => calculateMaterials.mutate(product.id)}
+                                disabled={calculateMaterials.isPending}
+                              >
+                                <Calculator size={14} style={{ marginRight: 4 }} />
+                                {product.materials_calculated ? 'Recalculate' : 'Calculate Materials'}
+                              </button>
                             </div>
                           </div>
+
+                          {/* Materials List (expandable) */}
+                          {product.materials_calculated && expandedProducts.has(product.id) && (
+                            <div style={{
+                              background: 'var(--bg-darker)',
+                              padding: '12px 16px',
+                              borderRadius: '0 0 8px 8px',
+                              borderTop: '1px solid var(--border-color)'
+                            }}>
+                              {product.materials && product.materials.length > 0 && (
+                                <div style={{ marginBottom: 12 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8, color: 'var(--text-secondary)' }}>
+                                    Materials ({product.materials.length})
+                                  </div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+                                    {product.materials.map((mat) => (
+                                      <div
+                                        key={mat.id}
+                                        style={{
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          padding: '6px 10px',
+                                          background: 'var(--bg-dark)',
+                                          borderRadius: 4,
+                                          fontSize: 12
+                                        }}
+                                      >
+                                        <span>{mat.item_name}</span>
+                                        <span className="isk">{formatQuantity(mat.quantity)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {product.sub_products && product.sub_products.length > 0 && (
+                                <div>
+                                  <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8, color: 'var(--text-secondary)' }}>
+                                    Sub-Products (Build)
+                                  </div>
+                                  {product.sub_products.map((subProduct) => (
+                                    <div key={subProduct.id} style={{ marginBottom: 8, paddingLeft: 16, borderLeft: '2px solid var(--accent-blue)' }}>
+                                      <div style={{ fontWeight: 500, fontSize: 13 }}>
+                                        {subProduct.item_name}
+                                        <span className="neutral" style={{ marginLeft: 8, fontWeight: 400 }}>
+                                          x{subProduct.quantity}
+                                        </span>
+                                      </div>
+                                      {subProduct.materials && subProduct.materials.length > 0 && (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                                          {subProduct.materials.map((mat) => (
+                                            <span
+                                              key={mat.id}
+                                              style={{
+                                                padding: '2px 6px',
+                                                background: 'var(--bg-dark)',
+                                                borderRadius: 4,
+                                                fontSize: 11
+                                              }}
+                                            >
+                                              {mat.item_name}: {formatQuantity(mat.quantity)}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1555,6 +1804,101 @@ export default function ShoppingPlanner() {
           region={orderPopup.region}
           onClose={() => setOrderPopup(null)}
         />
+      )}
+
+      {/* Sub-Product Decision Modal */}
+      {showSubProductModal && pendingMaterials && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+          onClick={() => setShowSubProductModal(false)}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: 500,
+              maxHeight: '80vh',
+              overflow: 'auto',
+              padding: 20
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0 }}>Sub-Components Found</h3>
+              <button className="btn btn-secondary" onClick={() => setShowSubProductModal(false)} style={{ padding: '4px 8px' }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="neutral" style={{ marginBottom: 16 }}>
+              These materials can be built from blueprints. Choose for each whether to buy or build:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+              {pendingMaterials.sub_products.map(sp => (
+                <div
+                  key={sp.type_id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '10px 12px',
+                    background: 'var(--bg-dark)',
+                    borderRadius: 6
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 500 }}>{sp.item_name}</div>
+                    <div className="neutral" style={{ fontSize: 12 }}>x{formatQuantity(sp.quantity)}</div>
+                  </div>
+                  <select
+                    value={subProductDecisions[sp.type_id] || 'buy'}
+                    onChange={e => setSubProductDecisions({
+                      ...subProductDecisions,
+                      [sp.type_id]: e.target.value as 'buy' | 'build'
+                    })}
+                    style={{
+                      padding: '6px 10px',
+                      background: 'var(--bg-darker)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 4,
+                      color: 'inherit'
+                    }}
+                  >
+                    <option value="buy">Buy</option>
+                    <option value="build">Build</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowSubProductModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleApplyWithDecisions}
+                disabled={applyMaterials.isPending}
+              >
+                {applyMaterials.isPending ? 'Applying...' : 'Apply Materials'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

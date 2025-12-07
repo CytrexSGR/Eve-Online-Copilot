@@ -7,6 +7,7 @@ from database import get_db_connection
 from psycopg2.extras import RealDictCursor
 from typing import Optional, List
 from datetime import datetime
+import math
 
 
 class ShoppingService:
@@ -72,7 +73,7 @@ class ShoppingService:
                 return dict(result) if result else None
 
     def get_list_with_items(self, list_id: int) -> Optional[dict]:
-        """Get shopping list with all items"""
+        """Get shopping list with all items in hierarchical structure"""
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute('SELECT * FROM shopping_lists WHERE id = %s', (list_id,))
@@ -81,15 +82,56 @@ class ShoppingService:
                 if not shopping_list:
                     return None
 
+                # Get all items for this list
                 cur.execute('''
-                    SELECT * FROM shopping_list_items
-                    WHERE list_id = %s
-                    ORDER BY is_purchased, target_region, item_name
+                    SELECT sli.*,
+                           COALESCE(bp."quantity", 1) as output_per_run
+                    FROM shopping_list_items sli
+                    LEFT JOIN "industryActivityProducts" bp
+                        ON bp."productTypeID" = sli.type_id AND bp."activityID" = 1
+                    WHERE sli.list_id = %s
+                    ORDER BY sli.is_purchased, sli.is_product DESC, sli.item_name
                 ''', (list_id,))
-                items = cur.fetchall()
+                all_items = [dict(item) for item in cur.fetchall()]
+
+                # Build item map for hierarchy
+                item_map = {item['id']: item for item in all_items}
+
+                # Separate into products (top-level) and standalone items
+                products = []
+                standalone_items = []
+                flat_items = []  # Legacy flat list for backward compatibility
+
+                for item in all_items:
+                    flat_items.append(item)
+
+                    if item['parent_item_id'] is None:
+                        if item['is_product']:
+                            # Get materials for this product
+                            item['materials'] = [
+                                i for i in all_items
+                                if i['parent_item_id'] == item['id'] and not i['is_product']
+                            ]
+                            item['sub_products'] = []
+                            # Get sub-products (recursive would be better but keeping simple)
+                            for sub in all_items:
+                                if sub['parent_item_id'] == item['id'] and sub['is_product']:
+                                    sub['materials'] = [
+                                        i for i in all_items
+                                        if i['parent_item_id'] == sub['id'] and not i['is_product']
+                                    ]
+                                    sub['sub_products'] = []
+                                    item['sub_products'].append(sub)
+
+                            item['materials_calculated'] = len(item['materials']) > 0 or len(item['sub_products']) > 0
+                            products.append(item)
+                        else:
+                            standalone_items.append(item)
 
                 result = dict(shopping_list)
-                result['items'] = [dict(item) for item in items]
+                result['items'] = flat_items  # Backward compatibility
+                result['products'] = products
+                result['standalone_items'] = standalone_items
                 return result
 
     def update_list(
@@ -373,11 +415,19 @@ class ShoppingService:
         """Get cargo volume summary for a shopping list"""
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Get products
+                # Get products with output_per_run from blueprint data
                 cur.execute('''
-                    SELECT type_id, item_name, runs, total_volume
-                    FROM shopping_list_items
-                    WHERE list_id = %s AND is_product = TRUE
+                    SELECT
+                        sli.type_id,
+                        sli.item_name,
+                        sli.runs,
+                        sli.total_volume,
+                        sli.me_level,
+                        COALESCE(bp."quantity", 1) as output_per_run
+                    FROM shopping_list_items sli
+                    LEFT JOIN "industryActivityProducts" bp
+                        ON bp."productTypeID" = sli.type_id AND bp."activityID" = 1
+                    WHERE sli.list_id = %s AND sli.is_product = TRUE
                 ''', (list_id,))
                 products = [dict(row) for row in cur.fetchall()]
 
@@ -552,6 +602,324 @@ class ShoppingService:
                 by_region[region]['total_cost'] += item['target_price'] * item['quantity']
 
         return by_region
+
+    # ============================================================
+    # Material Calculation Methods
+    # ============================================================
+
+    def _calculate_material_quantity(self, base_quantity: int, runs: int, me_level: int) -> int:
+        """
+        Calculate material quantity using EVE Online ME formula.
+        ME 0 = 100% materials, ME 10 = 90% materials
+        """
+        me_modifier = 1 - (me_level / 100)
+        return math.ceil(base_quantity * runs * me_modifier)
+
+    def calculate_materials(self, item_id: int) -> Optional[dict]:
+        """
+        Calculate materials for a product item.
+        Returns materials and sub-products (items that can also be built).
+        """
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get product item details
+                cur.execute('''
+                    SELECT id, list_id, type_id, item_name, runs, me_level, is_product
+                    FROM shopping_list_items
+                    WHERE id = %s
+                ''', (item_id,))
+                product = cur.fetchone()
+
+                if not product or not product['is_product']:
+                    return None
+
+                type_id = product['type_id']
+                runs = product['runs'] or 1
+                me_level = product['me_level'] or 10
+
+                # Get blueprint type ID for this product
+                cur.execute('''
+                    SELECT bp."typeID" as blueprint_type_id, bp."quantity" as output_per_run
+                    FROM "industryActivityProducts" bp
+                    WHERE bp."productTypeID" = %s AND bp."activityID" = 1
+                    LIMIT 1
+                ''', (type_id,))
+                blueprint_info = cur.fetchone()
+
+                if not blueprint_info:
+                    return None
+
+                blueprint_type_id = blueprint_info['blueprint_type_id']
+                output_per_run = blueprint_info['output_per_run'] or 1
+
+                # Get materials from industryActivityMaterials (activityID 1 = manufacturing)
+                cur.execute('''
+                    SELECT
+                        m."materialTypeID" as type_id,
+                        t."typeName" as item_name,
+                        m."quantity" as base_quantity,
+                        t."volume" as volume
+                    FROM "industryActivityMaterials" m
+                    JOIN "invTypes" t ON m."materialTypeID" = t."typeID"
+                    WHERE m."typeID" = %s AND m."activityID" = 1
+                    ORDER BY t."typeName"
+                ''', (blueprint_type_id,))
+                raw_materials = cur.fetchall()
+
+                # Calculate quantities and check for sub-products
+                materials = []
+                sub_products = []
+
+                for mat in raw_materials:
+                    mat_type_id = mat['type_id']
+                    calculated_qty = self._calculate_material_quantity(
+                        mat['base_quantity'], runs, me_level
+                    )
+
+                    # Check if this material has a blueprint (= is a sub-product)
+                    cur.execute('''
+                        SELECT bp."typeID"
+                        FROM "industryActivityProducts" bp
+                        WHERE bp."productTypeID" = %s AND bp."activityID" = 1
+                        LIMIT 1
+                    ''', (mat_type_id,))
+                    has_blueprint = cur.fetchone() is not None
+
+                    material_data = {
+                        'type_id': mat_type_id,
+                        'item_name': mat['item_name'],
+                        'quantity': calculated_qty,
+                        'base_quantity': mat['base_quantity'],
+                        'volume': float(mat['volume']) if mat['volume'] else 0,
+                        'has_blueprint': has_blueprint
+                    }
+
+                    if has_blueprint:
+                        material_data['default_decision'] = 'buy'
+                        sub_products.append(material_data)
+                    else:
+                        materials.append(material_data)
+
+                return {
+                    'product': {
+                        'id': product['id'],
+                        'type_id': type_id,
+                        'item_name': product['item_name'],
+                        'runs': runs,
+                        'me_level': me_level,
+                        'output_per_run': output_per_run,
+                        'total_output': runs * output_per_run
+                    },
+                    'materials': materials,
+                    'sub_products': sub_products
+                }
+
+    def apply_materials(
+        self,
+        parent_item_id: int,
+        materials: List[dict],
+        sub_product_decisions: List[dict]
+    ) -> dict:
+        """
+        Apply calculated materials to shopping list.
+        - Deletes existing child materials
+        - Adds new materials with parent_item_id
+        - For sub-products marked 'build': adds as product and recursively calculates
+        """
+        # Region mapping for price lookup
+        REGION_ID_TO_NAME = {
+            10000002: 'the_forge',
+            10000043: 'domain',
+            10000030: 'heimatar',
+            10000032: 'sinq_laison',
+            10000042: 'metropolis',
+        }
+
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get parent item details
+                cur.execute('''
+                    SELECT list_id, type_id, item_name FROM shopping_list_items WHERE id = %s
+                ''', (parent_item_id,))
+                parent = cur.fetchone()
+
+                if not parent:
+                    return {'error': 'Parent item not found'}
+
+                list_id = parent['list_id']
+
+                # Delete existing child materials for this parent
+                cur.execute('''
+                    DELETE FROM shopping_list_items
+                    WHERE parent_item_id = %s
+                ''', (parent_item_id,))
+                deleted_count = cur.rowcount
+
+                # Build decision map: {type_id: 'buy' | 'build'}
+                decision_map = {d['type_id']: d['decision'] for d in sub_product_decisions}
+
+                # Get prices for all material types
+                all_type_ids = [m['type_id'] for m in materials]
+                all_type_ids.extend([sp['type_id'] for sp in sub_product_decisions])
+
+                cur.execute('''
+                    SELECT type_id, region_id, lowest_sell
+                    FROM market_prices
+                    WHERE type_id = ANY(%s) AND lowest_sell IS NOT NULL
+                ''', (all_type_ids,))
+
+                price_map = {}
+                for row in cur.fetchall():
+                    tid = row['type_id']
+                    region_name = REGION_ID_TO_NAME.get(row['region_id'])
+                    if region_name:
+                        if tid not in price_map:
+                            price_map[tid] = {}
+                        price_map[tid][region_name] = float(row['lowest_sell'])
+
+                added_materials = []
+                added_sub_products = []
+
+                # Add regular materials
+                for mat in materials:
+                    prices = price_map.get(mat['type_id'], {})
+                    best_region, best_price = self._get_best_price(prices)
+
+                    # Get volume
+                    cur.execute('SELECT "volume" FROM "invTypes" WHERE "typeID" = %s', (mat['type_id'],))
+                    vol_row = cur.fetchone()
+                    volume = float(vol_row['volume']) if vol_row and vol_row['volume'] else 0
+
+                    cur.execute('''
+                        INSERT INTO shopping_list_items
+                            (list_id, type_id, item_name, quantity, target_region, target_price,
+                             is_product, parent_item_id, volume_per_unit, total_volume)
+                        VALUES (%s, %s, %s, %s, %s, %s, FALSE, %s, %s, %s)
+                        RETURNING *
+                    ''', (
+                        list_id, mat['type_id'], mat['item_name'], mat['quantity'],
+                        best_region, best_price, parent_item_id, volume, volume * mat['quantity']
+                    ))
+                    added_materials.append(dict(cur.fetchone()))
+
+                # Handle sub-products based on decision
+                for sp in sub_product_decisions:
+                    decision = sp.get('decision', 'buy')
+                    sp_type_id = sp['type_id']
+
+                    prices = price_map.get(sp_type_id, {})
+                    best_region, best_price = self._get_best_price(prices)
+
+                    # Get volume
+                    cur.execute('SELECT "volume" FROM "invTypes" WHERE "typeID" = %s', (sp_type_id,))
+                    vol_row = cur.fetchone()
+                    volume = float(vol_row['volume']) if vol_row and vol_row['volume'] else 0
+
+                    if decision == 'build':
+                        # Add as product (is_product=True) with default ME=10
+                        cur.execute('''
+                            INSERT INTO shopping_list_items
+                                (list_id, type_id, item_name, quantity, target_region, target_price,
+                                 is_product, runs, me_level, parent_item_id, build_decision,
+                                 volume_per_unit, total_volume)
+                            VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, 10, %s, 'build', %s, %s)
+                            RETURNING *
+                        ''', (
+                            list_id, sp_type_id, sp['item_name'], sp['quantity'],
+                            best_region, best_price, sp['quantity'], parent_item_id,
+                            volume, volume * sp['quantity']
+                        ))
+                        sub_product = dict(cur.fetchone())
+                        added_sub_products.append(sub_product)
+
+                        # Recursively calculate materials for this sub-product
+                        conn.commit()  # Commit to make the new item visible
+                        sub_materials = self.calculate_materials(sub_product['id'])
+                        if sub_materials and (sub_materials['materials'] or sub_materials['sub_products']):
+                            # Auto-apply sub-product materials (all as 'buy')
+                            sub_decisions = [
+                                {'type_id': m['type_id'], 'item_name': m['item_name'],
+                                 'quantity': m['quantity'], 'decision': 'buy'}
+                                for m in sub_materials.get('sub_products', [])
+                            ]
+                            self.apply_materials(
+                                sub_product['id'],
+                                sub_materials['materials'],
+                                sub_decisions
+                            )
+                    else:
+                        # Add as material (is_product=False)
+                        cur.execute('''
+                            INSERT INTO shopping_list_items
+                                (list_id, type_id, item_name, quantity, target_region, target_price,
+                                 is_product, parent_item_id, build_decision, volume_per_unit, total_volume)
+                            VALUES (%s, %s, %s, %s, %s, %s, FALSE, %s, 'buy', %s, %s)
+                            RETURNING *
+                        ''', (
+                            list_id, sp_type_id, sp['item_name'], sp['quantity'],
+                            best_region, best_price, parent_item_id, volume, volume * sp['quantity']
+                        ))
+                        added_materials.append(dict(cur.fetchone()))
+
+                conn.commit()
+                self._update_list_totals(list_id)
+
+                return {
+                    'parent_id': parent_item_id,
+                    'deleted_count': deleted_count,
+                    'added_materials': len(added_materials),
+                    'added_sub_products': len(added_sub_products),
+                    'materials': added_materials,
+                    'sub_products': added_sub_products
+                }
+
+    def _get_best_price(self, prices: dict) -> tuple:
+        """Get best (lowest) price and region from price map"""
+        best_region = None
+        best_price = None
+        for region, price in prices.items():
+            if price and (best_price is None or price < best_price):
+                best_price = price
+                best_region = region
+        return best_region, best_price
+
+    def get_product_with_materials(self, item_id: int) -> Optional[dict]:
+        """Get a product item with its materials hierarchy"""
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get the product
+                cur.execute('''
+                    SELECT * FROM shopping_list_items WHERE id = %s
+                ''', (item_id,))
+                product = cur.fetchone()
+
+                if not product:
+                    return None
+
+                result = dict(product)
+
+                # Get child materials
+                cur.execute('''
+                    SELECT * FROM shopping_list_items
+                    WHERE parent_item_id = %s
+                    ORDER BY is_product DESC, item_name
+                ''', (item_id,))
+                children = [dict(row) for row in cur.fetchall()]
+
+                # Separate materials and sub-products
+                result['materials'] = [c for c in children if not c['is_product']]
+                result['sub_products'] = []
+
+                # Recursively get sub-product materials
+                for child in children:
+                    if child['is_product']:
+                        sub_with_materials = self.get_product_with_materials(child['id'])
+                        if sub_with_materials:
+                            result['sub_products'].append(sub_with_materials)
+
+                result['materials_calculated'] = len(children) > 0
+
+                return result
 
 
 shopping_service = ShoppingService()
