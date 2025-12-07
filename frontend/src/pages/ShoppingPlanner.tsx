@@ -1217,24 +1217,42 @@ export default function ShoppingPlanner() {
                       </div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {/* Calculate All Materials button */}
-                        {selectedList.products.some(p => !p.materials_calculated) && (
-                          <button
-                            className="btn btn-primary"
-                            style={{ marginBottom: 8 }}
-                            onClick={async () => {
-                              for (const product of selectedList.products || []) {
-                                if (!product.materials_calculated) {
-                                  calculateMaterials.mutate(product.id);
+                        {/* Calculate/Recalculate Materials buttons */}
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                          {selectedList.products.some(p => !p.materials_calculated) && (
+                            <button
+                              className="btn btn-primary"
+                              onClick={async () => {
+                                for (const product of selectedList.products || []) {
+                                  if (!product.materials_calculated) {
+                                    calculateMaterials.mutate(product.id);
+                                  }
                                 }
-                              }
-                            }}
-                            disabled={calculateMaterials.isPending}
-                          >
-                            <Calculator size={16} style={{ marginRight: 8 }} />
-                            Calculate All Materials
-                          </button>
-                        )}
+                              }}
+                              disabled={calculateMaterials.isPending}
+                            >
+                              <Calculator size={16} style={{ marginRight: 8 }} />
+                              Calculate Materials
+                            </button>
+                          )}
+                          {selectedList.products.some(p => p.materials_calculated) && (
+                            <button
+                              className="btn"
+                              style={{ background: 'var(--bg-darker)', border: '1px solid var(--border-color)' }}
+                              onClick={async () => {
+                                if (confirm('Recalculate all materials? This will update quantities based on current runs/ME settings.')) {
+                                  for (const product of selectedList.products || []) {
+                                    calculateMaterials.mutate(product.id);
+                                  }
+                                }
+                              }}
+                              disabled={calculateMaterials.isPending}
+                            >
+                              <RefreshCw size={16} style={{ marginRight: 8 }} />
+                              Recalculate All
+                            </button>
+                          )}
+                        </div>
                         {selectedList.products.map((product) => (
                         <div key={product.id} style={{ borderRadius: 8, overflow: 'hidden' }}>
                           {/* Product Header */}
