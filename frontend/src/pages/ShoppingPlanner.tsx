@@ -998,8 +998,10 @@ export default function ShoppingPlanner() {
     alert('Copied to clipboard in EVE Multibuy format!');
   };
 
-  // Group items by region
+  // Group items by region (exclude products - they are shown in Products section)
   const itemsByRegion = selectedList?.items?.reduce((acc, item) => {
+    // Skip products (is_product=true with no parent) - they are displayed in Products section
+    if (item.is_product && !item.parent_item_id) return acc;
     const region = item.target_region || 'unassigned';
     if (!acc[region]) acc[region] = [];
     acc[region].push(item);
