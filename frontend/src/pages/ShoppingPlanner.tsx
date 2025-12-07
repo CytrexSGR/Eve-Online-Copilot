@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, BarChart3, RefreshCw, MousePointer, Eye, ArrowUpDown, Package, Truck, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, BarChart3, RefreshCw, MousePointer, Eye, ArrowUpDown, Package, Truck, Calculator, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { api } from '../api';
 import { formatISK, formatQuantity } from '../utils/format';
 
@@ -622,6 +622,14 @@ export default function ShoppingPlanner() {
   const [subProductDecisions, setSubProductDecisions] = useState<Record<number, 'buy' | 'build'>>({});
   const [expandedProducts, setExpandedProducts] = useState<Set<number>>(new Set());
 
+  // Add Product Modal state
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const [productSearchResults, setProductSearchResults] = useState<Array<{ typeID: number; typeName: string; groupID: number }>>([]);
+  const [selectedProductType, setSelectedProductType] = useState<{ typeID: number; typeName: string } | null>(null);
+  const [newProductRuns, setNewProductRuns] = useState(1);
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false);
+
   // Fetch all shopping lists
   const { data: lists, isLoading } = useQuery<ShoppingList[]>({
     queryKey: ['shopping-lists', CORP_ID],
@@ -749,6 +757,50 @@ export default function ShoppingPlanner() {
       queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
     },
   });
+
+  // Add product mutation
+  const addProduct = useMutation({
+    mutationFn: async ({ typeId, typeName, quantity }: { typeId: number; typeName: string; quantity: number }) => {
+      const response = await api.post(`/api/shopping/lists/${selectedListId}/items`, {
+        type_id: typeId,
+        item_name: typeName,
+        quantity
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-cargo', selectedListId] });
+      // Reset modal state
+      setShowAddProductModal(false);
+      setProductSearch('');
+      setProductSearchResults([]);
+      setSelectedProductType(null);
+      setNewProductRuns(1);
+    },
+  });
+
+  // Search products function
+  const searchProducts = async (query: string) => {
+    if (query.length < 2) {
+      setProductSearchResults([]);
+      return;
+    }
+    setIsSearchingProducts(true);
+    try {
+      const response = await api.get('/api/items/search', { params: { q: query, limit: 15 } });
+      // Filter to only show items that are likely products (not blueprints, not special items)
+      const results = response.data.results.filter((item: { typeName: string; groupID: number }) =>
+        !item.typeName.includes('Blueprint') &&
+        item.groupID !== 517 // Exclude Cosmos items
+      );
+      setProductSearchResults(results);
+    } catch {
+      setProductSearchResults([]);
+    }
+    setIsSearchingProducts(false);
+  };
 
   // Update item runs/ME mutation
   const updateItemRuns = useMutation({
@@ -1136,17 +1188,50 @@ export default function ShoppingPlanner() {
               </div>
 
               {/* Products Section - with material calculation */}
-              {selectedList?.products && selectedList.products.length > 0 && (
+              {selectedList && (
                 <div className="card" style={{ marginBottom: 16 }}>
-                  <div className="card-header">
+                  <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="card-title">
                       <Package size={18} style={{ marginRight: 8 }} />
-                      Products ({selectedList.products.length})
+                      Products ({selectedList.products?.length || 0})
                     </span>
+                    <button
+                      className="btn btn-primary"
+                      style={{ padding: '6px 12px', fontSize: 12 }}
+                      onClick={() => setShowAddProductModal(true)}
+                    >
+                      <Plus size={14} style={{ marginRight: 4 }} />
+                      Add Product
+                    </button>
                   </div>
                   <div style={{ padding: 16 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {selectedList.products.map((product) => (
+                    {(!selectedList.products || selectedList.products.length === 0) ? (
+                      <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-secondary)' }}>
+                        <Package size={32} style={{ opacity: 0.5, marginBottom: 8 }} />
+                        <div>No products yet</div>
+                        <div style={{ fontSize: 12, marginTop: 4 }}>Click "Add Product" to add a ship, module or other buildable item</div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {/* Calculate All Materials button */}
+                        {selectedList.products.some(p => !p.materials_calculated) && (
+                          <button
+                            className="btn btn-primary"
+                            style={{ marginBottom: 8 }}
+                            onClick={async () => {
+                              for (const product of selectedList.products || []) {
+                                if (!product.materials_calculated) {
+                                  calculateMaterials.mutate(product.id);
+                                }
+                              }
+                            }}
+                            disabled={calculateMaterials.isPending}
+                          >
+                            <Calculator size={16} style={{ marginRight: 8 }} />
+                            Calculate All Materials
+                          </button>
+                        )}
+                        {selectedList.products.map((product) => (
                         <div key={product.id} style={{ borderRadius: 8, overflow: 'hidden' }}>
                           {/* Product Header */}
                           <div
@@ -1327,6 +1412,148 @@ export default function ShoppingPlanner() {
                           )}
                         </div>
                       ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Add Product Modal */}
+              {showAddProductModal && (
+                <div className="modal-overlay" style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(0,0,0,0.7)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 1000
+                }}>
+                  <div className="card" style={{ width: 500, maxHeight: '80vh', overflow: 'auto' }}>
+                    <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span className="card-title">Add Product</span>
+                      <button
+                        onClick={() => {
+                          setShowAddProductModal(false);
+                          setProductSearch('');
+                          setProductSearchResults([]);
+                          setSelectedProductType(null);
+                          setNewProductRuns(1);
+                        }}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                      >
+                        <X size={20} />
+                      </button>
+                    </div>
+                    <div style={{ padding: 16 }}>
+                      {/* Search Input */}
+                      <div style={{ position: 'relative', marginBottom: 16 }}>
+                        <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                        <input
+                          type="text"
+                          placeholder="Search for ships, modules..."
+                          value={productSearch}
+                          onChange={(e) => {
+                            setProductSearch(e.target.value);
+                            searchProducts(e.target.value);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px 10px 10px 36px',
+                            borderRadius: 6,
+                            border: '1px solid var(--border-color)',
+                            background: 'var(--bg-darker)',
+                            color: 'inherit'
+                          }}
+                          autoFocus
+                        />
+                      </div>
+
+                      {/* Search Results */}
+                      {isSearchingProducts && (
+                        <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-secondary)' }}>
+                          Searching...
+                        </div>
+                      )}
+
+                      {!selectedProductType && productSearchResults.length > 0 && (
+                        <div style={{ maxHeight: 300, overflow: 'auto', marginBottom: 16 }}>
+                          {productSearchResults.map((item) => (
+                            <div
+                              key={item.typeID}
+                              onClick={() => setSelectedProductType({ typeID: item.typeID, typeName: item.typeName })}
+                              style={{
+                                padding: '10px 12px',
+                                cursor: 'pointer',
+                                borderRadius: 4,
+                                marginBottom: 4,
+                                background: 'var(--bg-dark)',
+                                transition: 'background 0.15s'
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-darker)'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = 'var(--bg-dark)'}
+                            >
+                              {item.typeName}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Selected Product - Runs Input */}
+                      {selectedProductType && (
+                        <div style={{ background: 'var(--bg-dark)', padding: 16, borderRadius: 8 }}>
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600 }}>{selectedProductType.typeName}</div>
+                            <button
+                              onClick={() => setSelectedProductType(null)}
+                              style={{ fontSize: 12, color: 'var(--accent-blue)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: 4 }}
+                            >
+                              Change selection
+                            </button>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <label style={{ fontSize: 13 }}>Runs (Quantity):</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="10000"
+                              value={newProductRuns}
+                              onChange={(e) => setNewProductRuns(Math.max(1, parseInt(e.target.value) || 1))}
+                              style={{
+                                width: 100,
+                                padding: '8px 12px',
+                                borderRadius: 4,
+                                border: '1px solid var(--border-color)',
+                                background: 'var(--bg-darker)',
+                                color: 'inherit'
+                              }}
+                            />
+                          </div>
+                          <button
+                            className="btn btn-primary"
+                            style={{ width: '100%', marginTop: 16 }}
+                            onClick={() => {
+                              addProduct.mutate({
+                                typeId: selectedProductType.typeID,
+                                typeName: selectedProductType.typeName,
+                                quantity: newProductRuns
+                              });
+                            }}
+                            disabled={addProduct.isPending}
+                          >
+                            {addProduct.isPending ? 'Adding...' : `Add ${newProductRuns} × ${selectedProductType.typeName}`}
+                          </button>
+                        </div>
+                      )}
+
+                      {!selectedProductType && productSearch.length >= 2 && productSearchResults.length === 0 && !isSearchingProducts && (
+                        <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-secondary)' }}>
+                          No results found for "{productSearch}"
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
