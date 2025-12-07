@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, BarChart3, RefreshCw, MousePointer, Eye, ArrowUpDown, Package, Truck, Calculator, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, RefreshCw, MousePointer, Eye, ArrowUpDown, Package, Truck, Calculator, ChevronDown, ChevronUp, Search, BarChart3 } from 'lucide-react';
 import { api } from '../api';
 import { formatISK, formatQuantity } from '../utils/format';
 
@@ -608,6 +608,160 @@ function ShoppingRouteDisplay({
   );
 }
 
+// Recursive Sub-Product Component
+interface SubProductTreeProps {
+  subProduct: ShoppingItem;
+  depth: number;
+  updateBuildDecision: any;
+  onBulkUpdate: (itemIds: number[], decision: 'buy' | 'build') => void;
+}
+
+function SubProductTree({ subProduct, depth, updateBuildDecision, onBulkUpdate }: SubProductTreeProps) {
+  // Collect all descendant IDs for bulk operations
+  const collectDescendantIds = (item: ShoppingItem): number[] => {
+    const ids = [item.id];
+    if (item.sub_products) {
+      item.sub_products.forEach(sp => {
+        ids.push(...collectDescendantIds(sp));
+      });
+    }
+    return ids;
+  };
+
+  const descendantIds = collectDescendantIds(subProduct);
+
+  return (
+    <div style={{ marginLeft: depth * 16, marginBottom: 8 }}>
+      <div
+        style={{
+          padding: '8px 12px',
+          background: 'var(--bg-dark)',
+          borderRadius: 6,
+          borderLeft: `3px solid ${subProduct.build_decision === 'build' ? 'var(--accent-green)' : 'var(--accent-blue)'}`,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* BUY/BUILD Toggle */}
+            <div style={{
+              display: 'flex',
+              background: 'var(--bg-darker)',
+              borderRadius: 4,
+              padding: 1,
+              border: '1px solid var(--border)'
+            }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateBuildDecision.mutate({ itemId: subProduct.id, decision: 'buy' });
+                }}
+                disabled={updateBuildDecision.isPending}
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: 3,
+                  border: 'none',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: subProduct.build_decision !== 'build' ? 'var(--accent-blue)' : 'transparent',
+                  color: subProduct.build_decision !== 'build' ? 'white' : 'var(--text-secondary)',
+                  transition: 'all 0.15s'
+                }}
+                title="Buy from market"
+              >
+                BUY
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateBuildDecision.mutate({ itemId: subProduct.id, decision: 'build' });
+                }}
+                disabled={updateBuildDecision.isPending}
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: 3,
+                  border: 'none',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: subProduct.build_decision === 'build' ? 'var(--accent-green)' : 'transparent',
+                  color: subProduct.build_decision === 'build' ? 'white' : 'var(--text-secondary)',
+                  transition: 'all 0.15s'
+                }}
+                title="Build from materials"
+              >
+                BUILD
+              </button>
+            </div>
+            <div>
+              <span style={{ fontWeight: 500, fontSize: 13 }}>{subProduct.item_name}</span>
+              <span className="neutral" style={{ marginLeft: 8, fontWeight: 400, fontSize: 12 }}>
+                x{formatQuantity(subProduct.quantity)}
+              </span>
+            </div>
+          </div>
+
+          {/* Bulk Actions - only show if has sub-products */}
+          {subProduct.sub_products && subProduct.sub_products.length > 0 && (
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button
+                className="btn-icon"
+                onClick={() => onBulkUpdate(descendantIds, 'buy')}
+                style={{ fontSize: 9, padding: '2px 6px' }}
+                title="Set all to BUY"
+              >
+                All BUY
+              </button>
+              <button
+                className="btn-icon"
+                onClick={() => onBulkUpdate(descendantIds, 'build')}
+                style={{ fontSize: 9, padding: '2px 6px' }}
+                title="Set all to BUILD"
+              >
+                All BUILD
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Show materials if BUILD decision */}
+        {subProduct.build_decision === 'build' && subProduct.materials && subProduct.materials.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+            {subProduct.materials.map((mat) => (
+              <span
+                key={mat.id}
+                style={{
+                  padding: '2px 6px',
+                  background: 'var(--bg-darker)',
+                  borderRadius: 4,
+                  fontSize: 11
+                }}
+              >
+                {mat.item_name}: {formatQuantity(mat.quantity)}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Recursively render sub-products if BUILD decision */}
+        {subProduct.build_decision === 'build' && subProduct.sub_products && subProduct.sub_products.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            {subProduct.sub_products.map((sp) => (
+              <SubProductTree
+                key={sp.id}
+                subProduct={sp}
+                depth={depth + 1}
+                updateBuildDecision={updateBuildDecision}
+                onBulkUpdate={onBulkUpdate}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ShoppingPlanner() {
   const queryClient = useQueryClient();
   const [selectedListId, setSelectedListId] = useState<number | null>(null);
@@ -622,8 +776,12 @@ export default function ShoppingPlanner() {
   const [subProductDecisions, setSubProductDecisions] = useState<Record<number, 'buy' | 'build'>>({});
   const [expandedProducts, setExpandedProducts] = useState<Set<number>>(new Set());
 
+  // Global runs multiplier
+  const [globalRuns, setGlobalRuns] = useState(1);
+
   // Add Product Modal state
   const [showAddProductModal, setShowAddProductModal] = useState(false);
+
   const [productSearch, setProductSearch] = useState('');
   const [productSearchResults, setProductSearchResults] = useState<Array<{ typeID: number; typeName: string; groupID: number }>>([]);
   const [selectedProductType, setSelectedProductType] = useState<{ typeID: number; typeName: string } | null>(null);
@@ -651,7 +809,7 @@ export default function ShoppingPlanner() {
     enabled: !!selectedListId,
   });
 
-  // Fetch regional comparison
+  // Fetch regional comparison (when modal is open)
   const { data: comparison, isLoading: isLoadingComparison, refetch: refetchComparison } = useQuery<RegionalComparison>({
     queryKey: ['shopping-comparison', selectedListId],
     queryFn: async () => {
@@ -816,6 +974,34 @@ export default function ShoppingPlanner() {
       queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
     },
   });
+
+  // Update product build decision (BUY/BUILD toggle)
+  const updateBuildDecision = useMutation({
+    mutationFn: async ({ itemId, decision }: { itemId: number; decision: 'buy' | 'build' }) => {
+      await api.patch(`/api/shopping/items/${itemId}/build-decision`, { decision });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-cargo', selectedListId] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-comparison', selectedListId] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
+    },
+  });
+
+  // Bulk update build decisions
+  const handleBulkBuildDecision = useCallback(async (itemIds: number[], decision: 'buy' | 'build') => {
+    // Update all items in parallel
+    await Promise.all(
+      itemIds.map(itemId =>
+        api.patch(`/api/shopping/items/${itemId}/build-decision`, { decision })
+      )
+    );
+    // Invalidate queries once after all updates
+    queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
+    queryClient.invalidateQueries({ queryKey: ['shopping-cargo', selectedListId] });
+    queryClient.invalidateQueries({ queryKey: ['shopping-comparison', selectedListId] });
+    queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
+  }, [selectedListId, queryClient]);
 
   // Calculate materials mutation
   const calculateMaterials = useMutation({
@@ -998,41 +1184,44 @@ export default function ShoppingPlanner() {
     alert('Copied to clipboard in EVE Multibuy format!');
   };
 
-  // Group and aggregate items by region (exclude products - they are shown in Products section)
-  // Aggregate items with same type_id and region to combine quantities
-  const itemsByRegion = (() => {
-    if (!selectedList?.items) return {};
+  // Aggregated shopping list - combine all items by type_id (no region separation)
+  const aggregatedShoppingList = useMemo(() => {
+    if (!selectedList?.items) return [];
 
-    // First aggregate by type_id + region
-    const aggregated: Record<string, Record<number, ShoppingItem & { aggregatedQuantity: number }>> = {};
+    // Aggregate by type_id
+    const aggregated: Record<number, ShoppingItem & { aggregatedQuantity: number }> = {};
 
     for (const item of selectedList.items) {
-      // Skip products (is_product=true with no parent) - they are displayed in Products section
+      // Skip main products (is_product=true with no parent) - they are displayed in Products section
       if (item.is_product && !item.parent_item_id) continue;
 
-      const region = item.target_region || 'unassigned';
-      if (!aggregated[region]) aggregated[region] = {};
+      // Skip sub-products with build_decision='build' - you're building them, not buying
+      // Their materials will appear in the list instead
+      if (item.is_product && item.parent_item_id && item.build_decision === 'build') continue;
 
-      if (aggregated[region][item.type_id]) {
+      if (aggregated[item.type_id]) {
         // Add to existing item's quantity
-        aggregated[region][item.type_id].aggregatedQuantity += item.quantity;
+        aggregated[item.type_id].aggregatedQuantity += item.quantity;
       } else {
-        // First occurrence of this type_id in this region
-        aggregated[region][item.type_id] = { ...item, aggregatedQuantity: item.quantity };
+        // First occurrence of this type_id
+        aggregated[item.type_id] = { ...item, aggregatedQuantity: item.quantity };
       }
     }
 
-    // Convert to array format, using aggregatedQuantity
-    const result: Record<string, ShoppingItem[]> = {};
-    for (const region of Object.keys(aggregated)) {
-      result[region] = Object.values(aggregated[region]).map(item => ({
-        ...item,
-        quantity: item.aggregatedQuantity,
-        total_volume: (item.volume_per_unit || 0) * item.aggregatedQuantity
-      }));
-    }
-    return result;
-  })();
+    // Convert to array and apply global runs multiplier
+    return Object.values(aggregated).map(item => ({
+      ...item,
+      quantity: item.aggregatedQuantity * globalRuns,
+    })).sort((a, b) => a.item_name.localeCompare(b.item_name));
+  }, [selectedList?.items, globalRuns]);
+
+  // Calculate total cost for aggregated list
+  const aggregatedTotal = useMemo(() => {
+    return aggregatedShoppingList.reduce(
+      (sum, item) => sum + (item.target_price || 0) * item.quantity,
+      0
+    );
+  }, [aggregatedShoppingList]);
 
   if (isLoading) {
     return (
@@ -1171,36 +1360,58 @@ export default function ShoppingPlanner() {
                       </div>
                     )}
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {/* View Toggle */}
-                    <div style={{ display: 'flex', background: 'var(--bg-dark)', borderRadius: 6, padding: 2 }}>
-                      <button
-                        className={`btn ${viewMode === 'list' ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ padding: '6px 12px', borderRadius: 4 }}
-                        onClick={() => setViewMode('list')}
-                      >
-                        <ShoppingCart size={16} />
-                      </button>
-                      <button
-                        className={`btn ${viewMode === 'compare' ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ padding: '6px 12px', borderRadius: 4 }}
-                        onClick={() => setViewMode('compare')}
-                        title="Compare Regions"
-                      >
-                        <BarChart3 size={16} />
-                      </button>
-                      <button
-                        className={`btn ${viewMode === 'transport' ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => setViewMode('transport')}
-                        disabled={!cargoSummary || cargoSummary.materials.total_volume_m3 === 0}
-                        title={!cargoSummary || cargoSummary.materials.total_volume_m3 === 0
-                          ? 'Add items to see transport options'
-                          : 'Plan transport'}
-                      >
-                        <Truck size={16} style={{ marginRight: 6 }} />
-                        Transport
-                      </button>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {/* Global Runs Multiplier - X1 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: 'var(--bg-dark)', borderRadius: 6 }}>
+                      <span style={{ fontSize: 12 }}>×</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="1000"
+                        value={globalRuns}
+                        onChange={(e) => setGlobalRuns(Math.max(1, parseInt(e.target.value) || 1))}
+                        style={{
+                          width: 50,
+                          padding: '4px 8px',
+                          borderRadius: 4,
+                          border: '1px solid var(--border)',
+                          background: 'var(--bg-darker)',
+                          color: 'var(--text-primary)',
+                          fontSize: 14,
+                          fontWeight: 600,
+                          textAlign: 'center'
+                        }}
+                        title="Global runs multiplier"
+                      />
                     </div>
+
+                    {/* View Mode Tabs */}
+                    <button
+                      className={`btn ${viewMode === 'list' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '6px 12px', borderRadius: 4 }}
+                      onClick={() => setViewMode('list')}
+                    >
+                      <ShoppingCart size={16} />
+                    </button>
+                    <button
+                      className={`btn ${viewMode === 'compare' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '6px 12px', borderRadius: 4 }}
+                      onClick={() => setViewMode('compare')}
+                      title="Compare Regions"
+                    >
+                      <BarChart3 size={16} />
+                    </button>
+                    <button
+                      className={`btn ${viewMode === 'transport' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setViewMode('transport')}
+                      disabled={!cargoSummary || cargoSummary.materials.total_volume_m3 === 0}
+                      title={!cargoSummary || cargoSummary.materials.total_volume_m3 === 0
+                        ? 'Add items to see transport options'
+                        : 'Plan transport'}
+                    >
+                      <Truck size={16} style={{ marginRight: 6 }} />
+                      Transport
+                    </button>
                     <button className="btn btn-secondary" onClick={() => handleExport()}>
                       <Copy size={16} /> Export All
                     </button>
@@ -1283,18 +1494,20 @@ export default function ShoppingPlanner() {
                         </div>
                         {selectedList.products.map((product) => (
                         <div key={product.id} style={{ borderRadius: 8, overflow: 'hidden' }}>
-                          {/* Product Header */}
+                          {/* Product Row - Main product (always BUILD) */}
                           <div
                             style={{
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'space-between',
-                              padding: '12px 16px',
+                              padding: '10px 16px',
                               background: 'var(--bg-dark)',
-                              borderRadius: product.materials_calculated ? '8px 8px 0 0' : 8
+                              borderRadius: product.materials_calculated ? '8px 8px 0 0' : 8,
+                              borderLeft: '3px solid var(--accent-green)'
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            {/* Left: Expand + Name + Info */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
                               {product.materials_calculated && (
                                 <button
                                   onClick={() => toggleProductExpanded(product.id)}
@@ -1309,33 +1522,32 @@ export default function ShoppingPlanner() {
                                   {expandedProducts.has(product.id) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                 </button>
                               )}
-                              <div>
-                                <div style={{ fontWeight: 600 }}>{product.item_name}</div>
-                                <div className="neutral" style={{ fontSize: 12 }}>
+                              <div style={{ minWidth: 200 }}>
+                                <div style={{ fontWeight: 600, fontSize: 14 }}>{product.item_name}</div>
+                                <div className="neutral" style={{ fontSize: 11 }}>
                                   {product.runs || 1} runs × {product.output_per_run || 1} = {(product.runs || 1) * (product.output_per_run || 1)} units
-                                  {product.materials_calculated && (
-                                    <span className="badge badge-green" style={{ marginLeft: 8, fontSize: 10 }}>
-                                      Materials calculated
-                                    </span>
-                                  )}
                                 </div>
                               </div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <label style={{ fontSize: 12 }}>Runs:</label>
+
+                            {/* Middle: Controls */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                              {/* Runs */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Runs:</label>
                                 <input
                                   type="number"
                                   min="1"
                                   max="1000"
                                   defaultValue={product.runs || 1}
                                   style={{
-                                    width: 60,
-                                    padding: '4px 8px',
+                                    width: 50,
+                                    padding: '4px 6px',
                                     borderRadius: 4,
-                                    border: '1px solid var(--border-color)',
+                                    border: '1px solid var(--border)',
                                     background: 'var(--bg-darker)',
-                                    color: 'inherit'
+                                    color: 'inherit',
+                                    fontSize: 12
                                   }}
                                   onBlur={(e) => {
                                     const newRuns = parseInt(e.target.value) || 1;
@@ -1350,20 +1562,23 @@ export default function ShoppingPlanner() {
                                   }}
                                 />
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <label style={{ fontSize: 12 }}>ME:</label>
+
+                              {/* ME */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>ME:</label>
                                 <input
                                   type="number"
                                   min="0"
                                   max="10"
                                   defaultValue={product.me_level || 10}
                                   style={{
-                                    width: 50,
-                                    padding: '4px 8px',
+                                    width: 40,
+                                    padding: '4px 6px',
                                     borderRadius: 4,
-                                    border: '1px solid var(--border-color)',
+                                    border: '1px solid var(--border)',
                                     background: 'var(--bg-darker)',
-                                    color: 'inherit'
+                                    color: 'inherit',
+                                    fontSize: 12
                                   }}
                                   onBlur={(e) => {
                                     const newME = parseInt(e.target.value) || 10;
@@ -1378,24 +1593,29 @@ export default function ShoppingPlanner() {
                                   }}
                                 />
                               </div>
+
+                              {/* Status Badge */}
+                              {product.materials_calculated ? (
+                                <span className="badge badge-green" style={{ fontSize: 10 }}>Materials calculated</span>
+                              ) : (
+                                <span className="badge" style={{ fontSize: 10, background: 'var(--bg-darker)' }}>Not calculated</span>
+                              )}
+
+                              {/* Calculate Button */}
                               <button
                                 className="btn btn-primary"
-                                style={{ padding: '6px 12px', fontSize: 12 }}
+                                style={{ padding: '5px 10px', fontSize: 11 }}
                                 onClick={() => calculateMaterials.mutate(product.id)}
                                 disabled={calculateMaterials.isPending}
                               >
-                                <Calculator size={14} style={{ marginRight: 4 }} />
-                                {product.materials_calculated ? 'Recalculate' : 'Calculate Materials'}
+                                <Calculator size={12} style={{ marginRight: 4 }} />
+                                {product.materials_calculated ? 'Recalculate' : 'Calculate'}
                               </button>
+
+                              {/* Delete */}
                               <button
-                                className="btn"
-                                style={{
-                                  padding: '6px 10px',
-                                  fontSize: 12,
-                                  background: 'var(--bg-darker)',
-                                  border: '1px solid var(--border-color)',
-                                  color: 'var(--danger-red)'
-                                }}
+                                className="btn-icon"
+                                style={{ color: 'var(--accent-red)' }}
                                 onClick={() => {
                                   if (confirm(`Remove ${product.item_name} and its materials?`)) {
                                     removeItem.mutate(product.id);
@@ -1445,34 +1665,16 @@ export default function ShoppingPlanner() {
                               {product.sub_products && product.sub_products.length > 0 && (
                                 <div>
                                   <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8, color: 'var(--text-secondary)' }}>
-                                    Sub-Products (Build)
+                                    Sub-Components ({product.sub_products.length})
                                   </div>
                                   {product.sub_products.map((subProduct) => (
-                                    <div key={subProduct.id} style={{ marginBottom: 8, paddingLeft: 16, borderLeft: '2px solid var(--accent-blue)' }}>
-                                      <div style={{ fontWeight: 500, fontSize: 13 }}>
-                                        {subProduct.item_name}
-                                        <span className="neutral" style={{ marginLeft: 8, fontWeight: 400 }}>
-                                          x{subProduct.quantity}
-                                        </span>
-                                      </div>
-                                      {subProduct.materials && subProduct.materials.length > 0 && (
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                                          {subProduct.materials.map((mat) => (
-                                            <span
-                                              key={mat.id}
-                                              style={{
-                                                padding: '2px 6px',
-                                                background: 'var(--bg-dark)',
-                                                borderRadius: 4,
-                                                fontSize: 11
-                                              }}
-                                            >
-                                              {mat.item_name}: {formatQuantity(mat.quantity)}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
+                                    <SubProductTree
+                                      key={subProduct.id}
+                                      subProduct={subProduct}
+                                      depth={0}
+                                      updateBuildDecision={updateBuildDecision}
+                                      onBulkUpdate={handleBulkBuildDecision}
+                                    />
                                   ))}
                                 </div>
                               )}
@@ -1629,331 +1831,336 @@ export default function ShoppingPlanner() {
 
               {/* View Content */}
               {viewMode === 'list' && (
-                /* Standard List View */
-                Object.keys(itemsByRegion).length === 0 ? (
-                  <div className="card">
-                    <div className="empty-state">
+                /* Aggregated Shopping List - Single Table */
+                <div className="card">
+                  <div className="card-header">
+                    <span className="card-title">
+                      <ShoppingCart size={18} style={{ marginRight: 8 }} />
+                      Shopping List
+                      <span className="neutral" style={{ fontWeight: 400, marginLeft: 8 }}>
+                        ({aggregatedShoppingList.length} items • {formatISK(aggregatedTotal)})
+                      </span>
+                    </span>
+                    {aggregatedShoppingList.length > 0 && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ padding: '6px 12px' }}
+                        onClick={() => handleExport()}
+                      >
+                        <Copy size={14} style={{ marginRight: 6 }} /> Copy
+                      </button>
+                    )}
+                  </div>
+
+                  {aggregatedShoppingList.length === 0 ? (
+                    <div className="empty-state" style={{ padding: 40 }}>
+                      <ShoppingCart size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
                       <p className="neutral">No items in this list yet.</p>
                       <p className="neutral" style={{ fontSize: 12 }}>
-                        Add items from the Materials Overview page.
+                        Add a product above and calculate materials.
                       </p>
                     </div>
-                  </div>
-                ) : (
-                  Object.entries(itemsByRegion).map(([region, items]) => {
-                    const regionTotal = items.reduce(
-                      (sum, item) => sum + (item.target_price || 0) * item.quantity,
-                      0
-                    );
-                    const unpurchasedItems = items.filter((i) => !i.is_purchased);
-
-                    return (
-                      <div key={region} className="card" style={{ marginBottom: 16 }}>
-                        <div className="card-header">
-                          <span className="card-title">
-                            {REGION_NAMES[region] || region}
-                            <span className="neutral" style={{ fontWeight: 400, marginLeft: 8 }}>
-                              ({items.length} items • {formatISK(regionTotal)})
-                            </span>
-                          </span>
-                          {unpurchasedItems.length > 0 && (
-                            <button
-                              className="btn btn-secondary"
-                              style={{ padding: '4px 8px', fontSize: 12 }}
-                              onClick={() => handleExport(region)}
+                  ) : (
+                    <div className="table-container">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th style={{ width: 40 }}></th>
+                            <th>Item</th>
+                            <th style={{ textAlign: 'right' }}>Quantity</th>
+                            <th style={{ textAlign: 'right' }}>Unit Price</th>
+                            <th style={{ textAlign: 'right' }}>Total</th>
+                            <th style={{ width: 40 }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {aggregatedShoppingList.map((item) => (
+                            <tr
+                              key={item.type_id}
+                              style={{ opacity: item.is_purchased ? 0.5 : 1 }}
                             >
-                              <Copy size={14} /> Copy
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="table-container">
-                          <table>
-                            <thead>
-                              <tr>
-                                <th style={{ width: 40 }}></th>
-                                <th>Item</th>
-                                <th>Quantity</th>
-                                <th>Unit Price</th>
-                                <th>Total</th>
-                                <th style={{ width: 40 }}></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {items.map((item) => (
-                                <tr
-                                  key={item.id}
-                                  style={{ opacity: item.is_purchased ? 0.5 : 1 }}
+                              <td>
+                                <button
+                                  className="btn-icon"
+                                  onClick={() =>
+                                    item.is_purchased
+                                      ? unmarkPurchased.mutate(item.id)
+                                      : markPurchased.mutate(item.id)
+                                  }
+                                  style={{
+                                    color: item.is_purchased
+                                      ? 'var(--accent-green)'
+                                      : 'var(--text-secondary)',
+                                  }}
                                 >
-                                  <td>
-                                    <button
-                                      className="btn-icon"
-                                      onClick={() =>
-                                        item.is_purchased
-                                          ? unmarkPurchased.mutate(item.id)
-                                          : markPurchased.mutate(item.id)
-                                      }
-                                      style={{
-                                        color: item.is_purchased
-                                          ? 'var(--accent-green)'
-                                          : 'var(--text-secondary)',
-                                      }}
-                                    >
-                                      <Check size={16} />
-                                    </button>
-                                  </td>
-                                  <td style={{ textDecoration: item.is_purchased ? 'line-through' : 'none' }}>
-                                    {item.item_name}
-                                  </td>
-                                  <td>{formatQuantity(item.quantity)}</td>
-                                  <td className="isk">{formatISK(item.target_price, false)}</td>
-                                  <td className="isk">
-                                    {formatISK((item.target_price || 0) * item.quantity)}
-                                  </td>
-                                  <td>
-                                    <button
-                                      className="btn-icon"
-                                      onClick={() => removeItem.mutate(item.id)}
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    );
-                  })
-                )
-              )}
-
-              {viewMode === 'compare' && (
-                /* Regional Comparison View */
-                isLoadingComparison ? (
-                  <div className="loading">
-                    <div className="spinner"></div>
-                    Loading regional prices...
-                  </div>
-                ) : !comparison?.items?.length ? (
-                  <div className="card">
-                    <div className="empty-state">
-                      <p className="neutral">No items to compare.</p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Region Totals Summary */}
-                    <div className="stats-grid" style={{ marginBottom: 16 }}>
-                      {REGION_ORDER.map((region) => {
-                        const data = comparison.region_totals[region];
-                        const savings = comparison.optimal_route.savings_vs_single_region[region] || 0;
-                        const isOptimal = savings === 0 && data?.total === comparison.optimal_route.total_cost;
-                        return (
-                          <div
-                            key={region}
-                            className={`stat-card ${isOptimal ? 'best' : ''}`}
-                            style={{
-                              border: isOptimal ? '1px solid var(--accent-green)' : undefined,
-                            }}
-                          >
-                            <div className="stat-label">
-                              {data?.display_name || region}
-                              {data?.jumps !== undefined && (
-                                <span className="neutral" style={{ fontWeight: 400, marginLeft: 4 }}>
-                                  ({data.jumps} jumps)
-                                </span>
-                              )}
-                            </div>
-                            <div className="stat-value isk">{formatISK(data?.total || 0)}</div>
-                            {savings > 0 && (
-                              <div className="negative" style={{ fontSize: 11 }}>
-                                +{formatISK(savings)} vs optimal
-                              </div>
-                            )}
-                            <button
-                              className="btn btn-secondary"
-                              style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
-                              onClick={() => applyRegionToAll(region)}
-                              disabled={updateItemRegion.isPending}
-                            >
-                              Apply All
-                            </button>
-                          </div>
-                        );
-                      })}
-                      <div className="stat-card" style={{ border: '1px solid var(--accent-blue)' }}>
-                        <div className="stat-label">Optimal (Multi-Hub)</div>
-                        <div className="stat-value isk positive">
-                          {formatISK(comparison.optimal_route.total_cost)}
-                        </div>
-                        <button
-                          className="btn btn-primary"
-                          style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
-                          onClick={applyOptimalRegions}
-                          disabled={updateItemRegion.isPending}
-                        >
-                          Apply Optimal
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Comparison Table */}
-                    <div className="card">
-                      <div className="card-header">
-                        <span className="card-title">
-                          <BarChart3 size={18} style={{ marginRight: 8 }} />
-                          Regional Price Comparison
-                        </span>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          {/* Interaction Mode Toggle */}
-                          <div style={{ display: 'flex', background: 'var(--bg-dark)', borderRadius: 6, padding: 2 }}>
-                            <button
-                              className={`btn ${interactionMode === 'select' ? 'btn-primary' : 'btn-secondary'}`}
-                              style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
-                              onClick={() => setInteractionMode('select')}
-                              title="Click cells to select region"
-                            >
-                              <MousePointer size={14} /> Select
-                            </button>
-                            <button
-                              className={`btn ${interactionMode === 'orders' ? 'btn-primary' : 'btn-secondary'}`}
-                              style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
-                              onClick={() => setInteractionMode('orders')}
-                              title="Click cells to view orders"
-                            >
-                              <Eye size={14} /> Orders
-                            </button>
-                          </div>
-                          <button
-                            className="btn btn-secondary"
-                            style={{ padding: '4px 8px' }}
-                            onClick={() => refetchComparison()}
-                          >
-                            <RefreshCw size={14} />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="table-container">
-                        <table>
-                          <thead>
-                            <tr>
-                              <th
-                                style={{ cursor: 'pointer', userSelect: 'none' }}
-                                onClick={() => setCompareSort('name')}
-                                title="Sort by item name"
-                              >
-                                Item {compareSort === 'name' && <ArrowUpDown size={12} style={{ marginLeft: 4, opacity: 0.7 }} />}
-                              </th>
-                              <th
-                                style={{ cursor: 'pointer', userSelect: 'none' }}
-                                onClick={() => setCompareSort('quantity')}
-                                title="Sort by quantity (descending)"
-                              >
-                                Qty {compareSort === 'quantity' && <ArrowUpDown size={12} style={{ marginLeft: 4, opacity: 0.7 }} />}
-                              </th>
-                              {REGION_ORDER.map((region) => (
-                                <th key={region}>{REGION_NAMES[region]}</th>
-                              ))}
-                              <th>Selected</th>
+                                  <Check size={16} />
+                                </button>
+                              </td>
+                              <td style={{ textDecoration: item.is_purchased ? 'line-through' : 'none' }}>
+                                {item.item_name}
+                              </td>
+                              <td style={{ textAlign: 'right' }}>{formatQuantity(item.quantity)}</td>
+                              <td style={{ textAlign: 'right' }} className="isk">
+                                {formatISK(item.target_price, false)}
+                              </td>
+                              <td style={{ textAlign: 'right' }} className="isk">
+                                {formatISK((item.target_price || 0) * item.quantity)}
+                              </td>
+                              <td>
+                                <button
+                                  className="btn-icon"
+                                  onClick={() => removeItem.mutate(item.id)}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {sortedComparisonItems.map((item) => (
-                              <tr key={item.id}>
-                                <td>{item.item_name}</td>
-                                <td>{formatQuantity(item.quantity)}</td>
-                                {REGION_ORDER.map((region) => {
-                                  const data = item.regions[region];
-                                  const isCheapest = region === item.cheapest_region;
-                                  const isSelected = region === item.current_region;
-                                  return (
-                                    <td
-                                      key={region}
-                                      className={`isk ${isCheapest ? 'positive' : ''}`}
-                                      data-item-id={item.id}
-                                      data-type-id={item.type_id}
-                                      data-item-name={item.item_name}
-                                      data-region={region}
-                                      data-price={data?.unit_price || ''}
-                                      style={{
-                                        cursor: data?.unit_price ? 'pointer' : 'default',
-                                        background: isSelected ? 'var(--bg-hover)' : undefined,
-                                        borderLeft: isSelected ? '2px solid var(--accent-blue)' : undefined,
-                                      }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        // Use data attributes to ensure we get the correct item
-                                        // even if React re-renders during the event
-                                        const target = e.currentTarget;
-                                        const itemId = Number(target.dataset.itemId);
-                                        const typeId = Number(target.dataset.typeId);
-                                        const itemName = target.dataset.itemName || '';
-                                        const clickedRegion = target.dataset.region || '';
-                                        const price = target.dataset.price ? Number(target.dataset.price) : undefined;
-
-                                        if (!price) return;
-                                        if (updateItemRegion.isPending) return;
-
-                                        if (interactionMode === 'select') {
-                                          updateItemRegion.mutate({
-                                            itemId,
-                                            region: clickedRegion,
-                                            price
-                                          });
-                                        } else {
-                                          setOrderPopup({ typeId, itemName, region: clickedRegion });
-                                        }
-                                      }}
-                                      title={interactionMode === 'select'
-                                        ? (data?.has_stock ? 'Click to select this region' : 'Low stock - Click to select anyway')
-                                        : (data?.has_stock ? 'Click to view orders' : 'Low stock - Click to view orders')}
-                                    >
-                                      {data?.total ? (
-                                        <>
-                                          <div>{formatISK(data.total)}</div>
-                                          <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
-                                            @{formatISK(data.unit_price || 0)}/u
-                                          </div>
-                                          <div
-                                            className={`neutral ${!data.has_stock ? 'negative' : ''}`}
-                                            style={{ fontSize: 10 }}
-                                          >
-                                            {formatQuantity(data.volume)} avail
-                                          </div>
-                                        </>
-                                      ) : (
-                                        <span className="neutral">-</span>
-                                      )}
-                                    </td>
-                                  );
-                                })}
-                                <td>
-                                  {item.current_region ? (
-                                    <span className="badge badge-blue">
-                                      {REGION_NAMES[item.current_region] || item.current_region}
-                                    </span>
-                                  ) : (
-                                    <span className="neutral">-</span>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ background: 'var(--bg-dark)', fontWeight: 600 }}>
+                            <td colSpan={4} style={{ textAlign: 'right', padding: '12px 16px' }}>
+                              Total
+                            </td>
+                            <td style={{ textAlign: 'right', padding: '12px 16px' }} className="isk">
+                              {formatISK(aggregatedTotal)}
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
                     </div>
-
-                    {/* Current Shopping Route - based on selected regions */}
-                    <ShoppingRouteDisplay
-                      items={comparison.items}
-                      homeSystem={comparison.home_system}
-                    />
-                  </>
-                )
+                  )}
+                </div>
               )}
+
+                            {viewMode === 'compare' && (
+                              /* Regional Comparison View */
+                              isLoadingComparison ? (
+                                <div className="loading">
+                                  <div className="spinner"></div>
+                                  Loading regional prices...
+                                </div>
+                              ) : !comparison?.items?.length ? (
+                                <div className="card">
+                                  <div className="empty-state">
+                                    <p className="neutral">No items to compare.</p>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  {/* Region Totals Summary */}
+                                  <div className="stats-grid" style={{ marginBottom: 16 }}>
+                                    {REGION_ORDER.map((region) => {
+                                      const data = comparison.region_totals[region];
+                                      const savings = comparison.optimal_route.savings_vs_single_region[region] || 0;
+                                      const isOptimal = savings === 0 && data?.total === comparison.optimal_route.total_cost;
+                                      return (
+                                        <div
+                                          key={region}
+                                          className={`stat-card ${isOptimal ? 'best' : ''}`}
+                                          style={{
+                                            border: isOptimal ? '1px solid var(--accent-green)' : undefined,
+                                          }}
+                                        >
+                                          <div className="stat-label">
+                                            {data?.display_name || region}
+                                            {data?.jumps !== undefined && (
+                                              <span className="neutral" style={{ fontWeight: 400, marginLeft: 4 }}>
+                                                ({data.jumps} jumps)
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="stat-value isk">{formatISK(data?.total || 0)}</div>
+                                          {savings > 0 && (
+                                            <div className="negative" style={{ fontSize: 11 }}>
+                                              +{formatISK(savings)} vs optimal
+                                            </div>
+                                          )}
+                                          <button
+                                            className="btn btn-secondary"
+                                            style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
+                                            onClick={() => applyRegionToAll(region)}
+                                            disabled={updateItemRegion.isPending}
+                                          >
+                                            Apply All
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                    <div className="stat-card" style={{ border: '1px solid var(--accent-blue)' }}>
+                                      <div className="stat-label">Optimal (Multi-Hub)</div>
+                                      <div className="stat-value isk positive">
+                                        {formatISK(comparison.optimal_route.total_cost)}
+                                      </div>
+                                      <button
+                                        className="btn btn-primary"
+                                        style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
+                                        onClick={applyOptimalRegions}
+                                        disabled={updateItemRegion.isPending}
+                                      >
+                                        Apply Optimal
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Comparison Table */}
+                                  <div className="card">
+                                    <div className="card-header">
+                                      <span className="card-title">
+                                        <BarChart3 size={18} style={{ marginRight: 8 }} />
+                                        Regional Price Comparison
+                                      </span>
+                                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                        {/* Interaction Mode Toggle */}
+                                        <div style={{ display: 'flex', background: 'var(--bg-dark)', borderRadius: 6, padding: 2 }}>
+                                          <button
+                                            className={`btn ${interactionMode === 'select' ? 'btn-primary' : 'btn-secondary'}`}
+                                            style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                                            onClick={() => setInteractionMode('select')}
+                                            title="Click cells to select region"
+                                          >
+                                            <MousePointer size={14} /> Select
+                                          </button>
+                                          <button
+                                            className={`btn ${interactionMode === 'orders' ? 'btn-primary' : 'btn-secondary'}`}
+                                            style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                                            onClick={() => setInteractionMode('orders')}
+                                            title="Click cells to view orders"
+                                          >
+                                            <Eye size={14} /> Orders
+                                          </button>
+                                        </div>
+                                        <button
+                                          className="btn btn-secondary"
+                                          style={{ padding: '4px 8px' }}
+                                          onClick={() => refetchComparison()}
+                                        >
+                                          <RefreshCw size={14} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <div className="table-container">
+                                      <table>
+                                        <thead>
+                                          <tr>
+                                            <th
+                                              style={{ cursor: 'pointer', userSelect: 'none' }}
+                                              onClick={() => setCompareSort('name')}
+                                              title="Sort by item name"
+                                            >
+                                              Item {compareSort === 'name' && <ArrowUpDown size={12} style={{ marginLeft: 4, opacity: 0.7 }} />}
+                                            </th>
+                                            <th
+                                              style={{ cursor: 'pointer', userSelect: 'none' }}
+                                              onClick={() => setCompareSort('quantity')}
+                                              title="Sort by quantity (descending)"
+                                            >
+                                              Qty {compareSort === 'quantity' && <ArrowUpDown size={12} style={{ marginLeft: 4, opacity: 0.7 }} />}
+                                            </th>
+                                            {REGION_ORDER.map((region) => (
+                                              <th key={region}>{REGION_NAMES[region]}</th>
+                                            ))}
+                                            <th>Selected</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {sortedComparisonItems.map((item) => (
+                                            <tr key={item.id}>
+                                              <td>{item.item_name}</td>
+                                              <td>{formatQuantity(item.quantity)}</td>
+                                              {REGION_ORDER.map((region) => {
+                                                const data = item.regions[region];
+                                                const isCheapest = region === item.cheapest_region;
+                                                const isSelected = region === item.current_region;
+                                                return (
+                                                  <td
+                                                    key={region}
+                                                    className={`isk ${isCheapest ? 'positive' : ''}`}
+                                                    data-item-id={item.id}
+                                                    data-type-id={item.type_id}
+                                                    data-item-name={item.item_name}
+                                                    data-region={region}
+                                                    data-price={data?.unit_price || ''}
+                                                    style={{
+                                                      cursor: data?.unit_price ? 'pointer' : 'default',
+                                                      background: isSelected ? 'var(--bg-hover)' : undefined,
+                                                      borderLeft: isSelected ? '2px solid var(--accent-blue)' : undefined,
+                                                    }}
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      e.preventDefault();
+                                                      // Use data attributes to ensure we get the correct item
+                                                      // even if React re-renders during the event
+                                                      const target = e.currentTarget;
+                                                      const itemId = Number(target.dataset.itemId);
+                                                      const typeId = Number(target.dataset.typeId);
+                                                      const itemName = target.dataset.itemName || '';
+                                                      const clickedRegion = target.dataset.region || '';
+                                                      const price = target.dataset.price ? Number(target.dataset.price) : undefined;
+
+                                                      if (!price) return;
+                                                      if (updateItemRegion.isPending) return;
+
+                                                      if (interactionMode === 'select') {
+                                                        updateItemRegion.mutate({
+                                                          itemId,
+                                                          region: clickedRegion,
+                                                          price
+                                                        });
+                                                      } else {
+                                                        setOrderPopup({ typeId, itemName, region: clickedRegion });
+                                                      }
+                                                    }}
+                                                    title={interactionMode === 'select'
+                                                      ? (data?.has_stock ? 'Click to select this region' : 'Low stock - Click to select anyway')
+                                                      : (data?.has_stock ? 'Click to view orders' : 'Low stock - Click to view orders')}
+                                                  >
+                                                    {data?.total ? (
+                                                      <>
+                                                        <div>{formatISK(data.total)}</div>
+                                                        <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                                                          @{formatISK(data.unit_price || 0)}/u
+                                                        </div>
+                                                        <div
+                                                          className={`neutral ${!data.has_stock ? 'negative' : ''}`}
+                                                          style={{ fontSize: 10 }}
+                                                        >
+                                                          {formatQuantity(data.volume)} avail
+                                                        </div>
+                                                      </>
+                                                    ) : (
+                                                      <span className="neutral">-</span>
+                                                    )}
+                                                  </td>
+                                                );
+                                              })}
+                                              <td>
+                                                {item.current_region ? (
+                                                  <span className="badge badge-blue">
+                                                    {REGION_NAMES[item.current_region] || item.current_region}
+                                                  </span>
+                                                ) : (
+                                                  <span className="neutral">-</span>
+                                                )}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+
+                                  {/* Current Shopping Route - based on selected regions */}
+                                  <ShoppingRouteDisplay
+                                    items={comparison.items}
+                                    homeSystem={comparison.home_system}
+                                  />
+                                </>
+                              )
+                            )}
+
+
 
               {viewMode === 'transport' && (
                 /* Transport Options View */
@@ -2099,6 +2306,265 @@ export default function ShoppingPlanner() {
           region={orderPopup.region}
           onClose={() => setOrderPopup(null)}
         />
+      )}
+
+      {/* Regional Comparison Modal - REMOVED - Now inline panel */}
+      {false && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+          onClick={() => setShowCompareModal(false)}
+        >
+          <div
+            className="card"
+            style={{
+              width: '95vw',
+              maxWidth: 1400,
+              maxHeight: '90vh',
+              overflow: 'auto',
+              padding: 24
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Map size={24} />
+                Regional Price Comparison
+              </h2>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowCompareModal(false)}
+                style={{ padding: '6px 12px' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {isLoadingComparison ? (
+              <div className="loading" style={{ padding: 40 }}>
+                <div className="spinner"></div>
+                Loading regional prices...
+              </div>
+            ) : !comparison?.items?.length ? (
+              <div className="empty-state" style={{ padding: 40 }}>
+                <p className="neutral">No items to compare. Calculate materials first.</p>
+              </div>
+            ) : (
+              <>
+                {/* Region Totals Summary */}
+                <div className="stats-grid" style={{ marginBottom: 20 }}>
+                  {REGION_ORDER.map((region) => {
+                    const data = comparison.region_totals[region];
+                    const savings = comparison.optimal_route.savings_vs_single_region[region] || 0;
+                    const isOptimal = savings === 0 && data?.total === comparison.optimal_route.total_cost;
+                    return (
+                      <div
+                        key={region}
+                        className={`stat-card ${isOptimal ? 'best' : ''}`}
+                        style={{
+                          border: isOptimal ? '1px solid var(--accent-green)' : undefined,
+                        }}
+                      >
+                        <div className="stat-label">
+                          {data?.display_name || region}
+                          {data?.jumps !== undefined && (
+                            <span className="neutral" style={{ fontWeight: 400, marginLeft: 4 }}>
+                              ({data.jumps} jumps)
+                            </span>
+                          )}
+                        </div>
+                        <div className="stat-value isk">{formatISK(data?.total || 0)}</div>
+                        {savings > 0 && (
+                          <div className="negative" style={{ fontSize: 11 }}>
+                            +{formatISK(savings)} vs optimal
+                          </div>
+                        )}
+                        <button
+                          className="btn btn-secondary"
+                          style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
+                          onClick={() => applyRegionToAll(region)}
+                          disabled={updateItemRegion.isPending}
+                        >
+                          Apply All
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <div className="stat-card" style={{ border: '1px solid var(--accent-blue)' }}>
+                    <div className="stat-label">Optimal (Multi-Hub)</div>
+                    <div className="stat-value isk positive">
+                      {formatISK(comparison.optimal_route.total_cost)}
+                    </div>
+                    <button
+                      className="btn btn-primary"
+                      style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
+                      onClick={applyOptimalRegions}
+                      disabled={updateItemRegion.isPending}
+                    >
+                      Apply Optimal
+                    </button>
+                  </div>
+                </div>
+
+                {/* Comparison Table */}
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h3 style={{ margin: 0 }}>Price Comparison</h3>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', background: 'var(--bg-dark)', borderRadius: 6, padding: 2 }}>
+                        <button
+                          className={`btn ${interactionMode === 'select' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                          onClick={() => setInteractionMode('select')}
+                          title="Click cells to select region"
+                        >
+                          <MousePointer size={14} /> Select
+                        </button>
+                        <button
+                          className={`btn ${interactionMode === 'orders' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                          onClick={() => setInteractionMode('orders')}
+                          title="Click cells to view orders"
+                        >
+                          <Eye size={14} /> Orders
+                        </button>
+                      </div>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ padding: '4px 8px' }}
+                        onClick={() => refetchComparison()}
+                      >
+                        <RefreshCw size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="table-container" style={{ maxHeight: 400, overflow: 'auto' }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th
+                            style={{ cursor: 'pointer', userSelect: 'none' }}
+                            onClick={() => setCompareSort('name')}
+                          >
+                            Item {compareSort === 'name' && <ArrowUpDown size={12} />}
+                          </th>
+                          <th
+                            style={{ cursor: 'pointer', userSelect: 'none' }}
+                            onClick={() => setCompareSort('quantity')}
+                          >
+                            Qty {compareSort === 'quantity' && <ArrowUpDown size={12} />}
+                          </th>
+                          {REGION_ORDER.map((region) => (
+                            <th key={region}>{REGION_NAMES[region]}</th>
+                          ))}
+                          <th>Selected</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedComparisonItems.map((item) => (
+                          <tr key={item.id}>
+                            <td>{item.item_name}</td>
+                            <td>{formatQuantity(item.quantity)}</td>
+                            {REGION_ORDER.map((region) => {
+                              const data = item.regions[region];
+                              const isCheapest = region === item.cheapest_region;
+                              const isSelected = region === item.current_region;
+                              return (
+                                <td
+                                  key={region}
+                                  className={`isk ${isCheapest ? 'positive' : ''}`}
+                                  data-item-id={item.id}
+                                  data-type-id={item.type_id}
+                                  data-item-name={item.item_name}
+                                  data-region={region}
+                                  data-price={data?.unit_price || ''}
+                                  style={{
+                                    cursor: data?.unit_price ? 'pointer' : 'default',
+                                    background: isSelected ? 'var(--bg-hover)' : undefined,
+                                    borderLeft: isSelected ? '2px solid var(--accent-blue)' : undefined,
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const target = e.currentTarget;
+                                    const itemId = Number(target.dataset.itemId);
+                                    const typeId = Number(target.dataset.typeId);
+                                    const itemName = target.dataset.itemName || '';
+                                    const clickedRegion = target.dataset.region || '';
+                                    const price = target.dataset.price ? Number(target.dataset.price) : undefined;
+
+                                    if (!price) return;
+                                    if (updateItemRegion.isPending) return;
+
+                                    if (interactionMode === 'select') {
+                                      updateItemRegion.mutate({ itemId, region: clickedRegion, price });
+                                    } else {
+                                      setOrderPopup({ typeId, itemName, region: clickedRegion });
+                                    }
+                                  }}
+                                >
+                                  {data?.total ? (
+                                    <>
+                                      <div>{formatISK(data.total)}</div>
+                                      <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                                        @{formatISK(data.unit_price || 0)}/u
+                                      </div>
+                                      <div className={`neutral ${!data.has_stock ? 'negative' : ''}`} style={{ fontSize: 10 }}>
+                                        {formatQuantity(data.volume)} avail
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <span className="neutral">-</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                            <td>
+                              {item.current_region ? (
+                                <span className="badge badge-blue">
+                                  {REGION_NAMES[item.current_region] || item.current_region}
+                                </span>
+                              ) : (
+                                <span className="neutral">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Shopping Route */}
+                <ShoppingRouteDisplay
+                  items={comparison.items}
+                  homeSystem={comparison.home_system}
+                />
+
+                {/* Close Button */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => setShowCompareModal(false)}
+                    style={{ padding: '10px 24px' }}
+                  >
+                    Done
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Sub-Product Decision Modal */}

@@ -50,6 +50,10 @@ class ItemRunsUpdate(BaseModel):
     me_level: int = 10
 
 
+class BuildDecisionUpdate(BaseModel):
+    decision: str  # 'buy' or 'build'
+
+
 class SubProductDecision(BaseModel):
     type_id: int
     item_name: str
@@ -60,6 +64,17 @@ class SubProductDecision(BaseModel):
 class ApplyMaterialsRequest(BaseModel):
     materials: List[dict]
     sub_product_decisions: List[SubProductDecision]
+
+
+class CalculateMaterialsRequest(BaseModel):
+    product_type_id: int
+    runs: int = 1
+    me_level: int = 10
+    decisions: Optional[dict] = None  # {type_id_str: 'buy'|'build'}
+
+
+class CompareRegionsRequest(BaseModel):
+    items: List[dict]  # [{type_id: int, quantity: int}]
 
 
 # Shopping List Endpoints
@@ -255,52 +270,51 @@ async def get_regional_comparison(list_id: int, home_system: str = Query('isikem
     # Only include items that need to be purchased (not products themselves)
     aggregated_items = {}
 
-    # Process standalone items (items not attached to any product)
-    for item in list_data.get('standalone_items', []):
-        if item['is_purchased']:
-            continue
-        tid = item['type_id']
+    def add_to_aggregated(item_data):
+        """Helper to add item to aggregated dict"""
+        tid = item_data['type_id']
         if tid not in aggregated_items:
             aggregated_items[tid] = {
                 'type_id': tid,
-                'item_name': item['item_name'],
+                'item_name': item_data['item_name'],
                 'quantity': 0,
-                'target_region': item['target_region'],
-                'target_price': item['target_price']
+                'target_region': item_data.get('target_region'),
+                'target_price': item_data.get('target_price')
             }
-        aggregated_items[tid]['quantity'] += item['quantity']
+        aggregated_items[tid]['quantity'] += item_data['quantity']
+
+    def process_sub_products_recursive(sub_products):
+        """Recursively process sub-products and their materials"""
+        for sub in sub_products:
+            # If sub-product mode is 'buy', add the sub-product itself to buy list
+            if sub.get('mode') == 'buy':
+                if not sub.get('is_purchased'):
+                    add_to_aggregated(sub)
+            # If sub-product mode is 'build', process its materials
+            elif sub.get('mode') == 'build':
+                # Process direct materials
+                for mat in sub.get('materials', []):
+                    if not mat.get('is_purchased'):
+                        add_to_aggregated(mat)
+                # Recursively process nested sub-products
+                if sub.get('sub_products'):
+                    process_sub_products_recursive(sub.get('sub_products', []))
+
+    # Process standalone items (items not attached to any product)
+    for item in list_data.get('standalone_items', []):
+        if not item.get('is_purchased'):
+            add_to_aggregated(item)
 
     # Process materials from products (these are what we actually need to buy)
     for product in list_data.get('products', []):
+        # Process direct materials of the product
         for mat in product.get('materials', []):
-            if mat['is_purchased']:
-                continue
-            tid = mat['type_id']
-            if tid not in aggregated_items:
-                aggregated_items[tid] = {
-                    'type_id': tid,
-                    'item_name': mat['item_name'],
-                    'quantity': 0,
-                    'target_region': mat['target_region'],
-                    'target_price': mat['target_price']
-                }
-            aggregated_items[tid]['quantity'] += mat['quantity']
+            if not mat.get('is_purchased'):
+                add_to_aggregated(mat)
 
-        # Also process sub-product materials if any
-        for sub in product.get('sub_products', []):
-            for mat in sub.get('materials', []):
-                if mat['is_purchased']:
-                    continue
-                tid = mat['type_id']
-                if tid not in aggregated_items:
-                    aggregated_items[tid] = {
-                        'type_id': tid,
-                        'item_name': mat['item_name'],
-                        'quantity': 0,
-                        'target_region': mat['target_region'],
-                        'target_price': mat['target_price']
-                    }
-                aggregated_items[tid]['quantity'] += mat['quantity']
+        # Process sub-products recursively
+        if product.get('sub_products'):
+            process_sub_products_recursive(product.get('sub_products', []))
 
     items_to_compare = list(aggregated_items.values())
 
@@ -583,6 +597,17 @@ async def update_item_runs(item_id: int, request: ItemRunsUpdate):
     return result
 
 
+@router.patch("/items/{item_id}/build-decision")
+async def update_build_decision(item_id: int, request: BuildDecisionUpdate):
+    """Update build decision (buy/build) for a product item"""
+    if request.decision not in ('buy', 'build'):
+        raise HTTPException(status_code=400, detail="Decision must be 'buy' or 'build'")
+    result = shopping_service.update_build_decision(item_id, request.decision)
+    if not result:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return result
+
+
 # ============================================================
 # Material Calculation Endpoints
 # ============================================================
@@ -628,3 +653,202 @@ async def get_item_with_materials(item_id: int):
     if not result:
         raise HTTPException(status_code=404, detail="Item not found")
     return result
+
+
+# ============================================================
+# Wizard API Endpoints (Step-based Workflow)
+# ============================================================
+
+@router.post("/wizard/calculate-materials")
+async def wizard_calculate_materials(request: CalculateMaterialsRequest):
+    """
+    Calculate materials for a product with build/buy decisions.
+    Used by the step-based shopping wizard.
+
+    Returns:
+    - product: Product info with runs, ME, output
+    - sub_components: List of buildable sub-components with decisions
+    - shopping_list: Flattened list of items to buy (aggregated)
+    - totals: Cost totals by category
+    """
+    result = shopping_service.calculate_materials_for_wizard(
+        product_type_id=request.product_type_id,
+        runs=request.runs,
+        me_level=request.me_level,
+        decisions=request.decisions or {}
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Product not found or has no blueprint")
+    return result
+
+
+@router.post("/wizard/compare-regions")
+async def wizard_compare_regions(request: CompareRegionsRequest, home_system: str = Query('isikemi')):
+    """
+    Compare prices across all trade hub regions for a list of items.
+    Returns optimal route with savings calculation.
+    """
+    REGION_ID_TO_NAME = {
+        10000002: 'the_forge',
+        10000043: 'domain',
+        10000030: 'heimatar',
+        10000032: 'sinq_laison',
+        10000042: 'metropolis',
+    }
+
+    REGION_DISPLAY_NAMES = {
+        'the_forge': 'Jita',
+        'domain': 'Amarr',
+        'heimatar': 'Rens',
+        'sinq_laison': 'Dodixie',
+        'metropolis': 'Hek',
+    }
+
+    REGION_TO_HUB = {
+        'the_forge': 'jita',
+        'domain': 'amarr',
+        'heimatar': 'rens',
+        'sinq_laison': 'dodixie',
+        'metropolis': 'hek',
+    }
+
+    if not request.items:
+        return {
+            "comparison": [],
+            "optimal_route": {"stops": [], "total": 0, "jita_only_total": 0, "savings": 0, "savings_percent": 0}
+        }
+
+    type_ids = [item['type_id'] for item in request.items]
+    quantity_map = {item['type_id']: item['quantity'] for item in request.items}
+
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get item names
+            cur.execute('''
+                SELECT "typeID", "typeName"
+                FROM "invTypes"
+                WHERE "typeID" = ANY(%s)
+            ''', (type_ids,))
+            name_map = {row['typeID']: row['typeName'] for row in cur.fetchall()}
+
+            # Get prices from all regions
+            cur.execute('''
+                SELECT type_id, region_id, lowest_sell, sell_volume
+                FROM market_prices
+                WHERE type_id = ANY(%s) AND lowest_sell IS NOT NULL
+            ''', (type_ids,))
+
+            price_map = {}
+            for row in cur.fetchall():
+                tid = row['type_id']
+                region_name = REGION_ID_TO_NAME.get(row['region_id'])
+                if not region_name:
+                    continue
+                if tid not in price_map:
+                    price_map[tid] = {}
+                price_map[tid][region_name] = {
+                    'price': float(row['lowest_sell']),
+                    'volume': row['sell_volume'] or 0
+                }
+
+    # Build comparison list
+    comparison = []
+    optimal_regions = {}  # region -> [items]
+    jita_total = 0
+
+    for item in request.items:
+        tid = item['type_id']
+        qty = item['quantity']
+        prices = price_map.get(tid, {})
+
+        region_prices = {}
+        best_region = None
+        best_price = float('inf')
+
+        for region in REGION_ID_TO_NAME.values():
+            data = prices.get(region, {})
+            unit_price = data.get('price')
+            if unit_price:
+                total = unit_price * qty
+                region_prices[region] = {
+                    'price': unit_price,
+                    'total': total,
+                    'volume': data.get('volume', 0)
+                }
+                if unit_price < best_price:
+                    best_price = unit_price
+                    best_region = region
+
+        # Track Jita total
+        jita_price = prices.get('the_forge', {}).get('price')
+        if jita_price:
+            jita_total += jita_price * qty
+
+        comparison.append({
+            'type_id': tid,
+            'name': name_map.get(tid, f'Unknown ({tid})'),
+            'quantity': qty,
+            'prices': region_prices,
+            'best_region': best_region,
+            'best_price': best_price if best_price != float('inf') else None
+        })
+
+        # Group by best region for optimal route
+        if best_region:
+            if best_region not in optimal_regions:
+                optimal_regions[best_region] = []
+            optimal_regions[best_region].append({
+                'type_id': tid,
+                'name': name_map.get(tid, f'Unknown ({tid})'),
+                'quantity': qty,
+                'price': best_price,
+                'total': best_price * qty
+            })
+
+    # Calculate optimal route
+    optimal_total = sum(
+        item['best_price'] * item['quantity']
+        for item in comparison
+        if item['best_price']
+    )
+
+    # Get route distances
+    hub_distances = route_service.get_hub_distances(home_system)
+    route_info = {}
+    if 'distances' in hub_distances:
+        for region in REGION_ID_TO_NAME.values():
+            hub_name = REGION_TO_HUB.get(region)
+            if hub_name and hub_name in hub_distances['distances']:
+                route_info[region] = hub_distances['distances'][hub_name]
+
+    # Build stops list
+    stops = []
+    for region, items in optimal_regions.items():
+        subtotal = sum(item['total'] for item in items)
+        stops.append({
+            'region': region,
+            'display_name': REGION_DISPLAY_NAMES.get(region, region),
+            'items': items,
+            'item_count': len(items),
+            'subtotal': subtotal,
+            'jumps': route_info.get(region, {}).get('jumps'),
+            'travel_time': route_info.get(region, {}).get('time')
+        })
+
+    # Sort stops by subtotal (largest first)
+    stops.sort(key=lambda x: x['subtotal'], reverse=True)
+
+    savings = jita_total - optimal_total if jita_total > 0 else 0
+    savings_percent = (savings / jita_total * 100) if jita_total > 0 else 0
+
+    return {
+        'comparison': comparison,
+        'optimal_route': {
+            'stops': stops,
+            'total': optimal_total,
+            'jita_only_total': jita_total,
+            'savings': savings,
+            'savings_percent': round(savings_percent, 1)
+        },
+        'home_system': home_system
+    }

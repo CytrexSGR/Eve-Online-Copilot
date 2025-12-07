@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { TrendingUp, Search, Factory, BarChart3, Star, Package, ShoppingCart, Swords } from 'lucide-react';
+import { TrendingUp, Search, Factory, BarChart3, Star, Package, Swords, Wand2, List } from 'lucide-react';
 import MarketScanner from './pages/MarketScanner';
 import ArbitrageFinder from './pages/ArbitrageFinder';
 import ProductionPlanner from './pages/ProductionPlanner';
@@ -8,6 +8,7 @@ import ItemDetail from './pages/ItemDetail';
 import Bookmarks from './pages/Bookmarks';
 import MaterialsOverview from './pages/MaterialsOverview';
 import ShoppingPlanner from './pages/ShoppingPlanner';
+import { ShoppingWizard } from './components/shopping';
 import WarRoom from './pages/WarRoom';
 import './App.css';
 
@@ -63,8 +64,14 @@ function App() {
               </li>
               <li>
                 <NavLink to="/shopping" className={({ isActive }) => isActive ? 'active' : ''}>
-                  <ShoppingCart size={20} />
-                  <span>Shopping</span>
+                  <Wand2 size={20} />
+                  <span>Shopping Wizard</span>
+                </NavLink>
+              </li>
+              <li>
+                <NavLink to="/shopping-lists" className={({ isActive }) => isActive ? 'active' : ''}>
+                  <List size={20} />
+                  <span>Shopping Lists</span>
                 </NavLink>
               </li>
               <li>
@@ -83,7 +90,8 @@ function App() {
               <Route path="/production" element={<ProductionPlanner />} />
               <Route path="/bookmarks" element={<Bookmarks />} />
               <Route path="/materials" element={<MaterialsOverview />} />
-              <Route path="/shopping" element={<ShoppingPlanner />} />
+              <Route path="/shopping" element={<ShoppingWizard />} />
+              <Route path="/shopping-lists" element={<ShoppingPlanner />} />
               <Route path="/war-room" element={<WarRoom />} />
             </Routes>
           </main>
