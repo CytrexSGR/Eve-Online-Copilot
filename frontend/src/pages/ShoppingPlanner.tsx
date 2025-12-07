@@ -2109,11 +2109,37 @@ export default function ShoppingPlanner() {
               </button>
             </div>
 
-            <p className="neutral" style={{ marginBottom: 16 }}>
+            <p className="neutral" style={{ marginBottom: 12 }}>
               These materials can be built from blueprints. Choose for each whether to buy or build:
             </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+            {/* Select All buttons */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <button
+                className="btn btn-secondary"
+                style={{ flex: 1, padding: '6px 12px', fontSize: 12 }}
+                onClick={() => {
+                  const allBuy: Record<number, 'buy' | 'build'> = {};
+                  pendingMaterials.sub_products.forEach(sp => { allBuy[sp.type_id] = 'buy'; });
+                  setSubProductDecisions(allBuy);
+                }}
+              >
+                Select All: Buy
+              </button>
+              <button
+                className="btn btn-secondary"
+                style={{ flex: 1, padding: '6px 12px', fontSize: 12 }}
+                onClick={() => {
+                  const allBuild: Record<number, 'buy' | 'build'> = {};
+                  pendingMaterials.sub_products.forEach(sp => { allBuild[sp.type_id] = 'build'; });
+                  setSubProductDecisions(allBuild);
+                }}
+              >
+                Select All: Build
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20, maxHeight: 400, overflowY: 'auto' }}>
               {pendingMaterials.sub_products.map(sp => (
                 <div
                   key={sp.type_id}
