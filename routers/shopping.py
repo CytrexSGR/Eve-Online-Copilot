@@ -286,12 +286,12 @@ async def get_regional_comparison(list_id: int, home_system: str = Query('isikem
     def process_sub_products_recursive(sub_products):
         """Recursively process sub-products and their materials"""
         for sub in sub_products:
-            # If sub-product mode is 'buy', add the sub-product itself to buy list
-            if sub.get('mode') == 'buy':
+            # If sub-product build_decision is 'buy', add the sub-product itself to buy list
+            if sub.get('build_decision') == 'buy':
                 if not sub.get('is_purchased'):
                     add_to_aggregated(sub)
-            # If sub-product mode is 'build', process its materials
-            elif sub.get('mode') == 'build':
+            # If sub-product build_decision is 'build', process its materials
+            elif sub.get('build_decision') == 'build':
                 # Process direct materials
                 for mat in sub.get('materials', []):
                     if not mat.get('is_purchased'):
