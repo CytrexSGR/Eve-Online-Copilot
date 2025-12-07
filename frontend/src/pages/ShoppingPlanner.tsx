@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, BarChart3, RefreshCw } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, BarChart3, RefreshCw, MousePointer, Eye } from 'lucide-react';
 import { api } from '../api';
 import { formatISK, formatQuantity } from '../utils/format';
 
@@ -526,6 +526,7 @@ export default function ShoppingPlanner() {
   const [newListName, setNewListName] = useState('');
   const [showNewListForm, setShowNewListForm] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'compare'>('list');
+  const [interactionMode, setInteractionMode] = useState<'select' | 'orders'>('select');
   const [orderPopup, setOrderPopup] = useState<{ typeId: number; itemName: string; region: string } | null>(null);
 
   // Fetch all shopping lists
@@ -1015,13 +1016,34 @@ export default function ShoppingPlanner() {
                           <BarChart3 size={18} style={{ marginRight: 8 }} />
                           Regional Price Comparison
                         </span>
-                        <button
-                          className="btn btn-secondary"
-                          style={{ padding: '4px 8px' }}
-                          onClick={() => refetchComparison()}
-                        >
-                          <RefreshCw size={14} />
-                        </button>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          {/* Interaction Mode Toggle */}
+                          <div style={{ display: 'flex', background: 'var(--bg-dark)', borderRadius: 6, padding: 2 }}>
+                            <button
+                              className={`btn ${interactionMode === 'select' ? 'btn-primary' : 'btn-secondary'}`}
+                              style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                              onClick={() => setInteractionMode('select')}
+                              title="Click cells to select region"
+                            >
+                              <MousePointer size={14} /> Select
+                            </button>
+                            <button
+                              className={`btn ${interactionMode === 'orders' ? 'btn-primary' : 'btn-secondary'}`}
+                              style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                              onClick={() => setInteractionMode('orders')}
+                              title="Click cells to view orders"
+                            >
+                              <Eye size={14} /> Orders
+                            </button>
+                          </div>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ padding: '4px 8px' }}
+                            onClick={() => refetchComparison()}
+                          >
+                            <RefreshCw size={14} />
+                          </button>
+                        </div>
                       </div>
                       <div className="table-container">
                         <table>
@@ -1049,25 +1071,25 @@ export default function ShoppingPlanner() {
                                       key={region}
                                       className={`isk ${isCheapest ? 'positive' : ''}`}
                                       style={{
-                                        cursor: 'pointer',
+                                        cursor: data?.unit_price ? 'pointer' : 'default',
                                         background: isSelected ? 'var(--bg-hover)' : undefined,
                                         borderLeft: isSelected ? '2px solid var(--accent-blue)' : undefined,
                                       }}
                                       onClick={() => {
-                                        if (data?.unit_price) {
-                                          setOrderPopup({ typeId: item.type_id, itemName: item.item_name, region });
-                                        }
-                                      }}
-                                      onDoubleClick={() => {
-                                        if (data?.unit_price) {
+                                        if (!data?.unit_price) return;
+                                        if (interactionMode === 'select') {
                                           updateItemRegion.mutate({
                                             itemId: item.id,
                                             region,
                                             price: data.unit_price
                                           });
+                                        } else {
+                                          setOrderPopup({ typeId: item.type_id, itemName: item.item_name, region });
                                         }
                                       }}
-                                      title={data?.has_stock ? 'Click for orders, double-click to select' : 'Low stock - Click for orders'}
+                                      title={interactionMode === 'select'
+                                        ? (data?.has_stock ? 'Click to select this region' : 'Low stock - Click to select anyway')
+                                        : (data?.has_stock ? 'Click to view orders' : 'Low stock - Click to view orders')}
                                     >
                                       {data?.total ? (
                                         <>
