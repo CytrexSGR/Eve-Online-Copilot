@@ -83,12 +83,13 @@ class ShoppingService:
                     return None
 
                 # Get all items for this list
+                # activityID 1 = Manufacturing, 11 = Reactions
                 cur.execute('''
                     SELECT sli.*,
                            COALESCE(bp."quantity", 1) as output_per_run
                     FROM shopping_list_items sli
                     LEFT JOIN "industryActivityProducts" bp
-                        ON bp."productTypeID" = sli.type_id AND bp."activityID" = 1
+                        ON bp."productTypeID" = sli.type_id AND bp."activityID" IN (1, 11)
                     WHERE sli.list_id = %s
                     ORDER BY sli.is_purchased, sli.is_product DESC, sli.item_name
                 ''', (list_id,))
@@ -199,11 +200,12 @@ class ShoppingService:
         """Add item to shopping list"""
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Check if item has a blueprint (= is a product)
+                # Check if item has a blueprint or reaction formula (= is a product)
+                # activityID 1 = Manufacturing, 11 = Reactions
                 cur.execute('''
                     SELECT bp."typeID"
                     FROM "industryActivityProducts" bp
-                    WHERE bp."productTypeID" = %s AND bp."activityID" = 1
+                    WHERE bp."productTypeID" = %s AND bp."activityID" IN (1, 11)
                     LIMIT 1
                 ''', (type_id,))
                 has_blueprint = cur.fetchone() is not None
@@ -425,7 +427,7 @@ class ShoppingService:
                         COALESCE(bp."quantity", 1) as output_per_run
                     FROM shopping_list_items sli
                     LEFT JOIN "industryActivityProducts" bp
-                        ON bp."productTypeID" = sli.type_id AND bp."activityID" = 1
+                        ON bp."productTypeID" = sli.type_id AND bp."activityID" IN (1, 11)
                     WHERE sli.list_id = %s AND sli.is_product = TRUE
                 ''', (list_id,))
                 products = [dict(row) for row in cur.fetchall()]
@@ -650,11 +652,12 @@ class ShoppingService:
                 runs = product['runs'] or 1
                 me_level = product['me_level'] or 10
 
-                # Get blueprint type ID for this product
+                # Get blueprint/formula type ID for this product
+                # activityID 1 = Manufacturing, 11 = Reactions
                 cur.execute('''
-                    SELECT bp."typeID" as blueprint_type_id, bp."quantity" as output_per_run
+                    SELECT bp."typeID" as blueprint_type_id, bp."quantity" as output_per_run, bp."activityID" as activity_id
                     FROM "industryActivityProducts" bp
-                    WHERE bp."productTypeID" = %s AND bp."activityID" = 1
+                    WHERE bp."productTypeID" = %s AND bp."activityID" IN (1, 11)
                     LIMIT 1
                 ''', (type_id,))
                 blueprint_info = cur.fetchone()
@@ -664,8 +667,10 @@ class ShoppingService:
 
                 blueprint_type_id = blueprint_info['blueprint_type_id']
                 output_per_run = blueprint_info['output_per_run'] or 1
+                activity_id = blueprint_info['activity_id']  # 1 for manufacturing, 11 for reactions
 
-                # Get materials from industryActivityMaterials (activityID 1 = manufacturing)
+                # Get materials from industryActivityMaterials
+                # Use the same activityID as the blueprint/formula
                 cur.execute('''
                     SELECT
                         m."materialTypeID" as type_id,
@@ -674,9 +679,9 @@ class ShoppingService:
                         t."volume" as volume
                     FROM "industryActivityMaterials" m
                     JOIN "invTypes" t ON m."materialTypeID" = t."typeID"
-                    WHERE m."typeID" = %s AND m."activityID" = 1
+                    WHERE m."typeID" = %s AND m."activityID" = %s
                     ORDER BY t."typeName"
-                ''', (blueprint_type_id,))
+                ''', (blueprint_type_id, activity_id))
                 raw_materials = cur.fetchall()
 
                 # Calculate quantities and check for sub-products
@@ -686,11 +691,12 @@ class ShoppingService:
                 for mat in raw_materials:
                     mat_type_id = mat['type_id']
 
-                    # Check if this material has a blueprint (= is a sub-product)
+                    # Check if this material has a blueprint or reaction formula (= is a sub-product)
+                    # activityID 1 = Manufacturing, 11 = Reactions
                     cur.execute('''
                         SELECT bp."typeID"
                         FROM "industryActivityProducts" bp
-                        WHERE bp."productTypeID" = %s AND bp."activityID" = 1
+                        WHERE bp."productTypeID" = %s AND bp."activityID" IN (1, 11)
                         LIMIT 1
                     ''', (mat_type_id,))
                     has_blueprint = cur.fetchone() is not None
