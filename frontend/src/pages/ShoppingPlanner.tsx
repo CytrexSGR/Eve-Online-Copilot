@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, BarChart3, RefreshCw, MousePointer, Eye } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, BarChart3, RefreshCw, MousePointer, Eye, ArrowUpDown, Package, Truck } from 'lucide-react';
 import { api } from '../api';
 import { formatISK, formatQuantity } from '../utils/format';
 
@@ -97,6 +97,52 @@ interface OrderRegionData {
 interface OrderSnapshotResponse {
   type_id: number;
   regions: Record<string, OrderRegionData>;
+}
+
+interface CargoSummary {
+  list_id: number;
+  products: Array<{
+    type_id: number;
+    item_name: string;
+    runs: number;
+    total_volume: number;
+  }>;
+  materials: {
+    total_items: number;
+    total_volume_m3: number;
+    volume_formatted: string;
+    breakdown_by_region: Record<string, { volume_m3: number; item_count: number }>;
+  };
+}
+
+interface TransportOption {
+  id: number;
+  characters: Array<{
+    id: number;
+    name: string;
+    ship_type_id: number;
+    ship_name: string;
+    ship_group: string;
+    ship_location: string;
+  }>;
+  trips: number;
+  flight_time_min: number;
+  flight_time_formatted: string;
+  capacity_m3: number;
+  capacity_used_pct: number;
+  risk_score: number;
+  risk_label: string;
+  dangerous_systems: string[];
+  isk_per_trip: number;
+}
+
+interface TransportOptions {
+  total_volume_m3: number;
+  volume_formatted: string;
+  route_summary: string;
+  options: TransportOption[];
+  filters_available: string[];
+  message?: string;
 }
 
 const REGION_NAMES: Record<string, string> = {
@@ -525,9 +571,10 @@ export default function ShoppingPlanner() {
   const [selectedListId, setSelectedListId] = useState<number | null>(null);
   const [newListName, setNewListName] = useState('');
   const [showNewListForm, setShowNewListForm] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'compare'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'compare' | 'transport'>('list');
   const [interactionMode, setInteractionMode] = useState<'select' | 'orders'>('select');
   const [orderPopup, setOrderPopup] = useState<{ typeId: number; itemName: string; region: string } | null>(null);
+  const [compareSort, setCompareSort] = useState<'name' | 'quantity'>('name');
 
   // Fetch all shopping lists
   const { data: lists, isLoading } = useQuery<ShoppingList[]>({
@@ -559,6 +606,42 @@ export default function ShoppingPlanner() {
     },
     enabled: !!selectedListId && viewMode === 'compare',
   });
+
+  // Fetch cargo summary
+  const { data: cargoSummary } = useQuery<CargoSummary>({
+    queryKey: ['shopping-cargo', selectedListId],
+    queryFn: async () => {
+      const response = await api.get(`/api/shopping/lists/${selectedListId}/cargo-summary`);
+      return response.data;
+    },
+    enabled: !!selectedListId,
+  });
+
+  // Transport state and query
+  const [safeRoutesOnly, setSafeRoutesOnly] = useState(true);
+  const [transportFilter, setTransportFilter] = useState<string>('');
+
+  const { data: transportOptions, isLoading: isLoadingTransport } = useQuery<TransportOptions>({
+    queryKey: ['shopping-transport', selectedListId, safeRoutesOnly],
+    queryFn: async () => {
+      const response = await api.get(`/api/shopping/lists/${selectedListId}/transport-options`, {
+        params: { safe_only: safeRoutesOnly }
+      });
+      return response.data;
+    },
+    enabled: !!selectedListId && viewMode === 'transport',
+  });
+
+  // Sort comparison items - stable sort prevents row jumping during selection
+  const sortedComparisonItems = useMemo(() => {
+    if (!comparison?.items) return [];
+    return [...comparison.items].sort((a, b) => {
+      if (compareSort === 'quantity') {
+        return b.quantity - a.quantity; // Descending by quantity
+      }
+      return a.item_name.localeCompare(b.item_name); // Ascending by name
+    });
+  }, [comparison?.items, compareSort]);
 
   // Create list mutation
   const createList = useMutation({
@@ -845,12 +928,30 @@ export default function ShoppingPlanner() {
               {/* List Header */}
               <div className="card" style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h2 style={{ margin: 0 }}>{selectedList.name}</h2>
-                    <div className="neutral" style={{ marginTop: 4 }}>
-                      {selectedList.items?.length || 0} items
-                      {selectedList.total_cost && ` • ${formatISK(selectedList.total_cost)} total`}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <div>
+                      <h2 style={{ margin: 0 }}>{selectedList.name}</h2>
+                      <div className="neutral" style={{ marginTop: 4 }}>
+                        {selectedList.items?.length || 0} items
+                        {selectedList.total_cost && ` • ${formatISK(selectedList.total_cost)} total`}
+                      </div>
                     </div>
+                    {/* Cargo Summary */}
+                    {cargoSummary && cargoSummary.materials.total_volume_m3 > 0 && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '8px 12px',
+                        background: 'var(--bg-dark)',
+                        borderRadius: 6,
+                        fontSize: 13
+                      }}>
+                        <Package size={16} />
+                        <span>Cargo: <strong>{cargoSummary.materials.volume_formatted}</strong></span>
+                        <span className="neutral">({cargoSummary.materials.total_items} items)</span>
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     {/* View Toggle */}
@@ -869,6 +970,17 @@ export default function ShoppingPlanner() {
                         title="Compare Regions"
                       >
                         <BarChart3 size={16} />
+                      </button>
+                      <button
+                        className={`btn ${viewMode === 'transport' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setViewMode('transport')}
+                        disabled={!cargoSummary || cargoSummary.materials.total_volume_m3 === 0}
+                        title={!cargoSummary || cargoSummary.materials.total_volume_m3 === 0
+                          ? 'Add items to see transport options'
+                          : 'Plan transport'}
+                      >
+                        <Truck size={16} style={{ marginRight: 6 }} />
+                        Transport
                       </button>
                     </div>
                     <button className="btn btn-secondary" onClick={() => handleExport()}>
@@ -890,7 +1002,7 @@ export default function ShoppingPlanner() {
               </div>
 
               {/* View Content */}
-              {viewMode === 'list' ? (
+              {viewMode === 'list' && (
                 /* Standard List View */
                 Object.keys(itemsByRegion).length === 0 ? (
                   <div className="card">
@@ -989,7 +1101,9 @@ export default function ShoppingPlanner() {
                     );
                   })
                 )
-              ) : (
+              )}
+
+              {viewMode === 'compare' && (
                 /* Regional Comparison View */
                 isLoadingComparison ? (
                   <div className="loading">
@@ -1099,8 +1213,20 @@ export default function ShoppingPlanner() {
                         <table>
                           <thead>
                             <tr>
-                              <th>Item</th>
-                              <th>Qty</th>
+                              <th
+                                style={{ cursor: 'pointer', userSelect: 'none' }}
+                                onClick={() => setCompareSort('name')}
+                                title="Sort by item name"
+                              >
+                                Item {compareSort === 'name' && <ArrowUpDown size={12} style={{ marginLeft: 4, opacity: 0.7 }} />}
+                              </th>
+                              <th
+                                style={{ cursor: 'pointer', userSelect: 'none' }}
+                                onClick={() => setCompareSort('quantity')}
+                                title="Sort by quantity (descending)"
+                              >
+                                Qty {compareSort === 'quantity' && <ArrowUpDown size={12} style={{ marginLeft: 4, opacity: 0.7 }} />}
+                              </th>
                               {REGION_ORDER.map((region) => (
                                 <th key={region}>{REGION_NAMES[region]}</th>
                               ))}
@@ -1108,7 +1234,7 @@ export default function ShoppingPlanner() {
                             </tr>
                           </thead>
                           <tbody>
-                            {comparison.items.map((item) => (
+                            {sortedComparisonItems.map((item) => (
                               <tr key={item.id}>
                                 <td>{item.item_name}</td>
                                 <td>{formatQuantity(item.quantity)}</td>
@@ -1120,6 +1246,11 @@ export default function ShoppingPlanner() {
                                     <td
                                       key={region}
                                       className={`isk ${isCheapest ? 'positive' : ''}`}
+                                      data-item-id={item.id}
+                                      data-type-id={item.type_id}
+                                      data-item-name={item.item_name}
+                                      data-region={region}
+                                      data-price={data?.unit_price || ''}
                                       style={{
                                         cursor: data?.unit_price ? 'pointer' : 'default',
                                         background: isSelected ? 'var(--bg-hover)' : undefined,
@@ -1127,16 +1258,27 @@ export default function ShoppingPlanner() {
                                       }}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        if (!data?.unit_price) return;
-                                        if (updateItemRegion.isPending) return; // Prevent double-clicks during mutation
+                                        e.preventDefault();
+                                        // Use data attributes to ensure we get the correct item
+                                        // even if React re-renders during the event
+                                        const target = e.currentTarget;
+                                        const itemId = Number(target.dataset.itemId);
+                                        const typeId = Number(target.dataset.typeId);
+                                        const itemName = target.dataset.itemName || '';
+                                        const clickedRegion = target.dataset.region || '';
+                                        const price = target.dataset.price ? Number(target.dataset.price) : undefined;
+
+                                        if (!price) return;
+                                        if (updateItemRegion.isPending) return;
+
                                         if (interactionMode === 'select') {
                                           updateItemRegion.mutate({
-                                            itemId: item.id,
-                                            region,
-                                            price: data.unit_price
+                                            itemId,
+                                            region: clickedRegion,
+                                            price
                                           });
                                         } else {
-                                          setOrderPopup({ typeId: item.type_id, itemName: item.item_name, region });
+                                          setOrderPopup({ typeId, itemName, region: clickedRegion });
                                         }
                                       }}
                                       title={interactionMode === 'select'
@@ -1185,6 +1327,138 @@ export default function ShoppingPlanner() {
                     />
                   </>
                 )
+              )}
+
+              {viewMode === 'transport' && (
+                /* Transport Options View */
+                <div className="card">
+                  <div className="card-header">
+                    <span className="card-title">
+                      <Truck size={18} style={{ marginRight: 8 }} />
+                      Transport Options
+                    </span>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                        <input
+                          type="checkbox"
+                          checked={safeRoutesOnly}
+                          onChange={(e) => setSafeRoutesOnly(e.target.checked)}
+                        />
+                        Safe routes only
+                      </label>
+                    </div>
+                  </div>
+
+                  {isLoadingTransport ? (
+                    <div className="loading">
+                      <div className="spinner"></div>
+                      Calculating transport options...
+                    </div>
+                  ) : transportOptions?.options.length === 0 ? (
+                    <div style={{ padding: 20, textAlign: 'center' }}>
+                      <p className="neutral">{transportOptions?.message || 'No transport options available'}</p>
+                      <p style={{ fontSize: 12, marginTop: 8 }}>
+                        Run the capability sync to update available ships.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Summary Header */}
+                      <div style={{
+                        padding: '12px 16px',
+                        background: 'var(--bg-dark)',
+                        borderBottom: '1px solid var(--border-color)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <div>
+                          <strong>{transportOptions?.volume_formatted}</strong>
+                          <span className="neutral" style={{ marginLeft: 8 }}>
+                            {transportOptions?.route_summary}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          {['fewest_trips', 'fastest', 'lowest_risk'].map(filter => (
+                            <button
+                              key={filter}
+                              className={`btn btn-small ${transportFilter === filter ? 'btn-primary' : 'btn-secondary'}`}
+                              onClick={() => setTransportFilter(transportFilter === filter ? '' : filter)}
+                              style={{ padding: '4px 8px', fontSize: 11 }}
+                            >
+                              {filter === 'fewest_trips' ? 'Fewest Trips' :
+                               filter === 'fastest' ? 'Fastest' : 'Lowest Risk'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Options List */}
+                      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {transportOptions?.options.map((option, idx) => (
+                            <div
+                              key={option.id}
+                              style={{
+                                padding: 16,
+                                background: 'var(--bg-dark)',
+                                borderRadius: 8,
+                                border: idx === 0 ? '2px solid var(--accent-blue)' : '1px solid var(--border-color)'
+                              }}
+                            >
+                              {idx === 0 && (
+                                <span className="badge badge-blue" style={{ marginBottom: 8, display: 'inline-block' }}>
+                                  RECOMMENDED
+                                </span>
+                              )}
+
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <div>
+                                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                                    {option.characters[0]?.name} → {option.characters[0]?.ship_name}
+                                  </div>
+                                  <div className="neutral" style={{ fontSize: 12 }}>
+                                    {option.characters[0]?.ship_group} • {option.characters[0]?.ship_location}
+                                  </div>
+                                </div>
+
+                                <div style={{ textAlign: 'right' }}>
+                                  <span className={option.risk_score === 0 ? 'positive' : option.risk_score <= 2 ? 'neutral' : 'negative'}>
+                                    {option.risk_score === 0 ? '✅' : '⚠️'} {option.risk_label}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(4, 1fr)',
+                                gap: 16,
+                                marginTop: 12,
+                                paddingTop: 12,
+                                borderTop: '1px solid var(--border-color)'
+                              }}>
+                                <div>
+                                  <div className="neutral" style={{ fontSize: 11 }}>Trips</div>
+                                  <div style={{ fontWeight: 600 }}>{option.trips}</div>
+                                </div>
+                                <div>
+                                  <div className="neutral" style={{ fontSize: 11 }}>Time</div>
+                                  <div style={{ fontWeight: 600 }}>{option.flight_time_formatted}</div>
+                                </div>
+                                <div>
+                                  <div className="neutral" style={{ fontSize: 11 }}>Capacity Used</div>
+                                  <div style={{ fontWeight: 600 }}>{option.capacity_used_pct}%</div>
+                                </div>
+                                <div>
+                                  <div className="neutral" style={{ fontSize: 11 }}>Ship Capacity</div>
+                                  <div style={{ fontWeight: 600 }}>{(option.capacity_m3 / 1000).toFixed(0)}K m³</div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </>
           )}

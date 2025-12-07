@@ -10,6 +10,7 @@ from database import get_db_connection
 from psycopg2.extras import RealDictCursor
 from shopping_service import shopping_service
 from route_service import route_service
+from transport_service import transport_service
 
 router = APIRouter(prefix="/api/shopping", tags=["Shopping"])
 
@@ -42,6 +43,11 @@ class ShoppingItemUpdate(BaseModel):
     target_region: Optional[str] = None
     target_price: Optional[float] = None
     notes: Optional[str] = None
+
+
+class ItemRunsUpdate(BaseModel):
+    runs: int
+    me_level: int = 10
 
 
 # Shopping List Endpoints
@@ -485,3 +491,31 @@ async def get_order_snapshots(
                 'type_id': type_id,
                 'regions': result
             }
+
+
+@router.get("/lists/{list_id}/cargo-summary")
+async def get_cargo_summary(list_id: int):
+    """Get cargo volume summary for a shopping list"""
+    summary = shopping_service.get_cargo_summary(list_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Shopping list not found")
+    return summary
+
+
+@router.get("/lists/{list_id}/transport-options")
+async def get_transport_options(
+    list_id: int,
+    safe_only: bool = Query(True, description="Only show safe (highsec) routes")
+):
+    """Get transport options for a shopping list"""
+    options = transport_service.get_transport_options(list_id, safe_only)
+    return options
+
+
+@router.patch("/items/{item_id}/runs")
+async def update_item_runs(item_id: int, request: ItemRunsUpdate):
+    """Update runs and ME level for a product item"""
+    result = shopping_service.update_item_runs(item_id, request.runs, request.me_level)
+    if not result:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return result

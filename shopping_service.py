@@ -298,6 +298,120 @@ class ShoppingService:
                 conn.commit()
 
     # ============================================================
+    # Volume Calculation Methods
+    # ============================================================
+
+    def get_item_volume(self, type_id: int) -> Optional[float]:
+        """Get volume of an item from SDE"""
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute('''
+                    SELECT "volume" FROM "invTypes"
+                    WHERE "typeID" = %s
+                ''', (type_id,))
+                result = cur.fetchone()
+                return float(result['volume']) if result and result['volume'] else None
+
+    def update_item_volume(self, item_id: int) -> dict:
+        """Update volume fields for an item"""
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get item and its volume from SDE
+                cur.execute('''
+                    UPDATE shopping_list_items sli
+                    SET volume_per_unit = t."volume",
+                        total_volume = sli.quantity * t."volume"
+                    FROM "invTypes" t
+                    WHERE sli.id = %s AND sli.type_id = t."typeID"
+                    RETURNING sli.*
+                ''', (item_id,))
+                conn.commit()
+                result = cur.fetchone()
+                return dict(result) if result else None
+
+    def update_item_runs(
+        self,
+        item_id: int,
+        runs: int,
+        me_level: int = 10
+    ) -> dict:
+        """Update runs and ME level for a product item"""
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute('''
+                    UPDATE shopping_list_items
+                    SET runs = %s,
+                        me_level = %s,
+                        quantity = %s,
+                        is_product = TRUE,
+                        updated_at = NOW()
+                    WHERE id = %s
+                    RETURNING *
+                ''', (runs, me_level, runs, item_id))
+                conn.commit()
+                result = cur.fetchone()
+                return dict(result) if result else None
+
+    def get_cargo_summary(self, list_id: int) -> dict:
+        """Get cargo volume summary for a shopping list"""
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get products
+                cur.execute('''
+                    SELECT type_id, item_name, runs, total_volume
+                    FROM shopping_list_items
+                    WHERE list_id = %s AND is_product = TRUE
+                ''', (list_id,))
+                products = [dict(row) for row in cur.fetchall()]
+
+                # Get materials summary
+                cur.execute('''
+                    SELECT
+                        COUNT(*) as total_items,
+                        COALESCE(SUM(total_volume), 0) as total_volume_m3,
+                        target_region
+                    FROM shopping_list_items
+                    WHERE list_id = %s AND is_product = FALSE
+                    GROUP BY target_region
+                ''', (list_id,))
+                by_region = [dict(row) for row in cur.fetchall()]
+
+                # Total materials volume
+                cur.execute('''
+                    SELECT
+                        COUNT(*) as total_items,
+                        COALESCE(SUM(total_volume), 0) as total_volume_m3
+                    FROM shopping_list_items
+                    WHERE list_id = %s AND is_product = FALSE
+                ''', (list_id,))
+                totals = dict(cur.fetchone())
+
+                return {
+                    'list_id': list_id,
+                    'products': products,
+                    'materials': {
+                        'total_items': totals['total_items'],
+                        'total_volume_m3': float(totals['total_volume_m3']),
+                        'volume_formatted': self._format_volume(float(totals['total_volume_m3'])),
+                        'breakdown_by_region': {
+                            row['target_region'] or 'unassigned': {
+                                'volume_m3': float(row['total_volume_m3']),
+                                'item_count': row['total_items']
+                            }
+                            for row in by_region
+                        }
+                    }
+                }
+
+    def _format_volume(self, volume: float) -> str:
+        """Format volume for display"""
+        if volume >= 1_000_000:
+            return f"{volume / 1_000_000:.2f}M m³"
+        if volume >= 1_000:
+            return f"{volume / 1_000:.1f}K m³"
+        return f"{volume:.0f} m³"
+
+    # ============================================================
     # Bulk Operations
     # ============================================================
 
