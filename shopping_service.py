@@ -606,13 +606,27 @@ class ShoppingService:
     # Material Calculation Methods
     # ============================================================
 
-    def _calculate_material_quantity(self, base_quantity: int, runs: int, me_level: int) -> int:
+    def _calculate_material_quantity(self, base_quantity: int, runs: int, me_level: int, apply_me: bool = True) -> int:
         """
         Calculate material quantity using EVE Online ME formula.
-        ME 0 = 100% materials, ME 10 = 90% materials
+
+        Args:
+            base_quantity: Base quantity from blueprint
+            runs: Number of blueprint runs
+            me_level: Material Efficiency level (0-10)
+            apply_me: Whether to apply ME reduction. False for sub-products/components,
+                      True for raw materials (minerals, PI, etc.)
+
+        EVE Online rules:
+        - ME reduces raw material costs (minerals, etc.)
+        - ME does NOT reduce the number of sub-products needed (Capital Components, T2 parts)
         """
-        me_modifier = 1 - (me_level / 100)
-        return math.ceil(base_quantity * runs * me_modifier)
+        if apply_me:
+            me_modifier = 1 - (me_level / 100)
+            return math.ceil(base_quantity * runs * me_modifier)
+        else:
+            # Sub-products: no ME reduction, just multiply by runs
+            return base_quantity * runs
 
     def calculate_materials(self, item_id: int) -> Optional[dict]:
         """
@@ -671,9 +685,6 @@ class ShoppingService:
 
                 for mat in raw_materials:
                     mat_type_id = mat['type_id']
-                    calculated_qty = self._calculate_material_quantity(
-                        mat['base_quantity'], runs, me_level
-                    )
 
                     # Check if this material has a blueprint (= is a sub-product)
                     cur.execute('''
@@ -683,6 +694,12 @@ class ShoppingService:
                         LIMIT 1
                     ''', (mat_type_id,))
                     has_blueprint = cur.fetchone() is not None
+
+                    # EVE Online rule: ME only applies to raw materials, NOT to sub-products
+                    # Sub-products (Capital Components, T2 parts, etc.) require exact quantities
+                    calculated_qty = self._calculate_material_quantity(
+                        mat['base_quantity'], runs, me_level, apply_me=(not has_blueprint)
+                    )
 
                     material_data = {
                         'type_id': mat_type_id,
