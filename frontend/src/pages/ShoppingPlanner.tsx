@@ -1337,6 +1337,24 @@ export default function ShoppingPlanner() {
                                 <Calculator size={14} style={{ marginRight: 4 }} />
                                 {product.materials_calculated ? 'Recalculate' : 'Calculate Materials'}
                               </button>
+                              <button
+                                className="btn"
+                                style={{
+                                  padding: '6px 10px',
+                                  fontSize: 12,
+                                  background: 'var(--bg-darker)',
+                                  border: '1px solid var(--border-color)',
+                                  color: 'var(--danger-red)'
+                                }}
+                                onClick={() => {
+                                  if (confirm(`Remove ${product.item_name} and its materials?`)) {
+                                    removeItem.mutate(product.id);
+                                  }
+                                }}
+                                title="Remove product"
+                              >
+                                <Trash2 size={14} />
+                              </button>
                             </div>
                           </div>
 
