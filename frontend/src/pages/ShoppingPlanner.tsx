@@ -754,6 +754,8 @@ export default function ShoppingPlanner() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-cargo', selectedListId] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-comparison', selectedListId] });
       queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
     },
   });
@@ -772,6 +774,7 @@ export default function ShoppingPlanner() {
       queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
       queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
       queryClient.invalidateQueries({ queryKey: ['shopping-cargo', selectedListId] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-comparison', selectedListId] });
       // Reset modal state
       setShowAddProductModal(false);
       setProductSearch('');
@@ -857,6 +860,7 @@ export default function ShoppingPlanner() {
       setPendingMaterials(null);
       queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
       queryClient.invalidateQueries({ queryKey: ['shopping-cargo', selectedListId] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-comparison', selectedListId] });
       queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
     },
   });

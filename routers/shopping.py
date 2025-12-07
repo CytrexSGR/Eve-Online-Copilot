@@ -251,7 +251,60 @@ async def get_regional_comparison(list_id: int, home_system: str = Query('isikem
     if not list_data:
         raise HTTPException(status_code=404, detail="Shopping list not found")
 
-    if not list_data.get('items'):
+    # Aggregate items by type_id (combine materials from all products)
+    # Only include items that need to be purchased (not products themselves)
+    aggregated_items = {}
+
+    # Process standalone items (items not attached to any product)
+    for item in list_data.get('standalone_items', []):
+        if item['is_purchased']:
+            continue
+        tid = item['type_id']
+        if tid not in aggregated_items:
+            aggregated_items[tid] = {
+                'type_id': tid,
+                'item_name': item['item_name'],
+                'quantity': 0,
+                'target_region': item['target_region'],
+                'target_price': item['target_price']
+            }
+        aggregated_items[tid]['quantity'] += item['quantity']
+
+    # Process materials from products (these are what we actually need to buy)
+    for product in list_data.get('products', []):
+        for mat in product.get('materials', []):
+            if mat['is_purchased']:
+                continue
+            tid = mat['type_id']
+            if tid not in aggregated_items:
+                aggregated_items[tid] = {
+                    'type_id': tid,
+                    'item_name': mat['item_name'],
+                    'quantity': 0,
+                    'target_region': mat['target_region'],
+                    'target_price': mat['target_price']
+                }
+            aggregated_items[tid]['quantity'] += mat['quantity']
+
+        # Also process sub-product materials if any
+        for sub in product.get('sub_products', []):
+            for mat in sub.get('materials', []):
+                if mat['is_purchased']:
+                    continue
+                tid = mat['type_id']
+                if tid not in aggregated_items:
+                    aggregated_items[tid] = {
+                        'type_id': tid,
+                        'item_name': mat['item_name'],
+                        'quantity': 0,
+                        'target_region': mat['target_region'],
+                        'target_price': mat['target_price']
+                    }
+                aggregated_items[tid]['quantity'] += mat['quantity']
+
+    items_to_compare = list(aggregated_items.values())
+
+    if not items_to_compare:
         return {
             "list": list_data,
             "items": [],
@@ -259,8 +312,8 @@ async def get_regional_comparison(list_id: int, home_system: str = Query('isikem
             "cheapest_route": []
         }
 
-    # Get all type_ids from the list
-    type_ids = [item['type_id'] for item in list_data['items']]
+    # Get all type_ids from the aggregated list
+    type_ids = [item['type_id'] for item in items_to_compare]
 
     with get_db_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -289,10 +342,7 @@ async def get_regional_comparison(list_id: int, home_system: str = Query('isikem
     enriched_items = []
     region_totals = {r: 0 for r in REGION_ID_TO_NAME.values()}
 
-    for item in list_data['items']:
-        if item['is_purchased']:
-            continue
-
+    for item in items_to_compare:
         type_id = item['type_id']
         quantity = item['quantity']
         prices = price_map.get(type_id, {})
@@ -328,12 +378,12 @@ async def get_regional_comparison(list_id: int, home_system: str = Query('isikem
                 }
 
         enriched_items.append({
-            'id': item['id'],
+            'id': item['type_id'],  # Use type_id as id for aggregated items
             'type_id': type_id,
             'item_name': item['item_name'],
             'quantity': quantity,
-            'current_region': item['target_region'],
-            'current_price': item['target_price'],
+            'current_region': item.get('target_region'),
+            'current_price': item.get('target_price'),
             'regions': region_data,
             'cheapest_region': cheapest_region,
             'cheapest_price': cheapest_price if cheapest_price != float('inf') else None
