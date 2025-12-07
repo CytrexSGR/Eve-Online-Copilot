@@ -771,6 +771,7 @@ export default function ShoppingPlanner() {
   const [interactionMode, setInteractionMode] = useState<'select' | 'orders'>('select');
   const [orderPopup, setOrderPopup] = useState<{ typeId: number; itemName: string; region: string } | null>(null);
   const [compareSort, setCompareSort] = useState<'name' | 'quantity'>('name');
+  const [showRegionTotals, setShowRegionTotals] = useState(false);
   const [showSubProductModal, setShowSubProductModal] = useState(false);
   const [pendingMaterials, setPendingMaterials] = useState<CalculateMaterialsResponse | null>(null);
   const [subProductDecisions, setSubProductDecisions] = useState<Record<number, 'buy' | 'build'>>({});
@@ -1949,59 +1950,79 @@ export default function ShoppingPlanner() {
                                 </div>
                               ) : (
                                 <>
-                                  {/* Region Totals Summary */}
-                                  <div className="stats-grid" style={{ marginBottom: 16 }}>
-                                    {REGION_ORDER.map((region) => {
-                                      const data = comparison.region_totals[region];
-                                      const savings = comparison.optimal_route.savings_vs_single_region[region] || 0;
-                                      const isOptimal = savings === 0 && data?.total === comparison.optimal_route.total_cost;
-                                      return (
-                                        <div
-                                          key={region}
-                                          className={`stat-card ${isOptimal ? 'best' : ''}`}
-                                          style={{
-                                            border: isOptimal ? '1px solid var(--accent-green)' : undefined,
-                                          }}
-                                        >
-                                          <div className="stat-label">
-                                            {data?.display_name || region}
-                                            {data?.jumps !== undefined && (
-                                              <span className="neutral" style={{ fontWeight: 400, marginLeft: 4 }}>
-                                                ({data.jumps} jumps)
-                                              </span>
-                                            )}
-                                          </div>
-                                          <div className="stat-value isk">{formatISK(data?.total || 0)}</div>
-                                          {savings > 0 && (
-                                            <div className="negative" style={{ fontSize: 11 }}>
-                                              +{formatISK(savings)} vs optimal
+                                  {/* Region Totals Summary - Collapsible */}
+                                  <div className="card" style={{ marginBottom: 16 }}>
+                                    <div
+                                      className="card-header"
+                                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                                      onClick={() => setShowRegionTotals(!showRegionTotals)}
+                                    >
+                                      <span className="card-title">
+                                        {showRegionTotals ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                                        <span style={{ marginLeft: 8 }}>Region Totals Summary</span>
+                                      </span>
+                                    </div>
+                                    {showRegionTotals && (
+                                      <div className="stats-grid" style={{ padding: 16 }}>
+                                        {REGION_ORDER.map((region) => {
+                                          const data = comparison.region_totals[region];
+                                          const savings = comparison.optimal_route.savings_vs_single_region[region] || 0;
+                                          const isOptimal = savings === 0 && data?.total === comparison.optimal_route.total_cost;
+                                          return (
+                                            <div
+                                              key={region}
+                                              className={`stat-card ${isOptimal ? 'best' : ''}`}
+                                              style={{
+                                                border: isOptimal ? '1px solid var(--accent-green)' : undefined,
+                                              }}
+                                            >
+                                              <div className="stat-label">
+                                                {data?.display_name || region}
+                                                {data?.jumps !== undefined && (
+                                                  <span className="neutral" style={{ fontWeight: 400, marginLeft: 4 }}>
+                                                    ({data.jumps} jumps)
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="stat-value isk">{formatISK(data?.total || 0)}</div>
+                                              {savings > 0 && (
+                                                <div className="negative" style={{ fontSize: 11 }}>
+                                                  +{formatISK(savings)} vs optimal
+                                                </div>
+                                              )}
+                                              <button
+                                                className="btn btn-secondary"
+                                                style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  applyRegionToAll(region);
+                                                }}
+                                                disabled={updateItemRegion.isPending}
+                                              >
+                                                Apply All
+                                              </button>
                                             </div>
-                                          )}
+                                          );
+                                        })}
+                                        <div className="stat-card" style={{ border: '1px solid var(--accent-blue)' }}>
+                                          <div className="stat-label">Optimal (Multi-Hub)</div>
+                                          <div className="stat-value isk positive">
+                                            {formatISK(comparison.optimal_route.total_cost)}
+                                          </div>
                                           <button
-                                            className="btn btn-secondary"
+                                            className="btn btn-primary"
                                             style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
-                                            onClick={() => applyRegionToAll(region)}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              applyOptimalRegions();
+                                            }}
                                             disabled={updateItemRegion.isPending}
                                           >
-                                            Apply All
+                                            Apply Optimal
                                           </button>
                                         </div>
-                                      );
-                                    })}
-                                    <div className="stat-card" style={{ border: '1px solid var(--accent-blue)' }}>
-                                      <div className="stat-label">Optimal (Multi-Hub)</div>
-                                      <div className="stat-value isk positive">
-                                        {formatISK(comparison.optimal_route.total_cost)}
                                       </div>
-                                      <button
-                                        className="btn btn-primary"
-                                        style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
-                                        onClick={applyOptimalRegions}
-                                        disabled={updateItemRegion.isPending}
-                                      >
-                                        Apply Optimal
-                                      </button>
-                                    </div>
+                                    )}
                                   </div>
 
                                   {/* Comparison Table */}
