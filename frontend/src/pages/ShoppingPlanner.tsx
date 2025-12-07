@@ -704,6 +704,18 @@ export default function ShoppingPlanner() {
     },
   });
 
+  // Update item runs/ME mutation
+  const updateItemRuns = useMutation({
+    mutationFn: async ({ itemId, runs, meLevel }: { itemId: number; runs: number; meLevel: number }) => {
+      await api.patch(`/api/shopping/items/${itemId}/runs`, { runs, me_level: meLevel });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-cargo', selectedListId] });
+      queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
+    },
+  });
+
   // Update item region mutation with optimistic updates
   // This prevents table row shifting during re-renders which caused wrong row selection
   const updateItemRegion = useMutation({
@@ -1000,6 +1012,76 @@ export default function ShoppingPlanner() {
                   </div>
                 </div>
               </div>
+
+              {/* Products Section - for setting runs and ME */}
+              {cargoSummary && cargoSummary.products && cargoSummary.products.length > 0 && (
+                <div className="card" style={{ marginBottom: 16 }}>
+                  <div className="card-header">
+                    <span className="card-title">
+                      <Package size={18} style={{ marginRight: 8 }} />
+                      Products ({cargoSummary.products.length})
+                    </span>
+                  </div>
+                  <div style={{ padding: 16 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {cargoSummary.products.map((product) => (
+                        <div
+                          key={product.type_id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '12px 16px',
+                            background: 'var(--bg-dark)',
+                            borderRadius: 8
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{product.item_name}</div>
+                            <div className="neutral" style={{ fontSize: 12 }}>
+                              Volume: {product.total_volume ? `${(product.total_volume / 1000).toFixed(1)}K m³` : 'N/A'}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <label style={{ fontSize: 12 }}>Runs:</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="1000"
+                                defaultValue={product.runs || 1}
+                                style={{
+                                  width: 70,
+                                  padding: '4px 8px',
+                                  borderRadius: 4,
+                                  border: '1px solid var(--border-color)',
+                                  background: 'var(--bg-darker)',
+                                  color: 'inherit'
+                                }}
+                                onBlur={(e) => {
+                                  const newRuns = parseInt(e.target.value) || 1;
+                                  if (newRuns !== product.runs) {
+                                    // Find item ID from selectedList
+                                    const item = selectedList?.items?.find(i => i.type_id === product.type_id);
+                                    if (item) {
+                                      updateItemRuns.mutate({ itemId: item.id, runs: newRuns, meLevel: 10 });
+                                    }
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    (e.target as HTMLInputElement).blur();
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* View Content */}
               {viewMode === 'list' && (
