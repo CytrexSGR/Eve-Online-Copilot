@@ -30,6 +30,8 @@ config.local.py
 auth_state.json
 scan_results.json
 .env.local
+CLAUDE.md
+CLAUDE.*.md
 
 # Node.js / Frontend
 frontend/node_modules/
