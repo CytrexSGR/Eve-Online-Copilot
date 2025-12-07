@@ -1,1 +1,28 @@
 # Routers package
+
+from .auth import router as auth_router
+from .character import router as character_router
+from .bookmarks import router as bookmarks_router
+from .production import router as production_router, simulation_router
+from .market import router as market_router
+from .items import router as items_router
+from .shopping import router as shopping_router
+from .hunter import router as hunter_router
+from .mcp import router as mcp_router
+from .mining import router as mining_router
+from .war import router as war_router
+
+__all__ = [
+    'auth_router',
+    'character_router',
+    'bookmarks_router',
+    'production_router',
+    'simulation_router',
+    'market_router',
+    'items_router',
+    'shopping_router',
+    'hunter_router',
+    'mcp_router',
+    'mining_router',
+    'war_router',
+]
