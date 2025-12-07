@@ -6,7 +6,7 @@
 
 ## Aktueller Stand
 
-Das EVE Co-Pilot Projekt ist **funktionsfähig** und jetzt **öffentlich auf GitHub**.
+Das EVE Co-Pilot Projekt ist **funktionsfähig** und **öffentlich auf GitHub**.
 
 ### Was heute gemacht wurde
 
@@ -22,9 +22,17 @@ Das EVE Co-Pilot Projekt ist **funktionsfähig** und jetzt **öffentlich auf Git
    - Professionelle Badges, Installation Guide, Contributing Guidelines
    - CLAUDE*.md Dateien aus Repo entfernt (enthielten Credentials)
 
-3. **CLAUDE.md aktualisiert:**
-   - Git/GitHub Pflicht-Sektion hinzugefügt
-   - Nach jeder Änderung: commit & push
+3. **Code Refactoring - main.py aufgeteilt:**
+   - `main.py` von 871 auf 83 Zeilen reduziert
+   - `schemas.py` erstellt für alle Pydantic Models
+   - 6 neue Router erstellt:
+     - `routers/auth.py` - EVE SSO Authentifizierung
+     - `routers/character.py` - Character & Corporation Daten
+     - `routers/bookmarks.py` - Bookmark Management
+     - `routers/production.py` - Manufacturing & Simulation
+     - `routers/market.py` - Market Stats & Arbitrage
+     - `routers/items.py` - Items, Groups, Materials, Routes, Cargo
+   - 100% API-Kompatibilität erhalten
 
 ---
 
@@ -35,9 +43,11 @@ Das EVE Co-Pilot Projekt ist **funktionsfähig** und jetzt **öffentlich auf Git
 **Status:** Public
 
 **Commits:**
-- `b95bd00` - Initial commit: EVE Co-Pilot production system
-- `f92a4b4` - docs: Rewrite README in English for public release
+- `a4d87ae` - refactor: Split main.py into modular routers
+- `41a9c8e` - docs: Update session handover for GitHub release
 - `36e7900` - security: Remove CLAUDE.md files containing credentials
+- `f92a4b4` - docs: Rewrite README in English for public release
+- `b95bd00` - Initial commit: EVE Co-Pilot production system
 
 ---
 
@@ -46,12 +56,11 @@ Das EVE Co-Pilot Projekt ist **funktionsfähig** und jetzt **öffentlich auf Git
 | Priorität | Aufgabe | Status |
 |-----------|---------|--------|
 | 1 | Git Repository | ✅ Erledigt |
-| 2 | Code Refactoring (main.py aufteilen) | ❌ Offen |
+| 2 | Code Refactoring (main.py aufteilen) | ✅ Erledigt |
 | 3 | Docker-Containerisierung | ❌ Offen |
 | 4 | Tests (pytest/vitest) | ❌ Offen |
 
-### Refactoring Details
-- `main.py` ist zu groß - Bookmark-Endpoints in `routers/bookmarks.py` verschieben
+### Verbleibendes Refactoring
 - `services.py` Legacy-Code aufräumen
 - TypeScript Interfaces vervollständigen
 
@@ -60,6 +69,29 @@ Das EVE Co-Pilot Projekt ist **funktionsfähig** und jetzt **öffentlich auf Git
 - `frontend/Dockerfile` für Frontend
 - `docker-compose.yml` für kompletten Stack
 - EVE SDE Dump für DB-Initialisierung
+
+---
+
+## Projekt-Struktur nach Refactoring
+
+```
+eve_copilot/
+├── main.py              # 83 Zeilen - App Setup & Router Registration
+├── schemas.py           # Alle Pydantic Models zentral
+├── routers/
+│   ├── __init__.py      # Router Exports
+│   ├── auth.py          # /api/auth/*
+│   ├── character.py     # /api/character/*
+│   ├── bookmarks.py     # /api/bookmarks/*
+│   ├── production.py    # /api/production/*, /api/simulation/*
+│   ├── market.py        # /api/market/*, /api/trade/*
+│   ├── items.py         # /api/items/*, /api/groups/*, /api/materials/*, /api/route/*, /api/cargo/*
+│   ├── shopping.py      # /api/shopping/*
+│   ├── hunter.py        # /api/hunter/*
+│   ├── mcp.py           # /mcp/tools/*
+│   ├── mining.py        # /api/mining/*
+│   └── war.py           # /api/war/*
+```
 
 ---
 
@@ -151,6 +183,7 @@ git status
 | `CLAUDE.md` | Haupt-Guide mit Credentials (lokal, nicht auf GitHub) |
 | `ARCHITECTURE.md` | System-Übersicht |
 | `README.md` | GitHub Public README (English) |
+| `schemas.py` | Zentrale Pydantic Models |
 | `config.example.py` | Config Template für neue Installationen |
 | `.gitignore` | Schützt sensitive Dateien |
 
@@ -166,4 +199,4 @@ Folgende Dateien sind in `.gitignore` und NICHT auf GitHub:
 
 ---
 
-**Bereit für:** Refactoring → Docker → Tests
+**Bereit für:** Docker → Tests
