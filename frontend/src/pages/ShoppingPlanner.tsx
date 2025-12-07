@@ -1075,8 +1075,10 @@ export default function ShoppingPlanner() {
                                         background: isSelected ? 'var(--bg-hover)' : undefined,
                                         borderLeft: isSelected ? '2px solid var(--accent-blue)' : undefined,
                                       }}
-                                      onClick={() => {
+                                      onClick={(e) => {
+                                        e.stopPropagation();
                                         if (!data?.unit_price) return;
+                                        if (updateItemRegion.isPending) return; // Prevent double-clicks during mutation
                                         if (interactionMode === 'select') {
                                           updateItemRegion.mutate({
                                             itemId: item.id,
