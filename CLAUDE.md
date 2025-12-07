@@ -11,6 +11,7 @@
 
 - **Sudo Password:** Aug2012#
 - **Database:** eve_sde / User: eve / Password: EvE_Pr0ject_2024
+- **GitHub Token:** See `/home/cytrex/Userdocs/.env` (GITHUB_TOKEN)
 
 ---
 

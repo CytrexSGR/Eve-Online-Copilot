@@ -1,315 +1,227 @@
 # EVE Co-Pilot
 
-Ein vollständiges Industrie- und Handelsanalyse-System für EVE Online mit FastAPI-Backend und React-Frontend.
+A comprehensive industry and market analysis tool for EVE Online. Built with FastAPI backend and React/TypeScript frontend.
+
+![EVE Online](https://img.shields.io/badge/EVE-Online-orange)
+![Python](https://img.shields.io/badge/Python-3.11+-blue)
+![React](https://img.shields.io/badge/React-18-61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ## Features
 
-### Backend (FastAPI)
-- **Produktionskostenberechnung**: T1-Herstellungskosten mit ME/TE-Boni und Facility-Boni
-- **Arbitrage-Finder**: Profitable Handelsmöglichkeiten zwischen Regionen
-- **Market Hunter**: Automatische Suche nach profitablen T1-Produkten
-- **Live-Marktdaten**: Echtzeit-Preise via ESI API mit Order-Depth-Analyse
-- **Charakter-Management**: OAuth2-Authentifizierung für persönliche Daten
-- **Corporation-Support**: Zugriff auf Corp-Wallets und Mitgliederlisten
-- **Shopping-Listen**: Einkaufslisten mit Multi-Region-Preisvergleich
-- **Routen-Berechnung**: A* Pathfinding für optimale Trade-Hub-Routen
-- **Mining-Analyse**: Ore-Preise und Yield-Berechnungen
+### Market Analysis
+- **Market Scanner** - Real-time profitability analysis for manufacturing
+- **Arbitrage Finder** - Cross-region trade opportunities
+- **Market Hunter** - Automated scanning for profitable T1 products
+- **Live Market Data** - Real-time prices via ESI API with order depth analysis
 
-### Frontend (React + TypeScript)
-- **Dashboard**: Übersicht über Wallets, Assets und Industrie-Jobs
-- **Market Scanner**: Echtzeit-Marktanalyse mit Profit-Berechnung
-- **Shopping Planner**: Multi-Region-Preisvergleich mit Routen-Optimierung
-- **Production Planner**: Produktionsketten-Simulation
-- **Materials Overview**: Materialklassifizierung und Kategorisierung
-- **Arbitrage Finder**: Region-zu-Region Handelsanalyse
-- **Bookmarks**: Gespeicherte Items und schneller Zugriff
+### Production Tools
+- **Production Planner** - Manufacturing cost calculator with ME/TE bonuses
+- **Material Classifier** - Difficulty scoring for material acquisition
+- **Shopping Lists** - Multi-region price comparison with route optimization
 
-## Projektstruktur
+### War Room (Combat Intelligence)
+- **Killmail Analysis** - Track combat losses by region/system
+- **Doctrine Detection** - Identify fleet compositions from loss patterns
+- **Sovereignty Tracking** - Monitor sov campaigns and timers
+- **Faction Warfare** - FW system status and hotspots
+- **Alliance Conflicts** - Track ongoing wars and combat demand
 
-```
-/home/cytrex/eve_copilot/
-├── main.py                    # FastAPI Server & Haupt-Endpunkte
-├── config.py                  # Konfiguration (DB, ESI, OAuth, Regions)
-├── database.py                # PostgreSQL SDE-Abfragen
-├── esi_client.py              # ESI API Client (Marktdaten)
-├── auth.py                    # OAuth2 Authentifizierung
-├── character.py               # Character & Corporation API
-├── services.py                # Produktions-Business-Logik
-├── market_service.py          # Markt-Analyse Services
-├── shopping_service.py        # Shopping-Listen Verwaltung
-├── route_service.py           # A* Routen-Berechnung
-├── cargo_service.py           # Fracht-Optimierung
-├── bookmark_service.py        # Lesezeichen-Verwaltung
-├── notification_service.py    # Benachrichtigungen
-├── material_classifier.py     # Material-Kategorisierung
-├── production_simulator.py    # Produktions-Simulation
-│
-├── routers/
-│   ├── shopping.py            # Shopping API Endpunkte
-│   ├── hunter.py              # Market Hunter API
-│   ├── mining.py              # Mining-Analyse API
-│   └── mcp.py                 # MCP Integration
-│
-├── jobs/
-│   ├── regional_price_fetcher.py  # Bulk-Preis-Fetcher (Cron)
-│   ├── market_hunter.py           # Profit-Scanner
-│   ├── batch_calculator.py        # Batch-Berechnungen
-│   └── bulk_scanner.py            # Massen-Analyse
-│
-├── frontend/                  # React Frontend
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── ShoppingPlanner.tsx    # Multi-Region Shopping
-│   │   │   ├── MarketScanner.tsx      # Markt-Analyse
-│   │   │   ├── ProductionPlanner.tsx  # Produktions-Planung
-│   │   │   ├── ArbitrageFinder.tsx    # Arbitrage-Suche
-│   │   │   ├── MaterialsOverview.tsx  # Material-Übersicht
-│   │   │   ├── ItemDetail.tsx         # Item-Details
-│   │   │   └── Bookmarks.tsx          # Lesezeichen
-│   │   ├── components/                # Wiederverwendbare Komponenten
-│   │   ├── api.ts                     # API Client
-│   │   └── utils/                     # Hilfsfunktionen
-│   └── package.json
-│
-├── tokens.json                # Gespeicherte Auth-Tokens
-└── auth_state.json            # OAuth State-Store
-```
+### Character Management
+- **OAuth2 Authentication** - Secure EVE SSO integration
+- **Wallet & Assets** - View character finances and inventory
+- **Industry Jobs** - Monitor manufacturing and research
+- **Corporation Support** - Access corp wallets and member lists
 
-## Installation
+### Navigation
+- **Route Calculator** - A* pathfinding between systems
+- **Trade Hub Routes** - Optimal paths through major hubs
+- **Danger Scoring** - Route safety based on recent combat activity
 
-### Voraussetzungen
+## Tech Stack
+
+**Backend:**
+- Python 3.11+ / FastAPI
+- PostgreSQL 16 (EVE SDE + custom tables)
+- ESI API integration with rate limiting
+
+**Frontend:**
+- React 18 / TypeScript 5
+- Vite for development
+- TailwindCSS for styling
+
+## Quick Start
+
+### Prerequisites
 - Python 3.11+
 - Node.js 18+
-- PostgreSQL 16 (Docker)
-- EVE Developer Application
+- PostgreSQL 16 (Docker recommended)
+- EVE Developer Application ([Register here](https://developers.eveonline.com/))
 
-### Backend-Abhängigkeiten
+### Installation
+
+1. **Clone the repository**
 ```bash
-pip3 install fastapi uvicorn psycopg2-binary requests --break-system-packages
+git clone https://github.com/CytrexSGR/Eve-Online-Copilot.git
+cd Eve-Online-Copilot
 ```
 
-### Frontend-Abhängigkeiten
+2. **Configure the application**
 ```bash
-cd /home/cytrex/eve_copilot/frontend
+cp config.example.py config.py
+# Edit config.py with your credentials:
+# - Database connection
+# - EVE SSO Client ID & Secret
+# - Discord webhook (optional)
+```
+
+3. **Install backend dependencies**
+```bash
+pip install fastapi uvicorn psycopg2-binary requests aiohttp
+```
+
+4. **Install frontend dependencies**
+```bash
+cd frontend
 npm install
 ```
 
-### Server starten
+5. **Start the database**
+```bash
+docker run -d --name eve_db \
+  -e POSTGRES_USER=eve \
+  -e POSTGRES_PASSWORD=your_password \
+  -e POSTGRES_DB=eve_sde \
+  -p 5432:5432 \
+  postgres:16
+```
+
+6. **Import EVE SDE** (Static Data Export)
+   - Download from [Fuzzwork](https://www.fuzzwork.co.uk/dump/)
+   - Import into PostgreSQL
+
+7. **Run migrations**
+```bash
+psql -U eve -d eve_sde -f migrations/001_bookmarks.sql
+psql -U eve -d eve_sde -f migrations/002_shopping.sql
+psql -U eve -d eve_sde -f migrations/003_war_room.sql
+```
+
+### Running the Application
 
 **Backend:**
 ```bash
-cd /home/cytrex/eve_copilot
-/home/cytrex/.local/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 **Frontend:**
 ```bash
-cd /home/cytrex/eve_copilot/frontend
-npm run dev
+cd frontend
+npm run dev -- --host 0.0.0.0
 ```
 
-## API Endpunkte
+**Access:**
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Documentation: http://localhost:8000/docs
 
-### Authentifizierung
-| Endpunkt | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/api/auth/login` | GET | OAuth2-Flow starten |
-| `/api/auth/callback` | GET | SSO Callback |
-| `/api/auth/characters` | GET | Authentifizierte Charaktere |
-| `/api/auth/scopes` | GET | Benötigte Scopes |
+## Project Structure
 
-### Charakter
-| Endpunkt | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/api/character/{id}/wallet` | GET | Wallet-Balance |
-| `/api/character/{id}/assets` | GET | Assets/Inventar |
-| `/api/character/{id}/skills` | GET | Skill-Liste |
-| `/api/character/{id}/orders` | GET | Markt-Orders |
-| `/api/character/{id}/industry` | GET | Industrie-Jobs |
-| `/api/character/{id}/blueprints` | GET | Blueprints |
+```
+eve_copilot/
+├── main.py                 # FastAPI application & routes
+├── config.example.py       # Configuration template
+├── database.py             # PostgreSQL connection & queries
+├── esi_client.py           # ESI API client
+├── auth.py                 # EVE SSO OAuth2
+├── character.py            # Character & corp API
+│
+├── # Services
+├── market_service.py       # Market price caching
+├── production_simulator.py # Manufacturing calculations
+├── shopping_service.py     # Shopping list management
+├── route_service.py        # A* route calculation
+├── killmail_service.py     # Combat loss analysis
+├── war_analyzer.py         # Demand & doctrine detection
+│
+├── routers/                # API route modules
+│   ├── shopping.py
+│   ├── hunter.py
+│   ├── mining.py
+│   └── war.py
+│
+├── jobs/                   # Cron jobs
+│   ├── batch_calculator.py
+│   ├── regional_price_fetcher.py
+│   ├── market_hunter.py
+│   ├── killmail_fetcher.py
+│   └── sov_tracker.py
+│
+├── migrations/             # SQL migrations
+│
+└── frontend/               # React application
+    └── src/
+        ├── pages/          # Page components
+        ├── components/     # Reusable components
+        └── api.ts          # API client
+```
 
-### Corporation
-| Endpunkt | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/api/character/{id}/corporation/info` | GET | Corp-Info |
-| `/api/character/{id}/corporation/wallet` | GET | Corp-Wallet |
+## API Overview
+
+### Authentication
+- `GET /api/auth/login` - Initiate EVE SSO login
+- `GET /api/auth/callback` - OAuth2 callback
+- `GET /api/auth/characters` - List authenticated characters
+
+### Market & Production
+- `GET /api/production/optimize/{type_id}` - Regional production analysis
+- `GET /api/market/compare/{type_id}` - Multi-region price comparison
+- `GET /api/market/arbitrage/{type_id}` - Arbitrage opportunities
 
 ### Shopping
-| Endpunkt | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/api/shopping/lists` | GET/POST | Shopping-Listen |
-| `/api/shopping/lists/{id}` | GET/PATCH/DELETE | Einzelne Liste |
-| `/api/shopping/lists/{id}/items` | POST | Item hinzufügen |
-| `/api/shopping/lists/{id}/regional-comparison` | GET | Multi-Region Preisvergleich |
-| `/api/shopping/lists/{id}/export` | GET | Multibuy-Export |
-| `/api/shopping/route` | GET | Optimale Hub-Route berechnen |
-| `/api/shopping/orders/{type_id}` | GET | Order-Snapshots (Top 10 Sell/Buy) |
+- `GET /api/shopping/lists` - Get shopping lists
+- `POST /api/shopping/lists/{id}/add-production/{type_id}` - Add materials
 
-### Markt & Produktion
-| Endpunkt | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/api/production/cost/{type_id}` | GET | Produktionskosten |
-| `/api/trade/arbitrage` | GET | Arbitrage-Suche |
-| `/api/market/stats/{region}/{type}` | GET | Marktstatistiken |
-| `/api/market/scanner/results` | GET | Market Scanner Ergebnisse |
+### War Room
+- `GET /api/war/losses/{region_id}` - Combat losses
+- `GET /api/war/demand/{region_id}` - Demand analysis
+- `GET /api/war/doctrines/{region_id}` - Doctrine detection
+- `GET /api/war/campaigns` - Sovereignty campaigns
 
-### Hunter
-| Endpunkt | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/api/hunter/opportunities` | GET | Profitable Opportunities |
-| `/api/hunter/trigger` | POST | Hunter manuell starten |
-
-### Mining
-| Endpunkt | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/api/mining/ore-prices` | GET | Ore-Preise |
-| `/api/mining/yields` | GET | Mining Yields |
-
-### Datenbank
-| Endpunkt | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/api/items/search?q=` | GET | Item-Suche |
-| `/api/groups/search?q=` | GET | Gruppen-Suche |
-| `/api/regions` | GET | Region-IDs |
-
-## Datenbank-Schema
-
-### Haupt-Tabellen (Custom)
-```sql
--- Marktpreise Cache
-market_prices (
-    type_id, region_id, lowest_sell, highest_buy,
-    sell_volume, buy_volume, realistic_sell, updated_at
-)
-
--- Order Snapshots (Top 10 pro Item/Region)
-market_order_snapshots (
-    type_id, region_id, is_buy_order, price,
-    volume_remain, location_id, issued, rank, updated_at
-)
-
--- Shopping Listen
-shopping_lists (id, name, character_id, corporation_id, status, notes, created_at)
-shopping_list_items (id, list_id, type_id, item_name, quantity, target_region, target_price, ...)
-
--- Scanner Ergebnisse
-scanner_opportunities (type_id, product_name, daily_volume, production_cost, sell_price, profit_per_unit, ...)
-```
-
-### SDE Tabellen (EVE Static Data Export)
-- `invTypes` - Alle Items
-- `invGroups` - Item-Gruppen
-- `invCategories` - Kategorien
-- `industryActivityMaterials` - Produktionsmaterialien
-- `industryActivityProducts` - Produktionsoutput
-- `mapSolarSystems` - Sonnensysteme
-- `mapSolarSystemJumps` - System-Verbindungen
-- `invMetaTypes` - Meta-Level (T1/T2/Faction)
+Full API documentation available at `/docs` when running.
 
 ## Cron Jobs
 
-### Regional Price Fetcher
-```bash
-# Alle 15 Minuten Marktpreise aktualisieren
-python3 -m jobs.regional_price_fetcher --verbose
+| Job | Schedule | Description |
+|-----|----------|-------------|
+| batch_calculator | */5 min | Calculate manufacturing opportunities |
+| regional_price_fetcher | */30 min | Update regional market prices |
+| market_hunter | */5 min | Scan for profitable items |
+| killmail_fetcher | Daily 06:00 | Download killmail data |
+| sov_tracker | */30 min | Update sovereignty campaigns |
+| fw_tracker | */30 min | Update faction warfare status |
 
-# Nur eine Region
-python3 -m jobs.regional_price_fetcher --region the_forge
-```
+## Contributing
 
-### Market Hunter
-```bash
-# Cron-Job (alle 5 Minuten)
-*/5 * * * * /home/cytrex/eve_copilot/jobs/cron_market_hunter.sh
-```
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-## ESI Scopes
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-Benötigte Scopes für volle Funktionalität:
-- `esi-wallet.read_character_wallet.v1`
-- `esi-assets.read_assets.v1`
-- `esi-markets.read_character_orders.v1`
-- `esi-skills.read_skills.v1`
-- `esi-industry.read_character_jobs.v1`
-- `esi-characters.read_blueprints.v1`
-- `esi-wallet.read_corporation_wallets.v1`
-- `esi-corporations.read_corporation_membership.v1`
-- `esi-characters.read_corporation_roles.v1`
+## License
 
-## Region-IDs
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-| Region | ID | Trade Hub |
-|--------|-----|-----------|
-| The Forge | 10000002 | Jita |
-| Domain | 10000043 | Amarr |
-| Heimatar | 10000030 | Rens |
-| Sinq Laison | 10000032 | Dodixie |
-| Metropolis | 10000042 | Hek |
+## Disclaimer
 
-## Beispiel-Abfragen
+EVE Online and all related logos and images are trademarks or registered trademarks of CCP hf. This application is not affiliated with or endorsed by CCP hf.
 
-### Produktionskosten für Hobgoblin I (ME10)
-```bash
-curl "http://localhost:8000/api/production/cost/2454?me_level=10"
-```
+## Acknowledgments
 
-### Shopping-Liste mit Preisvergleich
-```bash
-curl "http://localhost:8000/api/shopping/lists/1/regional-comparison?home_system=isikemi"
-```
-
-### Order-Details für Tritanium in Jita
-```bash
-curl "http://localhost:8000/api/shopping/orders/34?region=the_forge"
-```
-
-### Optimale Route durch Hubs
-```bash
-curl "http://localhost:8000/api/shopping/route?regions=the_forge,domain&home_system=isikemi&return_home=true"
-```
-
-## Frontend Features
-
-### Shopping Planner
-- Multi-Region Preisvergleich (Jita, Amarr, Rens, Dodixie, Hek)
-- Stückpreis + Gesamtkosten pro Region
-- Order-Details Popup (Klick auf Preiszelle)
-- Optimale Routen-Berechnung mit System-Liste
-- Wählbarer Startpunkt und Rückweg-Option
-- "Apply All" Buttons pro Region
-
-### Market Scanner
-- Live-Profit-Berechnung für T1-Produkte
-- Material-Kosten vs. Verkaufspreis
-- Tägliches Handelsvolumen
-- Sortierung nach Profit/Tag
-
-## Zugangsdaten
-
-- **API:** http://localhost:8000 (extern: http://77.24.99.81:8000)
-- **Frontend:** http://localhost:3000 (extern: http://192.168.178.108:3000)
-- **API Docs:** http://localhost:8000/docs
-
-### Datenbank
-- Container: `eve_db` (PostgreSQL 16)
-- Host: localhost:5432
-- DB: eve_sde
-- User: eve
-- Password: EvE_Pr0ject_2024
-
-### EVE SSO
-- Client ID: b4dbf38efae04055bc7037a63bcfd33b
-- Callback: http://77.24.99.81:8000/api/auth/callback
-
-### Authentifizierte Charaktere
-| Name | Character ID | Rolle |
-|------|--------------|-------|
-| Artallus | 526379435 | |
-| Cytrex | 1117367444 | CEO |
-| Cytricia | 110592475 | |
-
-### Corporation
-- Name: Minimal Industries [MINDI]
-- ID: 98785281
-- CEO: Cytrex
-- Home System: Isikemi
+- [EVE ESI](https://esi.evetech.net/) - EVE Swagger Interface
+- [Fuzzwork](https://www.fuzzwork.co.uk/) - EVE Static Data Export
+- [EVE Ref](https://everef.net/) - Killmail data
