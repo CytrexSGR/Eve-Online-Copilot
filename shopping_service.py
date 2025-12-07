@@ -157,6 +157,20 @@ class ShoppingService:
         """Add item to shopping list"""
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Check if item has a blueprint (= is a product)
+                cur.execute('''
+                    SELECT bp."typeID"
+                    FROM "industryActivityProducts" bp
+                    WHERE bp."productTypeID" = %s AND bp."activityID" = 1
+                    LIMIT 1
+                ''', (type_id,))
+                has_blueprint = cur.fetchone() is not None
+
+                # Get volume from SDE
+                cur.execute('SELECT "volume" FROM "invTypes" WHERE "typeID" = %s', (type_id,))
+                volume_row = cur.fetchone()
+                volume_per_unit = float(volume_row['volume']) if volume_row and volume_row['volume'] else None
+
                 # Check if item already exists in list
                 cur.execute('''
                     SELECT id, quantity FROM shopping_list_items
@@ -174,13 +188,16 @@ class ShoppingService:
                         RETURNING *
                     ''', (new_quantity, target_price, existing['id']))
                 else:
-                    # Insert new item
+                    # Insert new item - mark as product if has blueprint
                     cur.execute('''
                         INSERT INTO shopping_list_items
-                            (list_id, type_id, item_name, quantity, target_region, target_price, notes)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            (list_id, type_id, item_name, quantity, target_region, target_price, notes,
+                             is_product, runs, volume_per_unit, total_volume)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         RETURNING *
-                    ''', (list_id, type_id, item_name, quantity, target_region, target_price, notes))
+                    ''', (list_id, type_id, item_name, quantity, target_region, target_price, notes,
+                          has_blueprint, quantity if has_blueprint else 1,
+                          volume_per_unit, volume_per_unit * quantity if volume_per_unit else None))
 
                 conn.commit()
                 self._update_list_totals(list_id)
