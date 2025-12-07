@@ -402,8 +402,7 @@ class ShoppingService:
                     SET runs = %s,
                         me_level = %s,
                         quantity = %s,
-                        is_product = TRUE,
-                        updated_at = NOW()
+                        is_product = TRUE
                     WHERE id = %s
                     RETURNING *
                 ''', (runs, me_level, runs, item_id))
