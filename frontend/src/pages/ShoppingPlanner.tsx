@@ -621,16 +621,66 @@ export default function ShoppingPlanner() {
     },
   });
 
-  // Update item region mutation
+  // Update item region mutation with optimistic updates
+  // This prevents table row shifting during re-renders which caused wrong row selection
   const updateItemRegion = useMutation({
     mutationFn: async ({ itemId, region, price }: { itemId: number; region: string; price?: number }) => {
       await api.patch(`/api/shopping/items/${itemId}/region`, null, {
         params: { region, price }
       });
+      return { itemId, region, price };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
-      queryClient.invalidateQueries({ queryKey: ['shopping-comparison', selectedListId] });
+    onMutate: async ({ itemId, region, price }) => {
+      // Cancel any outgoing refetches to prevent overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: ['shopping-comparison', selectedListId] });
+      await queryClient.cancelQueries({ queryKey: ['shopping-list', selectedListId] });
+
+      // Snapshot previous values for rollback
+      const previousComparison = queryClient.getQueryData<RegionalComparison>(['shopping-comparison', selectedListId]);
+      const previousList = queryClient.getQueryData(['shopping-list', selectedListId]);
+
+      // Optimistically update comparison data
+      if (previousComparison) {
+        queryClient.setQueryData<RegionalComparison>(['shopping-comparison', selectedListId], {
+          ...previousComparison,
+          items: previousComparison.items.map(item =>
+            item.id === itemId
+              ? { ...item, current_region: region, current_price: price ?? null }
+              : item
+          )
+        });
+      }
+
+      // Optimistically update list data
+      if (previousList) {
+        queryClient.setQueryData(['shopping-list', selectedListId], (old: typeof previousList) => ({
+          ...old,
+          items: (old as { items: ShoppingItem[] }).items?.map((item: ShoppingItem) =>
+            item.id === itemId
+              ? { ...item, target_region: region, target_price: price }
+              : item
+          )
+        }));
+      }
+
+      return { previousComparison, previousList };
+    },
+    onError: (_err, _variables, context) => {
+      // Rollback on error
+      if (context?.previousComparison) {
+        queryClient.setQueryData(['shopping-comparison', selectedListId], context.previousComparison);
+      }
+      if (context?.previousList) {
+        queryClient.setQueryData(['shopping-list', selectedListId], context.previousList);
+      }
+    },
+    onSettled: () => {
+      // Refetch after mutation settles to ensure consistency
+      // Using a small delay to prevent immediate re-render during user interaction
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
+        queryClient.invalidateQueries({ queryKey: ['shopping-comparison', selectedListId] });
+      }, 200);
     },
   });
 

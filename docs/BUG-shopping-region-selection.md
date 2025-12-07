@@ -1,7 +1,7 @@
 # Bug: Shopping Region Selection - Wrong Row Selected
 
 **Datum:** 2025-12-07
-**Status:** Offen
+**Status:** BEHOBEN
 **Komponente:** `frontend/src/pages/ShoppingPlanner.tsx`
 
 ---
@@ -103,4 +103,23 @@ Sicherstellen dass `key={item.id}` wirklich unique und stabil ist.
 
 ## Betroffene Dateien
 
-- `frontend/src/pages/ShoppingPlanner.tsx` (Zeilen 624-635, 1078-1091)
+- `frontend/src/pages/ShoppingPlanner.tsx` (Zeilen 624-685)
+
+---
+
+## Lösung (implementiert 2025-12-07)
+
+**Option 1: Optimistic Updates** wurde implementiert.
+
+Die Mutation `updateItemRegion` wurde erweitert um:
+
+1. **onMutate**: Aktualisiert den lokalen Cache sofort (optimistisch) bevor die API antwortet
+   - Cancelled laufende Queries um Überschreibung zu verhindern
+   - Speichert den vorherigen Zustand für Rollback
+   - Aktualisiert sowohl `shopping-comparison` als auch `shopping-list` Daten
+
+2. **onError**: Rollback bei Fehlern auf den gespeicherten Zustand
+
+3. **onSettled**: Invalidiert Queries nach 200ms Verzögerung um finale Konsistenz zu gewährleisten
+
+Durch die sofortige lokale Aktualisierung gibt es kein Re-Render der Tabelle während der API-Anfrage, wodurch das Zeilenverschiebungs-Problem eliminiert wird.
