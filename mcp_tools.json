@@ -1,0 +1,290 @@
+{
+  "name": "eve-copilot",
+  "description": "EVE Online Co-Pilot API for production cost calculation, market arbitrage, and character management",
+  "version": "1.1.0",
+  "server_url": "http://77.24.99.81:8000",
+  "tools": [
+    {
+      "name": "search_item",
+      "description": "Find the typeID and name of an EVE item by keyword. Required to get IDs for all other functions.",
+      "endpoint": "/api/items/search",
+      "method": "GET",
+      "parameters": {
+        "q": {
+          "type": "string",
+          "description": "Search keyword (min 2 characters)",
+          "required": true
+        }
+      },
+      "example": "?q=Hobgoblin"
+    },
+    {
+      "name": "search_group",
+      "description": "Find the groupID of an item category (e.g. 'Drones', 'Cruisers', 'Minerals').",
+      "endpoint": "/api/groups/search",
+      "method": "GET",
+      "parameters": {
+        "q": {
+          "type": "string",
+          "description": "Group name to search for",
+          "required": true
+        }
+      },
+      "example": "?q=Combat Drones"
+    },
+    {
+      "name": "get_item_info",
+      "description": "Get detailed information about an item by its typeID.",
+      "endpoint": "/api/items/{type_id}",
+      "method": "GET",
+      "parameters": {
+        "type_id": {
+          "type": "integer",
+          "description": "The EVE typeID of the item",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "get_production_cost",
+      "description": "Calculate exact ISK material costs for producing an item, considering ME/TE levels, compared to current market price.",
+      "endpoint": "/api/production/cost/{type_id}",
+      "method": "GET",
+      "parameters": {
+        "type_id": {
+          "type": "integer",
+          "description": "The typeID of the item to produce",
+          "required": true
+        },
+        "me_level": {
+          "type": "integer",
+          "description": "Material Efficiency level (0-10)",
+          "required": false,
+          "default": 0
+        },
+        "te_level": {
+          "type": "integer",
+          "description": "Time Efficiency level (0-10)",
+          "required": false,
+          "default": 0
+        },
+        "region_id": {
+          "type": "integer",
+          "description": "Region ID for market prices (default: The Forge/Jita = 10000002)",
+          "required": false,
+          "default": 10000002
+        },
+        "use_buy_orders": {
+          "type": "boolean",
+          "description": "Use buy order prices instead of sell orders",
+          "required": false,
+          "default": false
+        }
+      },
+      "example": "/api/production/cost/2454?me_level=10&te_level=10"
+    },
+    {
+      "name": "find_market_arbitrage",
+      "description": "Identify top items with highest profit margins for trading between two regions.",
+      "endpoint": "/api/trade/arbitrage",
+      "method": "GET",
+      "parameters": {
+        "group_name": {
+          "type": "string",
+          "description": "Name of item group to search (e.g. 'Combat Drones')",
+          "required": false
+        },
+        "group_id": {
+          "type": "integer",
+          "description": "Direct groupID to search",
+          "required": false
+        },
+        "source_region": {
+          "type": "integer",
+          "description": "Region to buy from (default: The Forge = 10000002)",
+          "required": false,
+          "default": 10000002
+        },
+        "target_region": {
+          "type": "integer",
+          "description": "Region to sell in (default: Domain = 10000043)",
+          "required": false,
+          "default": 10000043
+        },
+        "min_margin_percent": {
+          "type": "number",
+          "description": "Minimum profit margin percentage",
+          "required": false,
+          "default": 5.0
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of results (1-50)",
+          "required": false,
+          "default": 5
+        }
+      },
+      "example": "?group_id=100&min_margin_percent=10&limit=10"
+    },
+    {
+      "name": "get_market_stats",
+      "description": "Get detailed live market statistics (sell/buy orders, volume, prices) for an item in a region.",
+      "endpoint": "/api/market/stats/{region_id}/{type_id}",
+      "method": "GET",
+      "parameters": {
+        "region_id": {
+          "type": "integer",
+          "description": "Region ID (e.g. 10000002 for The Forge/Jita)",
+          "required": true
+        },
+        "type_id": {
+          "type": "integer",
+          "description": "Item typeID",
+          "required": true
+        }
+      },
+      "example": "/api/market/stats/10000002/34"
+    },
+    {
+      "name": "get_regions",
+      "description": "Get list of known region IDs and names.",
+      "endpoint": "/api/regions",
+      "method": "GET",
+      "parameters": {}
+    },
+    {
+      "name": "get_character_wallet",
+      "description": "Get wallet balance for an authenticated character.",
+      "endpoint": "/api/character/{character_id}/wallet",
+      "method": "GET",
+      "parameters": {
+        "character_id": {
+          "type": "integer",
+          "description": "Character ID (Cytrex: 1117367444, Cytricia: 110592475, Artallus: 526379435)",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "get_character_assets",
+      "description": "Get list of assets/inventory for an authenticated character.",
+      "endpoint": "/api/character/{character_id}/assets",
+      "method": "GET",
+      "parameters": {
+        "character_id": {
+          "type": "integer",
+          "description": "Character ID",
+          "required": true
+        },
+        "location_id": {
+          "type": "integer",
+          "description": "Filter by location ID",
+          "required": false
+        }
+      }
+    },
+    {
+      "name": "get_character_skills",
+      "description": "Get skill list and total SP for an authenticated character.",
+      "endpoint": "/api/character/{character_id}/skills",
+      "method": "GET",
+      "parameters": {
+        "character_id": {
+          "type": "integer",
+          "description": "Character ID",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "get_character_orders",
+      "description": "Get active market orders for an authenticated character.",
+      "endpoint": "/api/character/{character_id}/orders",
+      "method": "GET",
+      "parameters": {
+        "character_id": {
+          "type": "integer",
+          "description": "Character ID",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "get_character_blueprints",
+      "description": "Get blueprint library for an authenticated character.",
+      "endpoint": "/api/character/{character_id}/blueprints",
+      "method": "GET",
+      "parameters": {
+        "character_id": {
+          "type": "integer",
+          "description": "Character ID",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "get_character_industry",
+      "description": "Get industry jobs for an authenticated character.",
+      "endpoint": "/api/character/{character_id}/industry",
+      "method": "GET",
+      "parameters": {
+        "character_id": {
+          "type": "integer",
+          "description": "Character ID",
+          "required": true
+        },
+        "include_completed": {
+          "type": "boolean",
+          "description": "Include completed jobs",
+          "required": false,
+          "default": false
+        }
+      }
+    },
+    {
+      "name": "get_corporation_wallet",
+      "description": "Get corporation wallet balances (requires Director/Accountant role). Use Cytrex (1117367444) as character_id.",
+      "endpoint": "/api/character/{character_id}/corporation/wallet",
+      "method": "GET",
+      "parameters": {
+        "character_id": {
+          "type": "integer",
+          "description": "Character ID with corp wallet access (Cytrex: 1117367444)",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "get_corporation_info",
+      "description": "Get corporation information for a character.",
+      "endpoint": "/api/character/{character_id}/corporation/info",
+      "method": "GET",
+      "parameters": {
+        "character_id": {
+          "type": "integer",
+          "description": "Character ID",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "get_authenticated_characters",
+      "description": "Get list of all authenticated characters with their IDs and scopes.",
+      "endpoint": "/api/auth/characters",
+      "method": "GET",
+      "parameters": {}
+    }
+  ],
+  "region_reference": {
+    "the_forge": {"id": 10000002, "hub": "Jita"},
+    "domain": {"id": 10000043, "hub": "Amarr"},
+    "heimatar": {"id": 10000030, "hub": "Rens"},
+    "sinq_laison": {"id": 10000032, "hub": "Dodixie"},
+    "metropolis": {"id": 10000042, "hub": "Hek"}
+  },
+  "character_reference": {
+    "Cytrex": {"id": 1117367444, "role": "CEO of Minimal Industries", "corp_wallet_access": true},
+    "Cytricia": {"id": 110592475, "role": "Member"},
+    "Artallus": {"id": 526379435, "role": "Member"}
+  }
+}
