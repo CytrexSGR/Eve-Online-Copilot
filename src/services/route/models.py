@@ -136,6 +136,7 @@ class HubDistances(BaseModel):
     from_system: str = Field(..., description="Starting system name")
     from_system_id: int = Field(..., description="Starting system ID")
     distances: Dict[str, HubDistance] = Field(..., description="Distance to each hub")
+    error: Optional[str] = Field(default=None, description="Error message if system not found")
 
 
 class RouteWithDanger(BaseModel):
