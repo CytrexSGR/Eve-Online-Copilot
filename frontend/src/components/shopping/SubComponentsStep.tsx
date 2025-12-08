@@ -107,8 +107,8 @@ export function SubComponentsStep({
 
       onDecisionsUpdated(
         newDecisions,
-        response.data.shopping_list,
-        response.data.totals
+        response.data.shopping_list || [],
+        response.data.totals as ShoppingTotals
       );
     } catch (err) {
       console.error('Failed to recalculate materials:', err);

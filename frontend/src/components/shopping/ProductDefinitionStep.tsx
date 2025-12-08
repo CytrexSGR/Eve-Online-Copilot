@@ -81,11 +81,12 @@ export function ProductDefinitionStep({ initialProduct, onProductSelected }: Pro
 
       const data = response.data;
 
+      // Wizard endpoint always returns these fields
       onProductSelected(
-        data.product,
-        data.sub_components,
-        data.shopping_list,
-        data.totals
+        data.product as ProductInfo,
+        data.sub_components || [],
+        data.shopping_list || [],
+        data.totals as ShoppingTotals
       );
     } catch (err) {
       console.error('Failed to calculate materials:', err);

@@ -132,22 +132,27 @@ export function ShoppingWizard() {
       });
 
       const data = response.data;
-      setProduct(data.product);
-      setSubComponents(data.sub_components);
-      setShoppingList(data.shopping_list);
-      setTotals(data.totals);
+
+      // Wizard endpoint always returns these fields with proper types
+      const subComponents = data.sub_components || [];
+      const shoppingList = data.shopping_list || [];
+
+      setProduct(data.product as ProductInfo);
+      setSubComponents(subComponents);
+      setShoppingList(shoppingList);
+      setTotals(data.totals || null);
 
       // Initialize decisions if not set
       if (Object.keys(currentDecisions).length === 0) {
         const initialDecisions: Decisions = {};
-        data.sub_components.forEach(sc => {
+        subComponents.forEach(sc => {
           initialDecisions[sc.type_id.toString()] = 'buy';
         });
         setDecisions(initialDecisions);
       }
 
       // Auto-load regional comparison
-      loadComparison(data.shopping_list);
+      loadComparison(shoppingList);
     } catch (err) {
       console.error('Failed to calculate materials:', err);
     }

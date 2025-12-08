@@ -3,211 +3,24 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, RefreshCw, MousePointer, Eye, ArrowUpDown, Package, Truck, Calculator, ChevronDown, ChevronUp, Search, BarChart3 } from 'lucide-react';
 import { api } from '../api';
 import { formatISK, formatQuantity } from '../utils/format';
-
-interface ShoppingList {
-  id: number;
-  name: string;
-  status: string;
-  total_cost: number | null;
-  item_count: number;
-  purchased_count: number;
-  created_at: string;
-}
-
-interface ShoppingItem {
-  id: number;
-  type_id: number;
-  item_name: string;
-  quantity: number;
-  target_region: string | null;
-  target_price: number | null;
-  actual_price: number | null;
-  is_purchased: boolean;
-  is_product?: boolean;
-  runs?: number;
-  me_level?: number;
-  parent_item_id?: number | null;
-  build_decision?: string | null;
-  output_per_run?: number;
-  materials?: ShoppingItem[];
-  sub_products?: ShoppingItem[];
-  materials_calculated?: boolean;
-}
-
-interface CalculateMaterialsResponse {
-  product: {
-    id: number;
-    type_id: number;
-    item_name: string;
-    runs: number;
-    me_level: number;
-    output_per_run: number;
-    total_output: number;
-  };
-  materials: Array<{
-    type_id: number;
-    item_name: string;
-    quantity: number;
-    base_quantity: number;
-    volume: number;
-    has_blueprint: boolean;
-  }>;
-  sub_products: Array<{
-    type_id: number;
-    item_name: string;
-    quantity: number;
-    base_quantity: number;
-    volume: number;
-    has_blueprint: boolean;
-    default_decision: string;
-  }>;
-}
-
-interface ShoppingListDetail extends ShoppingList {
-  items: ShoppingItem[];
-  products?: ShoppingItem[];
-  standalone_items?: ShoppingItem[];
-}
-
-interface RegionData {
-  unit_price: number | null;
-  total: number | null;
-  volume: number;
-  has_stock: boolean;
-}
-
-interface ComparisonItem {
-  id: number;
-  type_id: number;
-  item_name: string;
-  quantity: number;
-  current_region: string | null;
-  current_price: number | null;
-  regions: Record<string, RegionData>;
-  cheapest_region: string | null;
-  cheapest_price: number | null;
-}
-
-interface RegionalComparison {
-  list: { id: number; name: string; status: string };
-  items: ComparisonItem[];
-  region_totals: Record<string, { total: number; display_name: string; jumps?: number; travel_time?: string }>;
-  optimal_route: {
-    regions: Record<string, { item_name: string; quantity: number; price: number; total: number }[]>;
-    total_cost: number;
-    savings_vs_single_region: Record<string, number>;
-  };
-  home_system: string;
-}
-
-interface RouteSystem {
-  name: string;
-  security: number;
-}
-
-interface RouteLeg {
-  from: string;
-  to: string;
-  jumps: number;
-  systems?: RouteSystem[];
-}
-
-interface ShoppingRoute {
-  total_jumps: number;
-  route: RouteLeg[];
-  order: string[];
-  error?: string;
-}
-
-interface OrderSnapshot {
-  rank: number;
-  price: number;
-  volume: number;
-  location_id: number;
-  issued: string | null;
-}
-
-interface OrderRegionData {
-  display_name: string;
-  sells: OrderSnapshot[];
-  buys: OrderSnapshot[];
-  updated_at: string | null;
-}
-
-interface OrderSnapshotResponse {
-  type_id: number;
-  regions: Record<string, OrderRegionData>;
-}
-
-interface CargoSummary {
-  list_id: number;
-  products: Array<{
-    type_id: number;
-    item_name: string;
-    runs: number;
-    total_volume: number;
-    me_level: number;
-    output_per_run: number;
-  }>;
-  materials: {
-    total_items: number;
-    total_volume_m3: number;
-    volume_formatted: string;
-    breakdown_by_region: Record<string, { volume_m3: number; item_count: number }>;
-  };
-}
-
-interface TransportOption {
-  id: number;
-  characters: Array<{
-    id: number;
-    name: string;
-    ship_type_id: number;
-    ship_name: string;
-    ship_group: string;
-    ship_location: string;
-  }>;
-  trips: number;
-  flight_time_min: number;
-  flight_time_formatted: string;
-  capacity_m3: number;
-  capacity_used_pct: number;
-  risk_score: number;
-  risk_label: string;
-  dangerous_systems: string[];
-  isk_per_trip: number;
-}
-
-interface TransportOptions {
-  total_volume_m3: number;
-  volume_formatted: string;
-  route_summary: string;
-  options: TransportOption[];
-  filters_available: string[];
-  message?: string;
-}
-
-const REGION_NAMES: Record<string, string> = {
-  the_forge: 'Jita',
-  domain: 'Amarr',
-  heimatar: 'Rens',
-  sinq_laison: 'Dodixie',
-  metropolis: 'Hek',
-};
-
-const REGION_ORDER = ['the_forge', 'domain', 'heimatar', 'sinq_laison', 'metropolis'];
-
-const CORP_ID = 98785281;
-
-// Available starting systems
-const START_SYSTEMS = [
-  { name: 'Isikemi', value: 'isikemi' },
-  { name: 'Jita', value: 'jita' },
-  { name: 'Amarr', value: 'amarr' },
-  { name: 'Rens', value: 'rens' },
-  { name: 'Dodixie', value: 'dodixie' },
-  { name: 'Hek', value: 'hek' },
-];
+import type {
+  ShoppingList,
+  ShoppingListItem as ShoppingItem,
+  ShoppingListDetail,
+  CalculateMaterialsResponse,
+  ComparisonItem,
+  RegionalComparison,
+  ShoppingRoute,
+  OrderSnapshotResponse,
+  CargoSummary,
+  TransportOptions,
+} from '../types/shopping';
+import {
+  REGION_NAMES,
+  REGION_ORDER,
+  CORP_ID,
+  START_SYSTEMS,
+} from '../types/shopping';
 
 // Component to display order details popup
 function OrderDetailsPopup({
@@ -1030,11 +843,13 @@ export default function ShoppingPlanner() {
         setShowSubProductModal(true);
       } else {
         // No sub-products, apply directly
-        applyMaterials.mutate({
-          itemId: data.product.id,
-          materials: data.materials,
-          subProductDecisions: []
-        });
+        if (data.product.id) {
+          applyMaterials.mutate({
+            itemId: data.product.id,
+            materials: data.materials,
+            subProductDecisions: []
+          });
+        }
       }
     },
   });
@@ -1064,7 +879,7 @@ export default function ShoppingPlanner() {
 
   // Handle apply materials with sub-product decisions
   const handleApplyWithDecisions = () => {
-    if (!pendingMaterials) return;
+    if (!pendingMaterials || !pendingMaterials.product.id) return;
     const subDecisions = pendingMaterials.sub_products.map(sp => ({
       type_id: sp.type_id,
       item_name: sp.item_name,
