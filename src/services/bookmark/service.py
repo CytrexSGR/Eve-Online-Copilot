@@ -135,7 +135,7 @@ class BookmarkService:
             NotFoundError: If bookmark doesn't exist
         """
         # Convert to dict and filter out None values
-        updates = data.dict(exclude_none=True)
+        updates = data.model_dump(exclude_none=True)
 
         result = self.repo.update(bookmark_id, updates)
         if not result:

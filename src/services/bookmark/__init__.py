@@ -9,6 +9,7 @@ from src.services.bookmark.models import (
     BookmarkWithPosition
 )
 from src.services.bookmark.repository import BookmarkRepository
+from src.services.bookmark.service import BookmarkService
 
 __all__ = [
     "BookmarkCreate",
@@ -17,5 +18,6 @@ __all__ = [
     "BookmarkListCreate",
     "BookmarkList",
     "BookmarkWithPosition",
-    "BookmarkRepository"
+    "BookmarkRepository",
+    "BookmarkService"
 ]
