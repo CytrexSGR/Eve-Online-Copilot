@@ -14,6 +14,7 @@ from src.services.cargo.models import (
     ShipRecommendations,
 )
 from src.services.cargo.repository import CargoRepository
+from src.services.cargo.service import CargoService
 
 __all__ = [
     # Constants
@@ -27,4 +28,6 @@ __all__ = [
     'ShipRecommendations',
     # Repository
     'CargoRepository',
+    # Service
+    'CargoService',
 ]
