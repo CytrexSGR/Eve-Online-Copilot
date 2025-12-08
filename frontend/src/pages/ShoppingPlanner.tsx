@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, RefreshCw, MousePointer, Eye, ArrowUpDown, Package, Truck, Calculator, ChevronDown, ChevronUp, Search, BarChart3 } from 'lucide-react';
 import { api } from '../api';
@@ -347,6 +347,16 @@ function ShoppingRouteDisplay({
   const [expandedLegs, setExpandedLegs] = useState<Set<number>>(new Set());
   const [homeSystem, setHomeSystem] = useState(initialHomeSystem);
   const [includeReturn, setIncludeReturn] = useState(true);
+  const isInitialMount = useRef(true);
+
+  // Only sync with prop on initial mount, not on subsequent updates
+  // This prevents the selection from reverting when React Query refetches
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      setHomeSystem(initialHomeSystem);
+    }
+  }, [initialHomeSystem]);
 
   // Group items by their currently selected region
   const selectedRouteByRegion: Record<string, { item_name: string; quantity: number; total: number }[]> = {};
@@ -1134,13 +1144,10 @@ export default function ShoppingPlanner() {
         queryClient.setQueryData(['shopping-list', selectedListId], context.previousList);
       }
     },
-    onSettled: () => {
-      // Refetch after mutation settles to ensure consistency
-      // Using a small delay to prevent immediate re-render during user interaction
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
-        queryClient.invalidateQueries({ queryKey: ['shopping-comparison', selectedListId] });
-      }, 200);
+    onSuccess: () => {
+      // Only invalidate shopping-lists to update list summaries
+      // Comparison data is handled by optimistic updates above
+      queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
     },
   });
 
@@ -1156,7 +1163,10 @@ export default function ShoppingPlanner() {
         });
       }
     }
+    // Final refresh after all mutations complete
     queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
+    queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
+    queryClient.invalidateQueries({ queryKey: ['shopping-comparison', selectedListId] });
   };
 
   // Apply single region to all items
@@ -1172,7 +1182,10 @@ export default function ShoppingPlanner() {
         });
       }
     }
+    // Final refresh after all mutations complete
     queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
+    queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
+    queryClient.invalidateQueries({ queryKey: ['shopping-comparison', selectedListId] });
   };
 
   // Export to clipboard
@@ -2327,265 +2340,6 @@ export default function ShoppingPlanner() {
           region={orderPopup.region}
           onClose={() => setOrderPopup(null)}
         />
-      )}
-
-      {/* Regional Comparison Modal - REMOVED - Now inline panel */}
-      {false && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}
-          onClick={() => setShowCompareModal(false)}
-        >
-          <div
-            className="card"
-            style={{
-              width: '95vw',
-              maxWidth: 1400,
-              maxHeight: '90vh',
-              overflow: 'auto',
-              padding: 24
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
-                <Map size={24} />
-                Regional Price Comparison
-              </h2>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setShowCompareModal(false)}
-                style={{ padding: '6px 12px' }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {isLoadingComparison ? (
-              <div className="loading" style={{ padding: 40 }}>
-                <div className="spinner"></div>
-                Loading regional prices...
-              </div>
-            ) : !comparison?.items?.length ? (
-              <div className="empty-state" style={{ padding: 40 }}>
-                <p className="neutral">No items to compare. Calculate materials first.</p>
-              </div>
-            ) : (
-              <>
-                {/* Region Totals Summary */}
-                <div className="stats-grid" style={{ marginBottom: 20 }}>
-                  {REGION_ORDER.map((region) => {
-                    const data = comparison.region_totals[region];
-                    const savings = comparison.optimal_route.savings_vs_single_region[region] || 0;
-                    const isOptimal = savings === 0 && data?.total === comparison.optimal_route.total_cost;
-                    return (
-                      <div
-                        key={region}
-                        className={`stat-card ${isOptimal ? 'best' : ''}`}
-                        style={{
-                          border: isOptimal ? '1px solid var(--accent-green)' : undefined,
-                        }}
-                      >
-                        <div className="stat-label">
-                          {data?.display_name || region}
-                          {data?.jumps !== undefined && (
-                            <span className="neutral" style={{ fontWeight: 400, marginLeft: 4 }}>
-                              ({data.jumps} jumps)
-                            </span>
-                          )}
-                        </div>
-                        <div className="stat-value isk">{formatISK(data?.total || 0)}</div>
-                        {savings > 0 && (
-                          <div className="negative" style={{ fontSize: 11 }}>
-                            +{formatISK(savings)} vs optimal
-                          </div>
-                        )}
-                        <button
-                          className="btn btn-secondary"
-                          style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
-                          onClick={() => applyRegionToAll(region)}
-                          disabled={updateItemRegion.isPending}
-                        >
-                          Apply All
-                        </button>
-                      </div>
-                    );
-                  })}
-                  <div className="stat-card" style={{ border: '1px solid var(--accent-blue)' }}>
-                    <div className="stat-label">Optimal (Multi-Hub)</div>
-                    <div className="stat-value isk positive">
-                      {formatISK(comparison.optimal_route.total_cost)}
-                    </div>
-                    <button
-                      className="btn btn-primary"
-                      style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
-                      onClick={applyOptimalRegions}
-                      disabled={updateItemRegion.isPending}
-                    >
-                      Apply Optimal
-                    </button>
-                  </div>
-                </div>
-
-                {/* Comparison Table */}
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <h3 style={{ margin: 0 }}>Price Comparison</h3>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <div style={{ display: 'flex', background: 'var(--bg-dark)', borderRadius: 6, padding: 2 }}>
-                        <button
-                          className={`btn ${interactionMode === 'select' ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
-                          onClick={() => setInteractionMode('select')}
-                          title="Click cells to select region"
-                        >
-                          <MousePointer size={14} /> Select
-                        </button>
-                        <button
-                          className={`btn ${interactionMode === 'orders' ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
-                          onClick={() => setInteractionMode('orders')}
-                          title="Click cells to view orders"
-                        >
-                          <Eye size={14} /> Orders
-                        </button>
-                      </div>
-                      <button
-                        className="btn btn-secondary"
-                        style={{ padding: '4px 8px' }}
-                        onClick={() => refetchComparison()}
-                      >
-                        <RefreshCw size={14} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="table-container" style={{ maxHeight: 400, overflow: 'auto' }}>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th
-                            style={{ cursor: 'pointer', userSelect: 'none' }}
-                            onClick={() => setCompareSort('name')}
-                          >
-                            Item {compareSort === 'name' && <ArrowUpDown size={12} />}
-                          </th>
-                          <th
-                            style={{ cursor: 'pointer', userSelect: 'none' }}
-                            onClick={() => setCompareSort('quantity')}
-                          >
-                            Qty {compareSort === 'quantity' && <ArrowUpDown size={12} />}
-                          </th>
-                          {REGION_ORDER.map((region) => (
-                            <th key={region}>{REGION_NAMES[region]}</th>
-                          ))}
-                          <th>Selected</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sortedComparisonItems.map((item) => (
-                          <tr key={item.id}>
-                            <td>{item.item_name}</td>
-                            <td>{formatQuantity(item.quantity)}</td>
-                            {REGION_ORDER.map((region) => {
-                              const data = item.regions[region];
-                              const isCheapest = region === item.cheapest_region;
-                              const isSelected = region === item.current_region;
-                              return (
-                                <td
-                                  key={region}
-                                  className={`isk ${isCheapest ? 'positive' : ''}`}
-                                  data-item-id={item.id}
-                                  data-type-id={item.type_id}
-                                  data-item-name={item.item_name}
-                                  data-region={region}
-                                  data-price={data?.unit_price || ''}
-                                  style={{
-                                    cursor: data?.unit_price ? 'pointer' : 'default',
-                                    background: isSelected ? 'var(--bg-hover)' : undefined,
-                                    borderLeft: isSelected ? '2px solid var(--accent-blue)' : undefined,
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const target = e.currentTarget;
-                                    const itemId = Number(target.dataset.itemId);
-                                    const typeId = Number(target.dataset.typeId);
-                                    const itemName = target.dataset.itemName || '';
-                                    const clickedRegion = target.dataset.region || '';
-                                    const price = target.dataset.price ? Number(target.dataset.price) : undefined;
-
-                                    if (!price) return;
-                                    if (updateItemRegion.isPending) return;
-
-                                    if (interactionMode === 'select') {
-                                      updateItemRegion.mutate({ itemId, region: clickedRegion, price });
-                                    } else {
-                                      setOrderPopup({ typeId, itemName, region: clickedRegion });
-                                    }
-                                  }}
-                                >
-                                  {data?.total ? (
-                                    <>
-                                      <div>{formatISK(data.total)}</div>
-                                      <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
-                                        @{formatISK(data.unit_price || 0)}/u
-                                      </div>
-                                      <div className={`neutral ${!data.has_stock ? 'negative' : ''}`} style={{ fontSize: 10 }}>
-                                        {formatQuantity(data.volume)} avail
-                                      </div>
-                                    </>
-                                  ) : (
-                                    <span className="neutral">-</span>
-                                  )}
-                                </td>
-                              );
-                            })}
-                            <td>
-                              {item.current_region ? (
-                                <span className="badge badge-blue">
-                                  {REGION_NAMES[item.current_region] || item.current_region}
-                                </span>
-                              ) : (
-                                <span className="neutral">-</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Shopping Route */}
-                <ShoppingRouteDisplay
-                  items={comparison.items}
-                  homeSystem={comparison.home_system}
-                />
-
-                {/* Close Button */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => setShowCompareModal(false)}
-                    style={{ padding: '10px 24px' }}
-                  >
-                    Done
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
       )}
 
       {/* Sub-Product Decision Modal */}

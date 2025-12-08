@@ -169,6 +169,48 @@ class SovereigntyService:
 
         return SovCampaignList(campaigns=campaigns, count=len(campaigns))
 
+    def get_upcoming_battles(self, hours: int = 48) -> List[SovCampaign]:
+        """
+        Get sovereignty campaigns starting within the next X hours.
+
+        Args:
+            hours: Number of hours to look ahead (default: 48)
+
+        Returns:
+            List[SovCampaign]: List of upcoming campaigns sorted by start time
+
+        Raises:
+            RepositoryError: If database operation fails
+
+        Example:
+            >>> service = SovereigntyService(repository, esi_client)
+            >>> battles = service.get_upcoming_battles(hours=48)
+            >>> print(f"Found {len(battles)} battles in next 48 hours")
+        """
+        # Get all campaigns from database
+        all_campaigns = self.get_campaigns(region_id=None)
+
+        # Calculate time window
+        now = datetime.now(timezone.utc)
+        future_cutoff = now + timedelta(hours=hours)
+
+        # Filter campaigns starting within the time window
+        upcoming = []
+        for campaign in all_campaigns.campaigns:
+            # Make start_time timezone-aware if it's naive
+            start_time = campaign.start_time
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
+
+            # Include campaigns that haven't started yet and start within the window
+            if now <= start_time <= future_cutoff:
+                upcoming.append(campaign)
+
+        # Sort by start time (earliest first)
+        upcoming.sort(key=lambda c: c.start_time)
+
+        return upcoming
+
     def cleanup_old_campaigns(self, days: int = 1) -> int:
         """
         Delete campaigns older than specified days.

@@ -146,6 +146,12 @@ class FactionWarfareService:
             try:
                 progress = float(data.get("progress_percent", 0.0))
 
+                # Get faction names from IDs
+                owner_faction_id = data.get("owning_faction_id")
+                occupier_faction_id = data.get("occupying_faction_id")
+                owner_faction_name = self.FACTIONS.get(owner_faction_id, f"Faction {owner_faction_id}")
+                occupier_faction_name = self.FACTIONS.get(occupier_faction_id, f"Faction {occupier_faction_id}")
+
                 hotspot = FWHotspot(
                     system_id=data["system_id"],
                     system_name=data.get("system_name"),
@@ -153,6 +159,8 @@ class FactionWarfareService:
                     victory_points=data["victory_points"],
                     progress_percent=progress,
                     is_critical=(progress >= 90.0),  # Critical if >= 90%
+                    owner_faction_name=owner_faction_name,
+                    occupier_faction_name=occupier_faction_name,
                 )
                 hotspots.append(hotspot)
 

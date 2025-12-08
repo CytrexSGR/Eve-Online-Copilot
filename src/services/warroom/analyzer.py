@@ -11,6 +11,8 @@ from src.services.warroom.analyzer_models import (
     DoctrineDetection,
     DangerScore,
     ConflictIntel,
+    RegionalSummary,
+    TopShip,
 )
 
 
@@ -234,3 +236,70 @@ class WarAnalyzer:
         ]
 
         return conflicts
+
+    def get_regional_summary(self, days: int) -> List[RegionalSummary]:
+        """
+        Get summary of combat activity per region.
+
+        Returns combat statistics aggregated by region, showing which regions
+        have the most kill activity and ISK destroyed.
+
+        Args:
+            days: Number of days to look back
+
+        Returns:
+            List of regional summaries with combat statistics
+
+        Raises:
+            RepositoryError: If database operation fails
+        """
+        # Get raw data from repository
+        data = self.repository.get_regional_summary(days=days)
+
+        # Convert to RegionalSummary models
+        summaries = [
+            RegionalSummary(
+                region_id=region["region_id"],
+                region_name=region["region_name"],
+                active_systems=int(region["active_systems"]),
+                total_kills=int(region["total_kills"]),
+                total_value=float(region["total_value"]) if region["total_value"] else 0.0,
+            )
+            for region in data
+        ]
+
+        return summaries
+
+    def get_top_ships_galaxy(self, days: int, limit: int) -> List[TopShip]:
+        """
+        Get most destroyed ships across all regions.
+
+        Returns the most frequently destroyed ship types galaxy-wide, useful
+        for identifying current meta doctrines and popular fleet compositions.
+
+        Args:
+            days: Number of days to look back
+            limit: Maximum number of ships to return
+
+        Returns:
+            List of top destroyed ships with quantities and values
+
+        Raises:
+            RepositoryError: If database operation fails
+        """
+        # Get raw data from repository
+        data = self.repository.get_top_ships_galaxy(days=days, limit=limit)
+
+        # Convert to TopShip models using aliases
+        ships = [
+            TopShip(
+                ship_type_id=ship["ship_type_id"],
+                name=ship["name"],
+                ship_group=ship["ship_group"],
+                total_lost=int(ship["total_lost"]),
+                total_value=float(ship["total_value"]) if ship["total_value"] else 0.0,
+            )
+            for ship in data
+        ]
+
+        return ships

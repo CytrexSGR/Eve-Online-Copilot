@@ -43,24 +43,24 @@ class WarRoomRepository:
                         cur.execute(
                             """
                             INSERT INTO sovereignty_campaigns (
-                                campaign_id, system_id, constellation_id,
+                                campaign_id, solar_system_id, constellation_id,
                                 structure_type_id, event_type, start_time,
-                                defender_id, defender_score, attackers_score,
-                                structure_id, last_updated
+                                defender_id, defender_score, attacker_score,
+                                structure_id, last_updated_at
                             ) VALUES (
                                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
                             )
                             ON CONFLICT (campaign_id) DO UPDATE SET
-                                system_id = EXCLUDED.system_id,
+                                solar_system_id = EXCLUDED.solar_system_id,
                                 constellation_id = EXCLUDED.constellation_id,
                                 structure_type_id = EXCLUDED.structure_type_id,
                                 event_type = EXCLUDED.event_type,
                                 start_time = EXCLUDED.start_time,
                                 defender_id = EXCLUDED.defender_id,
                                 defender_score = EXCLUDED.defender_score,
-                                attackers_score = EXCLUDED.attackers_score,
+                                attacker_score = EXCLUDED.attacker_score,
                                 structure_id = EXCLUDED.structure_id,
-                                last_updated = NOW()
+                                last_updated_at = NOW()
                             """,
                             (
                                 campaign.campaign_id,
@@ -104,12 +104,12 @@ class WarRoomRepository:
                         cur.execute(
                             """
                             SELECT
-                                sc.campaign_id, sc.system_id, sc.constellation_id,
+                                sc.campaign_id, sc.solar_system_id as system_id, sc.constellation_id,
                                 sc.structure_type_id, sc.event_type, sc.start_time,
-                                sc.defender_id, sc.defender_score, sc.attackers_score,
+                                sc.defender_id, sc.defender_score, sc.attacker_score as attackers_score,
                                 sc.structure_id
                             FROM sovereignty_campaigns sc
-                            JOIN system_region_map srm ON sc.system_id = srm.solar_system_id
+                            JOIN system_region_map srm ON sc.solar_system_id = srm.solar_system_id
                             WHERE srm.region_id = %s
                             ORDER BY sc.start_time ASC
                             """,
@@ -120,9 +120,9 @@ class WarRoomRepository:
                         cur.execute(
                             """
                             SELECT
-                                campaign_id, system_id, constellation_id,
+                                campaign_id, solar_system_id as system_id, constellation_id,
                                 structure_type_id, event_type, start_time,
-                                defender_id, defender_score, attackers_score,
+                                defender_id, defender_score, attacker_score as attackers_score,
                                 structure_id
                             FROM sovereignty_campaigns
                             ORDER BY start_time ASC
@@ -292,21 +292,34 @@ class WarRoomRepository:
                     cur.execute(
                         """
                         SELECT
-                            fws.system_id,
-                            srm.solar_system_name as system_name,
-                            fws.owning_faction_id,
-                            fws.occupying_faction_id,
-                            fws.contested,
-                            fws.victory_points,
-                            fws.victory_points_threshold,
-                            ROUND(
-                                (fws.victory_points::numeric / fws.victory_points_threshold * 100),
-                                2
-                            ) as progress_percent,
-                            fws.last_updated
-                        FROM fw_system_status fws
-                        LEFT JOIN system_region_map srm ON fws.system_id = srm.solar_system_id
-                        WHERE (fws.victory_points::numeric / fws.victory_points_threshold * 100) >= %s
+                            system_id,
+                            system_name,
+                            owning_faction_id,
+                            occupying_faction_id,
+                            contested,
+                            victory_points,
+                            victory_points_threshold,
+                            progress_percent,
+                            last_updated
+                        FROM (
+                            SELECT DISTINCT ON (fws.solar_system_id)
+                                fws.solar_system_id as system_id,
+                                srm.solar_system_name as system_name,
+                                fws.owner_faction_id as owning_faction_id,
+                                fws.occupier_faction_id as occupying_faction_id,
+                                fws.contested,
+                                fws.victory_points,
+                                fws.victory_points_threshold,
+                                ROUND(
+                                    (fws.victory_points::numeric / fws.victory_points_threshold * 100),
+                                    2
+                                ) as progress_percent,
+                                fws.snapshot_time as last_updated
+                            FROM fw_system_status fws
+                            LEFT JOIN system_region_map srm ON fws.solar_system_id = srm.solar_system_id
+                            WHERE (fws.victory_points::numeric / fws.victory_points_threshold * 100) >= %s
+                            ORDER BY fws.solar_system_id, fws.snapshot_time DESC
+                        ) as unique_systems
                         ORDER BY progress_percent DESC
                         """,
                         (min_progress,)
@@ -569,3 +582,85 @@ class WarRoomRepository:
 
         except Exception as e:
             raise RepositoryError(f"Failed to get conflict intel: {str(e)}") from e
+
+    def get_regional_summary(self, days: int) -> List[Dict[str, Any]]:
+        """
+        Get summary of combat activity per region.
+
+        Args:
+            days: Number of days to look back
+
+        Returns:
+            List of regions with combat activity summary
+
+        Raises:
+            RepositoryError: If database operation fails
+        """
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        """
+                        SELECT
+                            srm.region_id,
+                            srm.region_name,
+                            COUNT(DISTINCT csl.solar_system_id) as active_systems,
+                            SUM(csl.quantity) as total_kills,
+                            SUM(csl.total_value_destroyed) as total_value
+                        FROM combat_ship_losses csl
+                        JOIN system_region_map srm ON csl.solar_system_id = srm.solar_system_id
+                        WHERE csl.date >= CURRENT_DATE - %s
+                        GROUP BY srm.region_id, srm.region_name
+                        ORDER BY total_kills DESC
+                        LIMIT 50
+                        """,
+                        (days,)
+                    )
+
+                    results = cur.fetchall()
+                    return [dict(row) for row in results]
+
+        except Exception as e:
+            raise RepositoryError(f"Failed to get regional summary: {str(e)}") from e
+
+    def get_top_ships_galaxy(self, days: int, limit: int) -> List[Dict[str, Any]]:
+        """
+        Get most destroyed ships across all regions.
+
+        Args:
+            days: Number of days to look back
+            limit: Maximum number of ships to return
+
+        Returns:
+            List of top destroyed ships with quantities and values
+
+        Raises:
+            RepositoryError: If database operation fails
+        """
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        """
+                        SELECT
+                            csl.ship_type_id,
+                            it."typeName" as name,
+                            ig."groupName" as ship_group,
+                            SUM(csl.quantity) as total_lost,
+                            SUM(csl.total_value_destroyed) as total_value
+                        FROM combat_ship_losses csl
+                        JOIN "invTypes" it ON csl.ship_type_id = it."typeID"
+                        JOIN "invGroups" ig ON it."groupID" = ig."groupID"
+                        WHERE csl.date >= CURRENT_DATE - %s
+                        GROUP BY csl.ship_type_id, it."typeName", ig."groupName"
+                        ORDER BY total_lost DESC
+                        LIMIT %s
+                        """,
+                        (days, limit)
+                    )
+
+                    results = cur.fetchall()
+                    return [dict(row) for row in results]
+
+        except Exception as e:
+            raise RepositoryError(f"Failed to get top ships: {str(e)}") from e

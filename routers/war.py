@@ -42,7 +42,6 @@ def get_war_room_repository(settings: Settings = Depends(get_settings)) -> WarRo
 
 
 def get_sovereignty_service(
-    settings: Settings = Depends(get_settings),
     repository: WarRoomRepository = Depends(get_war_room_repository)
 ) -> SovereigntyService:
     """
@@ -50,15 +49,11 @@ def get_sovereignty_service(
 
     Requires ESI client and War Room repository.
     """
-    esi_client = ESIClient(
-        user_agent=settings.esi_user_agent,
-        timeout=settings.esi_timeout
-    )
+    esi_client = ESIClient()
     return SovereigntyService(repository, esi_client)
 
 
 def get_faction_warfare_service(
-    settings: Settings = Depends(get_settings),
     repository: WarRoomRepository = Depends(get_war_room_repository)
 ) -> FactionWarfareService:
     """
@@ -66,10 +61,7 @@ def get_faction_warfare_service(
 
     Requires ESI client and War Room repository.
     """
-    esi_client = ESIClient(
-        user_agent=settings.esi_user_agent,
-        timeout=settings.esi_timeout
-    )
+    esi_client = ESIClient()
     return FactionWarfareService(repository, esi_client)
 
 
@@ -185,8 +177,8 @@ async def get_fw_hotspots(
 ):
     """Get Faction Warfare hotspots using refactored service"""
     try:
-        hotspots = service.get_hotspots(min_contested)
-        return {"hotspots": [h.model_dump() for h in hotspots]}
+        hotspots = service.get_fw_hotspots(min_contested)
+        return {"hotspots": [h.model_dump(by_alias=False) for h in hotspots]}
     except ESIError as e:
         raise HTTPException(status_code=502, detail=f"ESI API error: {str(e)}")
     except EVECopilotError as e:
@@ -199,8 +191,9 @@ async def get_fw_vulnerable(
 ):
     """Get FW systems close to flipping (>90% contested) using refactored service"""
     try:
-        vulnerable = service.get_vulnerable_systems()
-        return {"vulnerable": [v.model_dump() for v in vulnerable]}
+        # Use get_fw_hotspots with 90% threshold to find vulnerable systems
+        vulnerable = service.get_fw_hotspots(min_progress=90.0)
+        return {"vulnerable": [v.model_dump(by_alias=False) for v in vulnerable]}
     except ESIError as e:
         raise HTTPException(status_code=502, detail=f"ESI API error: {str(e)}")
     except EVECopilotError as e:
@@ -293,7 +286,7 @@ async def get_top_ships(
     """Get most destroyed ships across all regions using refactored service"""
     try:
         ships = analyzer.get_top_ships_galaxy(days, limit)
-        return {"ships": ships}
+        return {"ships": [s.model_dump(by_alias=False) for s in ships]}
     except EVECopilotError as e:
         raise HTTPException(status_code=500, detail=str(e))
 

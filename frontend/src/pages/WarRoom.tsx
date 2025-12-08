@@ -87,36 +87,42 @@ export default function WarRoom() {
   const demandQuery = useQuery({
     queryKey: ['warDemand', regionId, days],
     queryFn: () => getWarDemand(regionId, days),
+    staleTime: 0,
     refetchInterval: 5 * 60 * 1000, // 5 minutes
   });
 
   const campaignsQuery = useQuery({
     queryKey: ['warCampaigns'],
     queryFn: () => getWarCampaigns(48),
+    staleTime: 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
 
   const fwQuery = useQuery({
     queryKey: ['fwHotspots'],
     queryFn: () => getFWHotspots(50),
+    staleTime: 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
 
   const heatmapQuery = useQuery({
     queryKey: ['warHeatmap', days],
     queryFn: () => getWarHeatmap(days, 5),
+    staleTime: 0,
     refetchInterval: 5 * 60 * 1000,
   });
 
   const summaryQuery = useQuery({
     queryKey: ['warSummary', days],
     queryFn: () => getWarSummary(days),
+    staleTime: 0,
     refetchInterval: 5 * 60 * 1000,
   });
 
   const topShipsQuery = useQuery({
     queryKey: ['topShips', days],
     queryFn: () => getTopShips(days, 10),
+    staleTime: 0,
     refetchInterval: 5 * 60 * 1000,
   });
 

@@ -68,12 +68,14 @@ class FWHotspot(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    system_id: int = Field(..., description="Solar system ID")
-    system_name: Optional[str] = Field(None, description="Solar system name")
+    solar_system_id: int = Field(..., description="Solar system ID", alias="system_id")
+    solar_system_name: Optional[str] = Field(None, description="Solar system name", alias="system_name")
     contested: str = Field(..., description="Contest status")
+    contested_percent: float = Field(..., description="Contest progress percentage", alias="progress_percent")
     victory_points: int = Field(..., description="Current victory points")
-    progress_percent: float = Field(..., description="Contest progress percentage")
     is_critical: bool = Field(..., description="Critical system flag (>=90% contested)")
+    owner_faction_name: Optional[str] = Field(None, description="Owning faction name")
+    occupier_faction_name: Optional[str] = Field(None, description="Occupying faction name")
 
 
 class FWStats(BaseModel):

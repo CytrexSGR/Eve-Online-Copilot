@@ -94,3 +94,33 @@ class ConflictIntel(BaseModel):
     enemy_alliances: List[str] = Field(default_factory=list, description="Enemy alliance names")
     total_losses: int = Field(..., description="Total ships lost")
     active_fronts: int = Field(..., description="Number of active regions with losses")
+
+
+# ==================== Regional Summary Models ====================
+
+
+class RegionalSummary(BaseModel):
+    """Summary of combat activity in a region."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    region_id: int = Field(..., description="Region ID")
+    region_name: str = Field(..., description="Region name")
+    active_systems: int = Field(..., description="Number of systems with kills")
+    total_kills: int = Field(..., description="Total ships destroyed")
+    total_value: float = Field(..., description="Total ISK value destroyed")
+
+
+# ==================== Top Ships Models ====================
+
+
+class TopShip(BaseModel):
+    """Most destroyed ship type across galaxy."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    type_id: int = Field(..., description="Ship type ID", alias="ship_type_id")
+    name: str = Field(..., description="Ship name")
+    group: str = Field(..., description="Ship group name", alias="ship_group")
+    quantity: int = Field(..., description="Total quantity destroyed", alias="total_lost")
+    value: float = Field(..., description="Total ISK value destroyed", alias="total_value")

@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     # ESI
     esi_base_url: str = "https://esi.evetech.net/latest"
     esi_user_agent: str = "EVE-Co-Pilot/1.2.0"
+    esi_timeout: int = 30
 
     @property
     def database_url(self) -> str:
