@@ -232,3 +232,56 @@ async def hunter_scan(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+
+@router.get("/opportunities")
+async def get_opportunities(
+    min_roi: float = Query(15, description="Minimum ROI percentage"),
+    min_profit: float = Query(500000, description="Minimum profit in ISK"),
+    max_difficulty: int = Query(3, ge=1, le=5, description="Maximum difficulty level"),
+    limit: int = Query(20, ge=1, le=100, description="Number of results")
+):
+    """
+    Get pre-calculated manufacturing opportunities (alias for /scan with defaults).
+
+    This endpoint provides quick access to profitable opportunities with sensible defaults.
+    """
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT
+                        product_id, blueprint_id, product_name, category, group_name,
+                        difficulty, cheapest_material_cost, best_sell_price, profit, roi,
+                        updated_at
+                    FROM manufacturing_opportunities
+                    WHERE roi >= %s AND profit >= %s AND difficulty <= %s
+                    ORDER BY profit DESC
+                    LIMIT %s
+                """, (min_roi, min_profit, max_difficulty, limit))
+
+                rows = cur.fetchall()
+
+                results = []
+                for row in rows:
+                    results.append({
+                        "product_id": row[0],
+                        "blueprint_id": row[1],
+                        "product_name": row[2],
+                        "category": row[3] or "Unknown",
+                        "group_name": row[4],
+                        "difficulty": row[5],
+                        "material_cost": float(row[6]) if row[6] else 0,
+                        "sell_price": float(row[7]) if row[7] else 0,
+                        "profit": float(row[8]) if row[8] else 0,
+                        "roi": min(float(row[9]), 9999) if row[9] else 0,
+                        "volume_available": 0
+                    })
+
+                return {
+                    "results": results,
+                    "count": len(results)
+                }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

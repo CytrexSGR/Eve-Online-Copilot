@@ -3,19 +3,51 @@ Shopping List Router
 Endpoints for managing shopping lists and items
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from database import get_db_connection
 from psycopg2.extras import RealDictCursor
+
+# Legacy service for complex operations (temporary until full migration)
 from shopping_service import shopping_service
 from route_service import route_service
 from transport_service import transport_service
 
+# New refactored services
+from src.core.config import get_settings, Settings
+from src.core.database import DatabasePool
+from src.services.shopping.repository import ShoppingRepository
+from src.services.shopping.service import ShoppingService
+from src.services.shopping.models import (
+    ShoppingListCreate as ShoppingListCreateModel,
+    ShoppingListUpdate as ShoppingListUpdateModel,
+)
+from src.core.exceptions import NotFoundError, EVECopilotError
+
 router = APIRouter(prefix="/api/shopping", tags=["Shopping"])
 
 
-# Request Models
+# ============================================================
+# Dependency Injection Functions
+# ============================================================
+
+def get_shopping_service(settings: Settings = Depends(get_settings)) -> ShoppingService:
+    """
+    Dependency injection for ShoppingService.
+
+    Creates service with proper repository and database pool.
+    """
+    db_pool = DatabasePool(settings)
+    repository = ShoppingRepository(db_pool)
+    # Market service is optional for now
+    return ShoppingService(repository, market_service=None)
+
+
+# ============================================================
+# Request Models (Keep existing for API compatibility)
+# ============================================================
+
 class ShoppingListCreate(BaseModel):
     name: str
     character_id: Optional[int] = None
@@ -77,16 +109,27 @@ class CompareRegionsRequest(BaseModel):
     items: List[dict]  # [{type_id: int, quantity: int}]
 
 
-# Shopping List Endpoints
+# ============================================================
+# Shopping List Endpoints (Refactored with DI)
+# ============================================================
+
 @router.post("/lists")
-async def create_shopping_list(request: ShoppingListCreate):
-    """Create a new shopping list"""
-    return shopping_service.create_list(
-        name=request.name,
-        character_id=request.character_id,
-        corporation_id=request.corporation_id,
-        notes=request.notes
-    )
+async def create_shopping_list(
+    request: ShoppingListCreate,
+    service: ShoppingService = Depends(get_shopping_service)
+):
+    """Create a new shopping list using refactored service"""
+    try:
+        list_create = ShoppingListCreateModel(
+            name=request.name,
+            character_id=request.character_id,
+            corporation_id=request.corporation_id,
+            notes=request.notes
+        )
+        result = service.create_list(list_create)
+        return result.model_dump()
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/lists")
@@ -95,13 +138,13 @@ async def get_shopping_lists(
     corporation_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None)
 ):
-    """Get shopping lists with optional filters"""
+    """Get shopping lists with optional filters (legacy service)"""
     return shopping_service.get_lists(character_id, corporation_id, status)
 
 
 @router.get("/lists/{list_id}")
 async def get_shopping_list(list_id: int):
-    """Get shopping list with all items"""
+    """Get shopping list with all items (legacy service)"""
     result = shopping_service.get_list_with_items(list_id)
     if not result:
         raise HTTPException(status_code=404, detail="Shopping list not found")
@@ -109,28 +152,45 @@ async def get_shopping_list(list_id: int):
 
 
 @router.patch("/lists/{list_id}")
-async def update_shopping_list(list_id: int, request: ShoppingListUpdate):
-    """Update a shopping list"""
-    result = shopping_service.update_list(
-        list_id=list_id,
-        name=request.name,
-        status=request.status,
-        notes=request.notes
-    )
-    if not result:
-        raise HTTPException(status_code=404, detail="Shopping list not found")
-    return result
+async def update_shopping_list(
+    list_id: int,
+    request: ShoppingListUpdate,
+    service: ShoppingService = Depends(get_shopping_service)
+):
+    """Update a shopping list using refactored service"""
+    try:
+        update_model = ShoppingListUpdateModel(
+            name=request.name,
+            status=request.status,
+            notes=request.notes
+        )
+        result = service.update_list(list_id, update_model)
+        return result.model_dump()
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/lists/{list_id}")
-async def delete_shopping_list(list_id: int):
-    """Delete a shopping list"""
-    if not shopping_service.delete_list(list_id):
-        raise HTTPException(status_code=404, detail="Shopping list not found")
-    return {"status": "deleted"}
+async def delete_shopping_list(
+    list_id: int,
+    service: ShoppingService = Depends(get_shopping_service)
+):
+    """Delete a shopping list using refactored service"""
+    try:
+        service.delete_list(list_id)
+        return {"status": "deleted"}
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# Shopping Item Endpoints
+# ============================================================
+# Shopping Item Endpoints (Legacy service for now)
+# ============================================================
+
 @router.post("/lists/{list_id}/items")
 async def add_shopping_item(list_id: int, request: ShoppingItemCreate):
     """Add item to shopping list"""

@@ -3,10 +3,50 @@ Mining Router
 Endpoints for finding mining locations and ore information
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from database import get_db_connection
 
+# New refactored services (available for future integration)
+from src.core.config import get_settings, Settings
+from src.core.database import DatabasePool
+from src.services.route.repository import RouteRepository
+from src.services.route.service import RouteService
+from src.services.cargo.repository import CargoRepository
+from src.services.cargo.service import CargoService
+from src.core.exceptions import EVECopilotError
+
 router = APIRouter(prefix="/api/mining", tags=["Mining"])
+
+
+# ============================================================
+# Dependency Injection Functions
+# ============================================================
+
+def get_route_service(settings: Settings = Depends(get_settings)) -> RouteService:
+    """
+    Dependency injection for RouteService.
+
+    Creates service with proper repository and database pool.
+    """
+    db_pool = DatabasePool(settings)
+    repository = RouteRepository(db_pool)
+    return RouteService(repository)
+
+
+def get_cargo_service(settings: Settings = Depends(get_settings)) -> CargoService:
+    """
+    Dependency injection for CargoService.
+
+    Creates service with proper repository and database pool.
+    """
+    db_pool = DatabasePool(settings)
+    repository = CargoRepository(db_pool)
+    return CargoService(repository)
+
+
+# ============================================================
+# Ore Data Constants
+# ============================================================
 
 # Ore spawn rules by security status (based on EVE mechanics)
 ORE_BY_SECURITY = {
@@ -53,6 +93,10 @@ ORE_MINERALS = {
 }
 
 
+# ============================================================
+# Helper Functions
+# ============================================================
+
 def get_security_class(security: float) -> str:
     """Determine security class for a given security level."""
     if security >= 0.5:
@@ -82,6 +126,10 @@ def get_ores_for_mineral(mineral: str) -> list:
             result.append({"ore": ore, "yield": minerals[mineral]})
     return sorted(result, key=lambda x: x["yield"], reverse=True)
 
+
+# ============================================================
+# Mining Location Endpoints
+# ============================================================
 
 @router.get("/find-mineral")
 async def find_mineral_locations(
