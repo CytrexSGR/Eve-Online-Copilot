@@ -1,600 +1,34 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, Map, RefreshCw, MousePointer, Eye, ArrowUpDown, Package, Truck, Calculator, ChevronDown, ChevronUp, Search, BarChart3 } from 'lucide-react';
+import { useState, useCallback, useMemo } from 'react';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { ShoppingCart, Plus, Trash2, Check, Copy, ChevronRight, X, RefreshCw, Package, Truck, Calculator, ChevronDown, ChevronUp, Search, BarChart3 } from 'lucide-react';
 import { api } from '../api';
 import { formatISK, formatQuantity } from '../utils/format';
 import type {
-  ShoppingList,
   ShoppingListItem as ShoppingItem,
-  ShoppingListDetail,
   CalculateMaterialsResponse,
-  ComparisonItem,
-  RegionalComparison,
-  ShoppingRoute,
-  OrderSnapshotResponse,
-  CargoSummary,
-  TransportOptions,
 } from '../types/shopping';
 import {
-  REGION_NAMES,
-  REGION_ORDER,
   CORP_ID,
-  START_SYSTEMS,
 } from '../types/shopping';
 
-// Component to display order details popup
-function OrderDetailsPopup({
-  typeId,
-  itemName,
-  region,
-  onClose
-}: {
-  typeId: number;
-  itemName: string;
-  region: string;
-  onClose: () => void;
-}) {
-  const { data, isLoading } = useQuery<OrderSnapshotResponse>({
-    queryKey: ['order-snapshots', typeId, region],
-    queryFn: async () => {
-      const response = await api.get(`/api/shopping/orders/${typeId}`, {
-        params: { region }
-      });
-      return response.data;
-    }
-  });
+// Component imports
+import { OrderDetailsModal } from '../components/shopping/planner/OrderDetailsModal';
+import { SubProductTree } from '../components/shopping/planner/SubProductTree';
+import { ComparisonView } from '../components/shopping/planner/ComparisonView';
+import { TransportView } from '../components/shopping/planner/TransportView';
 
-  const regionData = data?.regions?.[region];
-
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000
-      }}
-      onClick={onClose}
-    >
-      <div
-        className="card"
-        style={{
-          maxWidth: 600,
-          maxHeight: '80vh',
-          overflow: 'auto',
-          padding: 20
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0 }}>{itemName} - {REGION_NAMES[region] || region}</h3>
-          <button className="btn btn-secondary" onClick={onClose} style={{ padding: '4px 8px' }}>
-            <X size={16} />
-          </button>
-        </div>
-
-        {isLoading ? (
-          <div className="neutral">Loading orders...</div>
-        ) : !regionData || regionData.sells.length === 0 ? (
-          <div className="neutral">No order data available</div>
-        ) : (
-          <>
-            <h4 style={{ marginBottom: 8 }}>Sell Orders (Top 10)</h4>
-            <table className="data-table" style={{ width: '100%', marginBottom: 16 }}>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th style={{ textAlign: 'right' }}>Price</th>
-                  <th style={{ textAlign: 'right' }}>Volume</th>
-                  <th style={{ textAlign: 'right' }}>Issued</th>
-                </tr>
-              </thead>
-              <tbody>
-                {regionData.sells.map((order) => (
-                  <tr key={order.rank}>
-                    <td>{order.rank}</td>
-                    <td style={{ textAlign: 'right' }}>{formatISK(order.price)}</td>
-                    <td style={{ textAlign: 'right' }}>{formatQuantity(order.volume)}</td>
-                    <td style={{ textAlign: 'right', fontSize: 11 }} className="neutral">
-                      {order.issued ? new Date(order.issued).toLocaleDateString() : '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {regionData.buys.length > 0 && (
-              <>
-                <h4 style={{ marginBottom: 8 }}>Buy Orders (Top 10)</h4>
-                <table className="data-table" style={{ width: '100%' }}>
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th style={{ textAlign: 'right' }}>Price</th>
-                      <th style={{ textAlign: 'right' }}>Volume</th>
-                      <th style={{ textAlign: 'right' }}>Issued</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {regionData.buys.map((order) => (
-                      <tr key={order.rank}>
-                        <td>{order.rank}</td>
-                        <td style={{ textAlign: 'right' }}>{formatISK(order.price)}</td>
-                        <td style={{ textAlign: 'right' }}>{formatQuantity(order.volume)}</td>
-                        <td style={{ textAlign: 'right', fontSize: 11 }} className="neutral">
-                          {order.issued ? new Date(order.issued).toLocaleDateString() : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
-            )}
-
-            {regionData.updated_at && (
-              <div className="neutral" style={{ marginTop: 12, fontSize: 11 }}>
-                Updated: {new Date(regionData.updated_at).toLocaleString()}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Component to display shopping route with optimized travel path
-function ShoppingRouteDisplay({
-  items,
-  homeSystem: initialHomeSystem
-}: {
-  items: ComparisonItem[];
-  homeSystem: string;
-}) {
-  const [expandedLegs, setExpandedLegs] = useState<Set<number>>(new Set());
-  const [homeSystem, setHomeSystem] = useState(initialHomeSystem);
-  const [includeReturn, setIncludeReturn] = useState(true);
-  const isInitialMount = useRef(true);
-
-  // Only sync with prop on initial mount, not on subsequent updates
-  // This prevents the selection from reverting when React Query refetches
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      setHomeSystem(initialHomeSystem);
-    }
-  }, [initialHomeSystem]);
-
-  // Group items by their currently selected region
-  const selectedRouteByRegion: Record<string, { item_name: string; quantity: number; total: number }[]> = {};
-  let selectedTotal = 0;
-
-  for (const item of items) {
-    if (item.current_region && item.current_price) {
-      if (!selectedRouteByRegion[item.current_region]) {
-        selectedRouteByRegion[item.current_region] = [];
-      }
-      const total = item.current_price * item.quantity;
-      selectedRouteByRegion[item.current_region].push({
-        item_name: item.item_name,
-        quantity: item.quantity,
-        total
-      });
-      selectedTotal += total;
-    }
-  }
-
-  const selectedRegions = Object.keys(selectedRouteByRegion);
-
-  // Fetch optimal route through selected hubs
-  const { data: routeData } = useQuery<ShoppingRoute>({
-    queryKey: ['shopping-route', selectedRegions.sort().join(','), homeSystem, includeReturn],
-    queryFn: async () => {
-      if (selectedRegions.length === 0) return { total_jumps: 0, route: [], order: [] };
-      const response = await api.get('/api/shopping/route', {
-        params: {
-          regions: selectedRegions.join(','),
-          home_system: homeSystem,
-          return_home: includeReturn
-        }
-      });
-      return response.data;
-    },
-    enabled: selectedRegions.length > 0,
-  });
-
-  const toggleLeg = (idx: number) => {
-    setExpandedLegs(prev => {
-      const next = new Set(prev);
-      if (next.has(idx)) {
-        next.delete(idx);
-      } else {
-        next.add(idx);
-      }
-      return next;
-    });
-  };
-
-  const getSecurityColor = (sec: number) => {
-    if (sec >= 0.5) return 'var(--accent-green)';
-    if (sec > 0) return 'var(--accent-yellow)';
-    return 'var(--accent-red)';
-  };
-
-  if (selectedRegions.length === 0) return null;
-
-  // Order regions by optimal route (filter out home system at start and end)
-  const orderedRegions = routeData?.order?.filter((r, idx, arr) => {
-    // Remove first element (home system)
-    if (idx === 0) return false;
-    // Remove last element if it's the return trip (same as first)
-    if (idx === arr.length - 1 && r.toLowerCase() === arr[0].toLowerCase()) return false;
-    return true;
-  }) || selectedRegions;
-
-  return (
-    <div className="card" style={{ marginTop: 16 }}>
-      <div className="card-header">
-        <span className="card-title">
-          <Map size={18} style={{ marginRight: 8 }} />
-          Shopping Route
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          {routeData && routeData.total_jumps > 0 && (
-            <span className="badge badge-blue">
-              {routeData.total_jumps} jumps total
-            </span>
-          )}
-          <span className="isk" style={{ fontWeight: 600 }}>
-            Total: {formatISK(selectedTotal)}
-          </span>
-        </div>
-      </div>
-
-      {/* Route options */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        padding: '8px 0',
-        borderBottom: '1px solid var(--border)',
-        flexWrap: 'wrap'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label className="neutral" style={{ fontSize: 12 }}>Start:</label>
-          <select
-            value={homeSystem}
-            onChange={(e) => setHomeSystem(e.target.value)}
-            style={{
-              padding: '4px 8px',
-              background: 'var(--bg-dark)',
-              border: '1px solid var(--border)',
-              borderRadius: 4,
-              color: 'var(--text-primary)',
-              fontSize: 12
-            }}
-          >
-            {START_SYSTEMS.map(sys => (
-              <option key={sys.value} value={sys.value}>{sys.name}</option>
-            ))}
-          </select>
-        </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={includeReturn}
-            onChange={(e) => setIncludeReturn(e.target.checked)}
-            style={{ accentColor: 'var(--accent-blue)' }}
-          />
-          <span>Include return trip</span>
-        </label>
-      </div>
-
-      {/* Route visualization with expandable system list */}
-      {routeData?.route && routeData.route.length > 0 && (
-        <div style={{ padding: '12px 0', marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 500 }}>{homeSystem}</span>
-            {routeData.route.map((leg, idx) => (
-              <span key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="neutral">→</span>
-                <button
-                  onClick={() => toggleLeg(idx)}
-                  className="badge badge-blue"
-                  style={{
-                    fontSize: 10,
-                    cursor: 'pointer',
-                    border: 'none',
-                    background: expandedLegs.has(idx) ? 'var(--accent-blue)' : undefined
-                  }}
-                  title="Click to show systems"
-                >
-                  {leg.jumps}j {expandedLegs.has(idx) ? '▼' : '▶'}
-                </button>
-                <span className="neutral">→</span>
-                <span style={{ fontWeight: 500 }}>{leg.to}</span>
-              </span>
-            ))}
-          </div>
-
-          {/* Expanded system lists */}
-          {routeData.route.map((leg, idx) => (
-            expandedLegs.has(idx) && leg.systems && (
-              <div
-                key={`systems-${idx}`}
-                style={{
-                  marginTop: 8,
-                  marginLeft: 16,
-                  padding: 8,
-                  background: 'var(--bg-dark)',
-                  borderRadius: 6,
-                  fontSize: 12
-                }}
-              >
-                <div style={{ fontWeight: 500, marginBottom: 4 }}>
-                  {leg.from} → {leg.to} ({leg.jumps} jumps)
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {leg.systems.map((sys, sIdx) => (
-                    <span
-                      key={sIdx}
-                      style={{
-                        padding: '2px 6px',
-                        background: 'var(--bg-card)',
-                        borderRadius: 4,
-                        borderLeft: `3px solid ${getSecurityColor(sys.security)}`
-                      }}
-                    >
-                      {sys.name}
-                      <span className="neutral" style={{ marginLeft: 4, fontSize: 10 }}>
-                        {sys.security.toFixed(1)}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )
-          ))}
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-        {orderedRegions.map((regionOrHub) => {
-          // Handle both region keys and hub names from route
-          const region = regionOrHub.toLowerCase() === 'jita' ? 'the_forge' :
-                        regionOrHub.toLowerCase() === 'amarr' ? 'domain' :
-                        regionOrHub.toLowerCase() === 'rens' ? 'heimatar' :
-                        regionOrHub.toLowerCase() === 'dodixie' ? 'sinq_laison' :
-                        regionOrHub.toLowerCase() === 'hek' ? 'metropolis' :
-                        regionOrHub;
-          const items = selectedRouteByRegion[region];
-          if (!items) return null;
-
-          const routeLeg = routeData?.route?.find(r => r.to.toLowerCase() === regionOrHub.toLowerCase());
-
-          return (
-            <div
-              key={region}
-              style={{
-                padding: 12,
-                background: 'var(--bg-dark)',
-                borderRadius: 8,
-              }}
-            >
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                {REGION_NAMES[region] || region}
-                <span className="neutral" style={{ fontWeight: 400, marginLeft: 8 }}>
-                  ({items.length} items)
-                </span>
-                {routeLeg && (
-                  <span className="badge badge-blue" style={{ marginLeft: 8 }}>
-                    {routeLeg.jumps} jumps
-                  </span>
-                )}
-              </div>
-              {items.map((item, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontSize: 12,
-                    padding: '4px 0',
-                    borderTop: idx > 0 ? '1px solid var(--border)' : undefined,
-                  }}
-                >
-                  <span>{item.item_name} x{formatQuantity(item.quantity)}</span>
-                  <span className="isk">{formatISK(item.total)}</span>
-                </div>
-              ))}
-              <div
-                style={{
-                  marginTop: 8,
-                  paddingTop: 8,
-                  borderTop: '1px solid var(--border)',
-                  fontWeight: 500,
-                }}
-              >
-                Subtotal: {formatISK(items.reduce((sum, i) => sum + i.total, 0))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// Recursive Sub-Product Component
-interface SubProductTreeProps {
-  subProduct: ShoppingItem;
-  depth: number;
-  updateBuildDecision: any;
-  onBulkUpdate: (itemIds: number[], decision: 'buy' | 'build') => void;
-}
-
-function SubProductTree({ subProduct, depth, updateBuildDecision, onBulkUpdate }: SubProductTreeProps) {
-  // Collect all descendant IDs for bulk operations
-  const collectDescendantIds = (item: ShoppingItem): number[] => {
-    const ids = [item.id];
-    if (item.sub_products) {
-      item.sub_products.forEach(sp => {
-        ids.push(...collectDescendantIds(sp));
-      });
-    }
-    return ids;
-  };
-
-  const descendantIds = collectDescendantIds(subProduct);
-
-  return (
-    <div style={{ marginLeft: depth * 16, marginBottom: 8 }}>
-      <div
-        style={{
-          padding: '8px 12px',
-          background: 'var(--bg-dark)',
-          borderRadius: 6,
-          borderLeft: `3px solid ${subProduct.build_decision === 'build' ? 'var(--accent-green)' : 'var(--accent-blue)'}`,
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {/* BUY/BUILD Toggle */}
-            <div style={{
-              display: 'flex',
-              background: 'var(--bg-darker)',
-              borderRadius: 4,
-              padding: 1,
-              border: '1px solid var(--border)'
-            }}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  updateBuildDecision.mutate({ itemId: subProduct.id, decision: 'buy' });
-                }}
-                disabled={updateBuildDecision.isPending}
-                style={{
-                  padding: '2px 8px',
-                  borderRadius: 3,
-                  border: 'none',
-                  fontSize: 10,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  background: subProduct.build_decision !== 'build' ? 'var(--accent-blue)' : 'transparent',
-                  color: subProduct.build_decision !== 'build' ? 'white' : 'var(--text-secondary)',
-                  transition: 'all 0.15s'
-                }}
-                title="Buy from market"
-              >
-                BUY
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  updateBuildDecision.mutate({ itemId: subProduct.id, decision: 'build' });
-                }}
-                disabled={updateBuildDecision.isPending}
-                style={{
-                  padding: '2px 8px',
-                  borderRadius: 3,
-                  border: 'none',
-                  fontSize: 10,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  background: subProduct.build_decision === 'build' ? 'var(--accent-green)' : 'transparent',
-                  color: subProduct.build_decision === 'build' ? 'white' : 'var(--text-secondary)',
-                  transition: 'all 0.15s'
-                }}
-                title="Build from materials"
-              >
-                BUILD
-              </button>
-            </div>
-            <div>
-              <span style={{ fontWeight: 500, fontSize: 13 }}>{subProduct.item_name}</span>
-              <span className="neutral" style={{ marginLeft: 8, fontWeight: 400, fontSize: 12 }}>
-                x{formatQuantity(subProduct.quantity)}
-              </span>
-            </div>
-          </div>
-
-          {/* Bulk Actions - only show if has sub-products */}
-          {subProduct.sub_products && subProduct.sub_products.length > 0 && (
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button
-                className="btn-icon"
-                onClick={() => onBulkUpdate(descendantIds, 'buy')}
-                style={{ fontSize: 9, padding: '2px 6px' }}
-                title="Set all to BUY"
-              >
-                All BUY
-              </button>
-              <button
-                className="btn-icon"
-                onClick={() => onBulkUpdate(descendantIds, 'build')}
-                style={{ fontSize: 9, padding: '2px 6px' }}
-                title="Set all to BUILD"
-              >
-                All BUILD
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Show materials if BUILD decision */}
-        {subProduct.build_decision === 'build' && subProduct.materials && subProduct.materials.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
-            {subProduct.materials.map((mat) => (
-              <span
-                key={mat.id}
-                style={{
-                  padding: '2px 6px',
-                  background: 'var(--bg-darker)',
-                  borderRadius: 4,
-                  fontSize: 11
-                }}
-              >
-                {mat.item_name}: {formatQuantity(mat.quantity)}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Recursively render sub-products if BUILD decision */}
-        {subProduct.build_decision === 'build' && subProduct.sub_products && subProduct.sub_products.length > 0 && (
-          <div style={{ marginTop: 8 }}>
-            {subProduct.sub_products.map((sp) => (
-              <SubProductTree
-                key={sp.id}
-                subProduct={sp}
-                depth={depth + 1}
-                updateBuildDecision={updateBuildDecision}
-                onBulkUpdate={onBulkUpdate}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
+// Hook imports
+import { useShoppingLists } from '../hooks/shopping/useShoppingLists';
+import { useShoppingItems } from '../hooks/shopping/useShoppingItems';
+import { useRegionalComparison } from '../hooks/shopping/useRegionalComparison';
+import { useTransportPlanning } from '../hooks/shopping/useTransportPlanning';
 export default function ShoppingPlanner() {
   const queryClient = useQueryClient();
   const [selectedListId, setSelectedListId] = useState<number | null>(null);
   const [newListName, setNewListName] = useState('');
   const [showNewListForm, setShowNewListForm] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'compare' | 'transport'>('list');
-  const [interactionMode, setInteractionMode] = useState<'select' | 'orders'>('select');
   const [orderPopup, setOrderPopup] = useState<{ typeId: number; itemName: string; region: string } | null>(null);
-  const [compareSort, setCompareSort] = useState<'name' | 'quantity'>('name');
-  const [showRegionTotals, setShowRegionTotals] = useState(false);
   const [showSubProductModal, setShowSubProductModal] = useState(false);
   const [pendingMaterials, setPendingMaterials] = useState<CalculateMaterialsResponse | null>(null);
   const [subProductDecisions, setSubProductDecisions] = useState<Record<number, 'buy' | 'build'>>({});
@@ -612,72 +46,34 @@ export default function ShoppingPlanner() {
   const [newProductRuns, setNewProductRuns] = useState(1);
   const [isSearchingProducts, setIsSearchingProducts] = useState(false);
 
-  // Fetch all shopping lists
-  const { data: lists, isLoading } = useQuery<ShoppingList[]>({
-    queryKey: ['shopping-lists', CORP_ID],
-    queryFn: async () => {
-      const response = await api.get('/api/shopping/lists', {
-        params: { corporation_id: CORP_ID }
-      });
-      return response.data;
-    },
-  });
+  // Use custom hooks for data fetching
+  const { lists } = useShoppingLists(CORP_ID);
+  const { list: selectedList } = useShoppingItems(selectedListId);
+  const {
+    comparison,
+    updateItemRegion,
+    applyOptimalRegions,
+    applyRegionToAll
+  } = useRegionalComparison(selectedListId, viewMode === 'compare');
+  const {
+    cargoSummary,
+    transportOptions,
+    safeRoutesOnly,
+    setSafeRoutesOnly,
+    transportFilter,
+    setTransportFilter
+  } = useTransportPlanning(selectedListId, viewMode === 'transport');
 
-  // Fetch selected list details
-  const { data: selectedList } = useQuery<ShoppingListDetail>({
-    queryKey: ['shopping-list', selectedListId],
-    queryFn: async () => {
-      const response = await api.get(`/api/shopping/lists/${selectedListId}`);
-      return response.data;
-    },
-    enabled: !!selectedListId,
-  });
-
-  // Fetch regional comparison (when modal is open)
-  const { data: comparison, isLoading: isLoadingComparison, refetch: refetchComparison } = useQuery<RegionalComparison>({
-    queryKey: ['shopping-comparison', selectedListId],
-    queryFn: async () => {
-      const response = await api.get(`/api/shopping/lists/${selectedListId}/regional-comparison`);
-      return response.data;
-    },
-    enabled: !!selectedListId && viewMode === 'compare',
-  });
-
-  // Fetch cargo summary
-  const { data: cargoSummary } = useQuery<CargoSummary>({
-    queryKey: ['shopping-cargo', selectedListId],
-    queryFn: async () => {
-      const response = await api.get(`/api/shopping/lists/${selectedListId}/cargo-summary`);
-      return response.data;
-    },
-    enabled: !!selectedListId,
-  });
-
-  // Transport state and query
-  const [safeRoutesOnly, setSafeRoutesOnly] = useState(true);
-  const [transportFilter, setTransportFilter] = useState<string>('');
-
-  const { data: transportOptions, isLoading: isLoadingTransport } = useQuery<TransportOptions>({
-    queryKey: ['shopping-transport', selectedListId, safeRoutesOnly],
-    queryFn: async () => {
-      const response = await api.get(`/api/shopping/lists/${selectedListId}/transport-options`, {
-        params: { safe_only: safeRoutesOnly }
-      });
-      return response.data;
-    },
-    enabled: !!selectedListId && viewMode === 'transport',
-  });
-
-  // Sort comparison items - stable sort prevents row jumping during selection
-  const sortedComparisonItems = useMemo(() => {
-    if (!comparison?.items) return [];
-    return [...comparison.items].sort((a, b) => {
-      if (compareSort === 'quantity') {
-        return b.quantity - a.quantity; // Descending by quantity
-      }
-      return a.item_name.localeCompare(b.item_name); // Ascending by name
-    });
-  }, [comparison?.items, compareSort]);
+  // Extract data and loading states from query results
+  const listsData = lists.data;
+  const isLoading = lists.isLoading;
+  const selectedListData = selectedList.data;
+  const cargoSummaryData = cargoSummary.data;
+  const comparisonData = comparison.data;
+  const isLoadingComparison = comparison.isLoading;
+  const refetchComparison = comparison.refetch;
+  const transportOptionsData = transportOptions.data;
+  const isLoadingTransport = transportOptions.isLoading;
 
   // Create list mutation
   const createList = useMutation({
@@ -906,103 +302,6 @@ export default function ShoppingPlanner() {
     });
   };
 
-  // Update item region mutation with optimistic updates
-  // This prevents table row shifting during re-renders which caused wrong row selection
-  const updateItemRegion = useMutation({
-    mutationFn: async ({ itemId, region, price }: { itemId: number; region: string; price?: number }) => {
-      await api.patch(`/api/shopping/items/${itemId}/region`, null, {
-        params: { region, price }
-      });
-      return { itemId, region, price };
-    },
-    onMutate: async ({ itemId, region, price }) => {
-      // Cancel any outgoing refetches to prevent overwriting optimistic update
-      await queryClient.cancelQueries({ queryKey: ['shopping-comparison', selectedListId] });
-      await queryClient.cancelQueries({ queryKey: ['shopping-list', selectedListId] });
-
-      // Snapshot previous values for rollback
-      const previousComparison = queryClient.getQueryData<RegionalComparison>(['shopping-comparison', selectedListId]);
-      const previousList = queryClient.getQueryData(['shopping-list', selectedListId]);
-
-      // Optimistically update comparison data
-      if (previousComparison) {
-        queryClient.setQueryData<RegionalComparison>(['shopping-comparison', selectedListId], {
-          ...previousComparison,
-          items: previousComparison.items.map(item =>
-            item.id === itemId
-              ? { ...item, current_region: region, current_price: price ?? null }
-              : item
-          )
-        });
-      }
-
-      // Optimistically update list data
-      if (previousList) {
-        queryClient.setQueryData(['shopping-list', selectedListId], (old: typeof previousList) => ({
-          ...old,
-          items: (old as { items: ShoppingItem[] }).items?.map((item: ShoppingItem) =>
-            item.id === itemId
-              ? { ...item, target_region: region, target_price: price }
-              : item
-          )
-        }));
-      }
-
-      return { previousComparison, previousList };
-    },
-    onError: (_err, _variables, context) => {
-      // Rollback on error
-      if (context?.previousComparison) {
-        queryClient.setQueryData(['shopping-comparison', selectedListId], context.previousComparison);
-      }
-      if (context?.previousList) {
-        queryClient.setQueryData(['shopping-list', selectedListId], context.previousList);
-      }
-    },
-    onSuccess: () => {
-      // Only invalidate shopping-lists to update list summaries
-      // Comparison data is handled by optimistic updates above
-      queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
-    },
-  });
-
-  // Apply optimal regions to all items
-  const applyOptimalRegions = async () => {
-    if (!comparison?.items) return;
-    for (const item of comparison.items) {
-      if (item.cheapest_region && item.cheapest_price) {
-        await updateItemRegion.mutateAsync({
-          itemId: item.id,
-          region: item.cheapest_region,
-          price: item.cheapest_price
-        });
-      }
-    }
-    // Final refresh after all mutations complete
-    queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
-    queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
-    queryClient.invalidateQueries({ queryKey: ['shopping-comparison', selectedListId] });
-  };
-
-  // Apply single region to all items
-  const applyRegionToAll = async (region: string) => {
-    if (!comparison?.items) return;
-    for (const item of comparison.items) {
-      const regionData = item.regions[region];
-      if (regionData?.unit_price) {
-        await updateItemRegion.mutateAsync({
-          itemId: item.id,
-          region,
-          price: regionData.unit_price
-        });
-      }
-    }
-    // Final refresh after all mutations complete
-    queryClient.invalidateQueries({ queryKey: ['shopping-lists'] });
-    queryClient.invalidateQueries({ queryKey: ['shopping-list', selectedListId] });
-    queryClient.invalidateQueries({ queryKey: ['shopping-comparison', selectedListId] });
-  };
-
   // Export to clipboard
   const handleExport = async (region?: string) => {
     if (!selectedListId) return;
@@ -1015,12 +314,12 @@ export default function ShoppingPlanner() {
 
   // Aggregated shopping list - combine all items by type_id (no region separation)
   const aggregatedShoppingList = useMemo(() => {
-    if (!selectedList?.items) return [];
+    if (!selectedListData?.items) return [];
 
     // Aggregate by type_id
     const aggregated: Record<number, ShoppingItem & { aggregatedQuantity: number }> = {};
 
-    for (const item of selectedList.items) {
+    for (const item of selectedListData.items) {
       // Skip main products (is_product=true with no parent) - they are displayed in Products section
       if (item.is_product && !item.parent_item_id) continue;
 
@@ -1042,7 +341,7 @@ export default function ShoppingPlanner() {
       ...item,
       quantity: item.aggregatedQuantity * globalRuns,
     })).sort((a, b) => a.item_name.localeCompare(b.item_name));
-  }, [selectedList?.items, globalRuns]);
+  }, [selectedListData?.items, globalRuns]);
 
   // Calculate total cost for aggregated list
   const aggregatedTotal = useMemo(() => {
@@ -1115,14 +414,14 @@ export default function ShoppingPlanner() {
               </div>
             )}
 
-            {lists?.length === 0 ? (
+            {listsData?.length === 0 ? (
               <div className="empty-state" style={{ padding: 20 }}>
                 <ShoppingCart size={32} style={{ opacity: 0.3 }} />
                 <p className="neutral">No shopping lists yet</p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {lists?.map((list) => (
+                {listsData?.map((list) => (
                   <div
                     key={list.id}
                     className={`region-card ${selectedListId === list.id ? 'best' : ''}`}
@@ -1166,14 +465,14 @@ export default function ShoppingPlanner() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                     <div>
-                      <h2 style={{ margin: 0 }}>{selectedList.name}</h2>
+                      <h2 style={{ margin: 0 }}>{selectedListData?.name}</h2>
                       <div className="neutral" style={{ marginTop: 4 }}>
-                        {selectedList.items?.length || 0} items
-                        {selectedList.total_cost && ` • ${formatISK(selectedList.total_cost)} total`}
+                        {selectedListData?.items?.length || 0} items
+                        {selectedListData?.total_cost && ` • ${formatISK(selectedListData?.total_cost)} total`}
                       </div>
                     </div>
                     {/* Cargo Summary */}
-                    {cargoSummary && cargoSummary.materials.total_volume_m3 > 0 && (
+                    {cargoSummaryData && cargoSummaryData.materials.total_volume_m3 > 0 && (
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -1184,8 +483,8 @@ export default function ShoppingPlanner() {
                         fontSize: 13
                       }}>
                         <Package size={16} />
-                        <span>Cargo: <strong>{cargoSummary.materials.volume_formatted}</strong></span>
-                        <span className="neutral">({cargoSummary.materials.total_items} items)</span>
+                        <span>Cargo: <strong>{cargoSummaryData.materials.volume_formatted}</strong></span>
+                        <span className="neutral">({cargoSummaryData.materials.total_items} items)</span>
                       </div>
                     )}
                   </div>
@@ -1233,8 +532,8 @@ export default function ShoppingPlanner() {
                     <button
                       className={`btn ${viewMode === 'transport' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setViewMode('transport')}
-                      disabled={!cargoSummary || cargoSummary.materials.total_volume_m3 === 0}
-                      title={!cargoSummary || cargoSummary.materials.total_volume_m3 === 0
+                      disabled={!cargoSummaryData || cargoSummaryData.materials.total_volume_m3 === 0}
+                      title={!cargoSummaryData || cargoSummaryData.materials.total_volume_m3 === 0
                         ? 'Add items to see transport options'
                         : 'Plan transport'}
                     >
@@ -1249,7 +548,9 @@ export default function ShoppingPlanner() {
                       style={{ color: 'var(--accent-red)' }}
                       onClick={() => {
                         if (confirm('Delete this shopping list?')) {
-                          deleteList.mutate(selectedList.id);
+                          if (selectedListData?.id) {
+                            deleteList.mutate(selectedListData.id);
+                          }
                         }
                       }}
                     >
@@ -1260,12 +561,12 @@ export default function ShoppingPlanner() {
               </div>
 
               {/* Products Section - with material calculation */}
-              {selectedList && (
+              {selectedListData && (
                 <div className="card" style={{ marginBottom: 16 }}>
                   <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="card-title">
                       <Package size={18} style={{ marginRight: 8 }} />
-                      Products ({selectedList.products?.length || 0})
+                      Products ({selectedListData?.products?.length || 0})
                     </span>
                     <button
                       className="btn btn-primary"
@@ -1277,7 +578,7 @@ export default function ShoppingPlanner() {
                     </button>
                   </div>
                   <div style={{ padding: 16 }}>
-                    {(!selectedList.products || selectedList.products.length === 0) ? (
+                    {(!selectedListData?.products || selectedListData?.products.length === 0) ? (
                       <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-secondary)' }}>
                         <Package size={32} style={{ opacity: 0.5, marginBottom: 8 }} />
                         <div>No products yet</div>
@@ -1287,11 +588,11 @@ export default function ShoppingPlanner() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                         {/* Calculate/Recalculate Materials buttons */}
                         <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                          {selectedList.products.some(p => !p.materials_calculated) && (
+                          {selectedListData?.products.some(p => !p.materials_calculated) && (
                             <button
                               className="btn btn-primary"
                               onClick={async () => {
-                                for (const product of selectedList.products || []) {
+                                for (const product of selectedListData?.products || []) {
                                   if (!product.materials_calculated) {
                                     calculateMaterials.mutate(product.id);
                                   }
@@ -1303,13 +604,13 @@ export default function ShoppingPlanner() {
                               Calculate Materials
                             </button>
                           )}
-                          {selectedList.products.some(p => p.materials_calculated) && (
+                          {selectedListData?.products.some(p => p.materials_calculated) && (
                             <button
                               className="btn"
                               style={{ background: 'var(--bg-darker)', border: '1px solid var(--border-color)' }}
                               onClick={async () => {
                                 if (confirm('Recalculate all materials? This will update quantities based on current runs/ME settings.')) {
-                                  for (const product of selectedList.products || []) {
+                                  for (const product of selectedListData?.products || []) {
                                     calculateMaterials.mutate(product.id);
                                   }
                                 }
@@ -1321,7 +622,7 @@ export default function ShoppingPlanner() {
                             </button>
                           )}
                         </div>
-                        {selectedList.products.map((product) => (
+                        {selectedListData?.products.map((product) => (
                         <div key={product.id} style={{ borderRadius: 8, overflow: 'hidden' }}>
                           {/* Product Row - Main product (always BUILD) */}
                           <div
@@ -1764,392 +1065,38 @@ export default function ShoppingPlanner() {
               )}
 
                             {viewMode === 'compare' && (
-                              /* Regional Comparison View */
-                              isLoadingComparison ? (
-                                <div className="loading">
-                                  <div className="spinner"></div>
-                                  Loading regional prices...
-                                </div>
-                              ) : !comparison?.items?.length ? (
-                                <div className="card">
-                                  <div className="empty-state">
-                                    <p className="neutral">No items to compare.</p>
-                                  </div>
-                                </div>
-                              ) : (
-                                <>
-                                  {/* Region Totals Summary - Collapsible */}
-                                  <div className="card" style={{ marginBottom: 16 }}>
-                                    <div
-                                      className="card-header"
-                                      style={{ cursor: 'pointer', userSelect: 'none' }}
-                                      onClick={() => setShowRegionTotals(!showRegionTotals)}
-                                    >
-                                      <span className="card-title">
-                                        {showRegionTotals ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                                        <span style={{ marginLeft: 8 }}>Region Totals Summary</span>
-                                      </span>
-                                    </div>
-                                    {showRegionTotals && (
-                                      <div className="stats-grid" style={{ padding: 16 }}>
-                                        {REGION_ORDER.map((region) => {
-                                          const data = comparison.region_totals[region];
-                                          const savings = comparison.optimal_route.savings_vs_single_region[region] || 0;
-                                          const isOptimal = savings === 0 && data?.total === comparison.optimal_route.total_cost;
-                                          return (
-                                            <div
-                                              key={region}
-                                              className={`stat-card ${isOptimal ? 'best' : ''}`}
-                                              style={{
-                                                border: isOptimal ? '1px solid var(--accent-green)' : undefined,
-                                              }}
-                                            >
-                                              <div className="stat-label">
-                                                {data?.display_name || region}
-                                                {data?.jumps !== undefined && (
-                                                  <span className="neutral" style={{ fontWeight: 400, marginLeft: 4 }}>
-                                                    ({data.jumps} jumps)
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <div className="stat-value isk">{formatISK(data?.total || 0)}</div>
-                                              {savings > 0 && (
-                                                <div className="negative" style={{ fontSize: 11 }}>
-                                                  +{formatISK(savings)} vs optimal
-                                                </div>
-                                              )}
-                                              <button
-                                                className="btn btn-secondary"
-                                                style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  applyRegionToAll(region);
-                                                }}
-                                                disabled={updateItemRegion.isPending}
-                                              >
-                                                Apply All
-                                              </button>
-                                            </div>
-                                          );
-                                        })}
-                                        <div className="stat-card" style={{ border: '1px solid var(--accent-blue)' }}>
-                                          <div className="stat-label">Optimal (Multi-Hub)</div>
-                                          <div className="stat-value isk positive">
-                                            {formatISK(comparison.optimal_route.total_cost)}
-                                          </div>
-                                          <button
-                                            className="btn btn-primary"
-                                            style={{ marginTop: 8, padding: '4px 8px', fontSize: 11 }}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              applyOptimalRegions();
-                                            }}
-                                            disabled={updateItemRegion.isPending}
-                                          >
-                                            Apply Optimal
-                                          </button>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {/* Comparison Table */}
-                                  <div className="card">
-                                    <div className="card-header">
-                                      <span className="card-title">
-                                        <BarChart3 size={18} style={{ marginRight: 8 }} />
-                                        Regional Price Comparison
-                                      </span>
-                                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                        {/* Interaction Mode Toggle */}
-                                        <div style={{ display: 'flex', background: 'var(--bg-dark)', borderRadius: 6, padding: 2 }}>
-                                          <button
-                                            className={`btn ${interactionMode === 'select' ? 'btn-primary' : 'btn-secondary'}`}
-                                            style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
-                                            onClick={() => setInteractionMode('select')}
-                                            title="Click cells to select region"
-                                          >
-                                            <MousePointer size={14} /> Select
-                                          </button>
-                                          <button
-                                            className={`btn ${interactionMode === 'orders' ? 'btn-primary' : 'btn-secondary'}`}
-                                            style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
-                                            onClick={() => setInteractionMode('orders')}
-                                            title="Click cells to view orders"
-                                          >
-                                            <Eye size={14} /> Orders
-                                          </button>
-                                        </div>
-                                        <button
-                                          className="btn btn-secondary"
-                                          style={{ padding: '4px 8px' }}
-                                          onClick={() => refetchComparison()}
-                                        >
-                                          <RefreshCw size={14} />
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div className="table-container">
-                                      <table>
-                                        <thead>
-                                          <tr>
-                                            <th
-                                              style={{ cursor: 'pointer', userSelect: 'none' }}
-                                              onClick={() => setCompareSort('name')}
-                                              title="Sort by item name"
-                                            >
-                                              Item {compareSort === 'name' && <ArrowUpDown size={12} style={{ marginLeft: 4, opacity: 0.7 }} />}
-                                            </th>
-                                            <th
-                                              style={{ cursor: 'pointer', userSelect: 'none' }}
-                                              onClick={() => setCompareSort('quantity')}
-                                              title="Sort by quantity (descending)"
-                                            >
-                                              Qty {compareSort === 'quantity' && <ArrowUpDown size={12} style={{ marginLeft: 4, opacity: 0.7 }} />}
-                                            </th>
-                                            {REGION_ORDER.map((region) => (
-                                              <th key={region}>{REGION_NAMES[region]}</th>
-                                            ))}
-                                            <th>Selected</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {sortedComparisonItems.map((item) => (
-                                            <tr key={item.id}>
-                                              <td>{item.item_name}</td>
-                                              <td>{formatQuantity(item.quantity)}</td>
-                                              {REGION_ORDER.map((region) => {
-                                                const data = item.regions[region];
-                                                const isCheapest = region === item.cheapest_region;
-                                                const isSelected = region === item.current_region;
-                                                return (
-                                                  <td
-                                                    key={region}
-                                                    className={`isk ${isCheapest ? 'positive' : ''}`}
-                                                    data-item-id={item.id}
-                                                    data-type-id={item.type_id}
-                                                    data-item-name={item.item_name}
-                                                    data-region={region}
-                                                    data-price={data?.unit_price || ''}
-                                                    style={{
-                                                      cursor: data?.unit_price ? 'pointer' : 'default',
-                                                      background: isSelected ? 'var(--bg-hover)' : undefined,
-                                                      borderLeft: isSelected ? '2px solid var(--accent-blue)' : undefined,
-                                                    }}
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      e.preventDefault();
-                                                      // Use data attributes to ensure we get the correct item
-                                                      // even if React re-renders during the event
-                                                      const target = e.currentTarget;
-                                                      const itemId = Number(target.dataset.itemId);
-                                                      const typeId = Number(target.dataset.typeId);
-                                                      const itemName = target.dataset.itemName || '';
-                                                      const clickedRegion = target.dataset.region || '';
-                                                      const price = target.dataset.price ? Number(target.dataset.price) : undefined;
-
-                                                      if (!price) return;
-                                                      if (updateItemRegion.isPending) return;
-
-                                                      if (interactionMode === 'select') {
-                                                        updateItemRegion.mutate({
-                                                          itemId,
-                                                          region: clickedRegion,
-                                                          price
-                                                        });
-                                                      } else {
-                                                        setOrderPopup({ typeId, itemName, region: clickedRegion });
-                                                      }
-                                                    }}
-                                                    title={interactionMode === 'select'
-                                                      ? (data?.has_stock ? 'Click to select this region' : 'Low stock - Click to select anyway')
-                                                      : (data?.has_stock ? 'Click to view orders' : 'Low stock - Click to view orders')}
-                                                  >
-                                                    {data?.total ? (
-                                                      <>
-                                                        <div>{formatISK(data.total)}</div>
-                                                        <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
-                                                          @{formatISK(data.unit_price || 0)}/u
-                                                        </div>
-                                                        <div
-                                                          className={`neutral ${!data.has_stock ? 'negative' : ''}`}
-                                                          style={{ fontSize: 10 }}
-                                                        >
-                                                          {formatQuantity(data.volume)} avail
-                                                        </div>
-                                                      </>
-                                                    ) : (
-                                                      <span className="neutral">-</span>
-                                                    )}
-                                                  </td>
-                                                );
-                                              })}
-                                              <td>
-                                                {item.current_region ? (
-                                                  <span className="badge badge-blue">
-                                                    {REGION_NAMES[item.current_region] || item.current_region}
-                                                  </span>
-                                                ) : (
-                                                  <span className="neutral">-</span>
-                                                )}
-                                              </td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  </div>
-
-                                  {/* Current Shopping Route - based on selected regions */}
-                                  <ShoppingRouteDisplay
-                                    items={comparison.items}
-                                    homeSystem={comparison.home_system}
-                                  />
-                                </>
-                              )
+                              <ComparisonView
+                                comparison={comparisonData}
+                                isLoading={isLoadingComparison}
+                                onRefetch={() => refetchComparison()}
+                                onApplyOptimalRegions={applyOptimalRegions}
+                                onApplyRegionToAll={applyRegionToAll}
+                                onSelectRegion={(itemId, region, price) => updateItemRegion.mutate({ itemId, region, price })}
+                                onViewOrders={(typeId, itemName, region) => setOrderPopup({ typeId, itemName, region })}
+                                isUpdating={updateItemRegion.isPending}
+                              />
                             )}
 
 
 
               {viewMode === 'transport' && (
-                /* Transport Options View */
-                <div className="card">
-                  <div className="card-header">
-                    <span className="card-title">
-                      <Truck size={18} style={{ marginRight: 8 }} />
-                      Transport Options
-                    </span>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                        <input
-                          type="checkbox"
-                          checked={safeRoutesOnly}
-                          onChange={(e) => setSafeRoutesOnly(e.target.checked)}
-                        />
-                        Safe routes only
-                      </label>
-                    </div>
-                  </div>
-
-                  {isLoadingTransport ? (
-                    <div className="loading">
-                      <div className="spinner"></div>
-                      Calculating transport options...
-                    </div>
-                  ) : transportOptions?.options.length === 0 ? (
-                    <div style={{ padding: 20, textAlign: 'center' }}>
-                      <p className="neutral">{transportOptions?.message || 'No transport options available'}</p>
-                      <p style={{ fontSize: 12, marginTop: 8 }}>
-                        Run the capability sync to update available ships.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Summary Header */}
-                      <div style={{
-                        padding: '12px 16px',
-                        background: 'var(--bg-dark)',
-                        borderBottom: '1px solid var(--border-color)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <div>
-                          <strong>{transportOptions?.volume_formatted}</strong>
-                          <span className="neutral" style={{ marginLeft: 8 }}>
-                            {transportOptions?.route_summary}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          {['fewest_trips', 'fastest', 'lowest_risk'].map(filter => (
-                            <button
-                              key={filter}
-                              className={`btn btn-small ${transportFilter === filter ? 'btn-primary' : 'btn-secondary'}`}
-                              onClick={() => setTransportFilter(transportFilter === filter ? '' : filter)}
-                              style={{ padding: '4px 8px', fontSize: 11 }}
-                            >
-                              {filter === 'fewest_trips' ? 'Fewest Trips' :
-                               filter === 'fastest' ? 'Fastest' : 'Lowest Risk'}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Options List */}
-                      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {transportOptions?.options.map((option, idx) => (
-                            <div
-                              key={option.id}
-                              style={{
-                                padding: 16,
-                                background: 'var(--bg-dark)',
-                                borderRadius: 8,
-                                border: idx === 0 ? '2px solid var(--accent-blue)' : '1px solid var(--border-color)'
-                              }}
-                            >
-                              {idx === 0 && (
-                                <span className="badge badge-blue" style={{ marginBottom: 8, display: 'inline-block' }}>
-                                  RECOMMENDED
-                                </span>
-                              )}
-
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <div>
-                                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                                    {option.characters[0]?.name} → {option.characters[0]?.ship_name}
-                                  </div>
-                                  <div className="neutral" style={{ fontSize: 12 }}>
-                                    {option.characters[0]?.ship_group} • {option.characters[0]?.ship_location}
-                                  </div>
-                                </div>
-
-                                <div style={{ textAlign: 'right' }}>
-                                  <span className={option.risk_score === 0 ? 'positive' : option.risk_score <= 2 ? 'neutral' : 'negative'}>
-                                    {option.risk_score === 0 ? '✅' : '⚠️'} {option.risk_label}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(4, 1fr)',
-                                gap: 16,
-                                marginTop: 12,
-                                paddingTop: 12,
-                                borderTop: '1px solid var(--border-color)'
-                              }}>
-                                <div>
-                                  <div className="neutral" style={{ fontSize: 11 }}>Trips</div>
-                                  <div style={{ fontWeight: 600 }}>{option.trips}</div>
-                                </div>
-                                <div>
-                                  <div className="neutral" style={{ fontSize: 11 }}>Time</div>
-                                  <div style={{ fontWeight: 600 }}>{option.flight_time_formatted}</div>
-                                </div>
-                                <div>
-                                  <div className="neutral" style={{ fontSize: 11 }}>Capacity Used</div>
-                                  <div style={{ fontWeight: 600 }}>{option.capacity_used_pct}%</div>
-                                </div>
-                                <div>
-                                  <div className="neutral" style={{ fontSize: 11 }}>Ship Capacity</div>
-                                  <div style={{ fontWeight: 600 }}>{(option.capacity_m3 / 1000).toFixed(0)}K m³</div>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    </>
-                  )}
-                </div>
+                <TransportView
+                  transportOptions={transportOptionsData}
+                  isLoading={isLoadingTransport}
+                  safeRoutesOnly={safeRoutesOnly}
+                  setSafeRoutesOnly={setSafeRoutesOnly}
+                  transportFilter={transportFilter}
+                  setTransportFilter={setTransportFilter}
+                />
               )}
             </>
           )}
         </div>
       </div>
 
-      {/* Order Details Popup */}
+      {/* Order Details Modal */}
       {orderPopup && (
-        <OrderDetailsPopup
+        <OrderDetailsModal
           typeId={orderPopup.typeId}
           itemName={orderPopup.itemName}
           region={orderPopup.region}
