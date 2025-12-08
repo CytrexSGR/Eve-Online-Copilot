@@ -46,3 +46,35 @@ Thumbs.db
 *.tmp
 *.temp
 .cache/
+
+# Runtime data
+data/*.json
+data/cache/*
+!data/.gitkeep
+!data/cache/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+config.py
