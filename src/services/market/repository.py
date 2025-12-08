@@ -157,7 +157,7 @@ class MarketRepository:
         Get multiple prices at once using ANY clause.
 
         Args:
-            type_ids: List of type IDs to fetch
+            type_ids: List of type IDs to fetch (empty list fetches all)
 
         Returns:
             List of price dicts (may be less than requested if some don't exist)
@@ -165,20 +165,27 @@ class MarketRepository:
         Raises:
             EVECopilotError: If database operation fails
         """
-        if not type_ids:
-            return []
-
         try:
             with self.db.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute(
-                        """
-                        SELECT *
-                        FROM market_prices_cache
-                        WHERE type_id = ANY(%s)
-                        """,
-                        (list(type_ids),)
-                    )
+                    # If empty list, fetch all prices
+                    if not type_ids:
+                        cur.execute(
+                            """
+                            SELECT *
+                            FROM market_prices_cache
+                            WHERE adjusted_price > 0
+                            """
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            SELECT *
+                            FROM market_prices_cache
+                            WHERE type_id = ANY(%s)
+                            """,
+                            (list(type_ids),)
+                        )
                     return [dict(row) for row in cur.fetchall()]
         except EVECopilotError:
             raise
