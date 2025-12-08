@@ -136,3 +136,87 @@ def test_add_item_to_nonexistent_list(mock_repository):
 
     with pytest.raises(NotFoundError):
         service.add_item(list_id=999, item_data=item_data)
+
+
+def test_list_by_character(mock_repository):
+    """Test listing character shopping lists."""
+    from src.services.shopping.service import ShoppingService
+    from src.services.shopping.models import ShoppingList
+
+    mock_repository.list_by_character.return_value = [
+        {
+            "id": 1,
+            "name": "List 1",
+            "character_id": 123,
+            "corporation_id": None,
+            "status": "active",
+            "notes": None,
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
+            "item_count": 5,
+            "purchased_count": 2
+        },
+        {
+            "id": 2,
+            "name": "List 2",
+            "character_id": 123,
+            "corporation_id": None,
+            "status": "active",
+            "notes": None,
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
+            "item_count": 3,
+            "purchased_count": 0
+        }
+    ]
+
+    service = ShoppingService(mock_repository, Mock())
+    results = service.list_by_character(character_id=123)
+
+    assert len(results) == 2
+    assert all(isinstance(r, ShoppingList) for r in results)
+    assert results[0].id == 1
+    mock_repository.list_by_character.assert_called_once_with(123, None)
+
+
+def test_update_list(mock_repository):
+    """Test updating shopping list."""
+    from src.services.shopping.service import ShoppingService
+    from src.services.shopping.models import ShoppingList, ShoppingListUpdate
+
+    mock_repository.get_by_id.return_value = {"id": 1, "name": "Test"}
+    mock_repository.update.return_value = {
+        "id": 1,
+        "name": "Updated",
+        "character_id": 123,
+        "corporation_id": None,
+        "status": "active",
+        "notes": "Updated notes",
+        "created_at": datetime.now(),
+        "updated_at": datetime.now(),
+        "item_count": 0,
+        "purchased_count": 0
+    }
+
+    service = ShoppingService(mock_repository, Mock())
+    update = ShoppingListUpdate(name="Updated", notes="Updated notes")
+    result = service.update_list(1, update)
+
+    assert isinstance(result, ShoppingList)
+    assert result.name == "Updated"
+    mock_repository.update.assert_called_once()
+
+
+def test_delete_list(mock_repository):
+    """Test deleting shopping list."""
+    from src.services.shopping.service import ShoppingService
+
+    mock_repository.get_by_id.return_value = {"id": 1}
+    mock_repository.delete.return_value = True
+
+    service = ShoppingService(mock_repository, Mock())
+    result = service.delete_list(1)
+
+    assert result is True
+    mock_repository.get_by_id.assert_called_once_with(1)
+    mock_repository.delete.assert_called_once_with(1)

@@ -1,6 +1,6 @@
 """Shopping service - business logic layer."""
 
-from typing import List, Optional, Any
+from typing import List, Optional, Protocol, TYPE_CHECKING
 
 from src.services.shopping.repository import ShoppingRepository
 from src.services.shopping.models import (
@@ -13,13 +13,20 @@ from src.services.shopping.models import (
 from src.core.exceptions import NotFoundError
 
 
+class MarketServiceProtocol(Protocol):
+    """Protocol for market service dependency."""
+    def compare_prices(self, type_id: int, regions: list[int]) -> dict:
+        """Compare prices across regions."""
+        ...
+
+
 class ShoppingService:
     """Business logic for shopping lists."""
 
     def __init__(
         self,
         repository: ShoppingRepository,
-        market_service: Any  # Will be typed properly later
+        market_service: Optional[MarketServiceProtocol]
     ):
         """Initialize service with dependencies."""
         self.repo = repository
