@@ -12,6 +12,7 @@ from .models import (
     QuickProfitCheck,
 )
 from .repository import ProductionRepository
+from .service import ProductionService
 
 __all__ = [
     "MaterialItem",
@@ -24,4 +25,5 @@ __all__ = [
     "ProductionSimulation",
     "QuickProfitCheck",
     "ProductionRepository",
+    "ProductionService",
 ]
