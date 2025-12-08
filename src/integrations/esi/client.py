@@ -105,3 +105,68 @@ class ESIClient:
                 status_code=0,
                 message=f"Unexpected error: {str(e)}"
             )
+
+    def get(self, endpoint: str, timeout: int = 30) -> List[Dict[str, Any]]:
+        """
+        Generic GET request to ESI API.
+
+        Args:
+            endpoint: API endpoint path (e.g., "/sovereignty/campaigns/")
+            timeout: Request timeout in seconds (default: 30)
+
+        Returns:
+            List[Dict[str, Any]]: JSON response from ESI
+
+        Raises:
+            ExternalAPIError: If the API request fails
+
+        Example:
+            >>> client = ESIClient()
+            >>> campaigns = client.get("/sovereignty/campaigns/")
+            >>> print(f"Fetched {len(campaigns)} campaigns")
+        """
+        url = f"{self.base_url}{endpoint}"
+
+        try:
+            response = self.session.get(
+                url,
+                params={"datasource": "tranquility"},
+                timeout=timeout
+            )
+
+            if response.status_code != 200:
+                raise ExternalAPIError(
+                    service_name="ESI",
+                    status_code=response.status_code,
+                    message=f"Failed to fetch {endpoint}: {response.text}"
+                )
+
+            try:
+                return response.json()
+            except ValueError as e:
+                raise ExternalAPIError(
+                    service_name="ESI",
+                    status_code=response.status_code,
+                    message=f"Invalid JSON response: {str(e)}"
+                )
+
+        except Timeout as e:
+            raise ExternalAPIError(
+                service_name="ESI",
+                status_code=0,
+                message=f"Request timeout: {str(e)}"
+            )
+        except RequestException as e:
+            raise ExternalAPIError(
+                service_name="ESI",
+                status_code=0,
+                message=f"Request failed: {str(e)}"
+            )
+        except ExternalAPIError:
+            raise
+        except Exception as e:
+            raise ExternalAPIError(
+                service_name="ESI",
+                status_code=0,
+                message=f"Unexpected error: {str(e)}"
+            )

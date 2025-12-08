@@ -42,3 +42,15 @@ class AuthenticationError(EVECopilotError):
 class AuthorizationError(EVECopilotError):
     """Raised when user is not authorized to access resource."""
     pass
+
+
+class RepositoryError(EVECopilotError):
+    """Raised when database repository operation fails."""
+    pass
+
+
+class ESIError(ExternalAPIError):
+    """Raised when ESI API operation fails."""
+
+    def __init__(self, message: str, status_code: int = 0):
+        super().__init__(service_name="ESI", status_code=status_code, message=message)
