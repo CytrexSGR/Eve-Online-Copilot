@@ -317,3 +317,255 @@ class WarRoomRepository:
 
         except Exception as e:
             raise RepositoryError(f"Failed to get FW hotspots: {str(e)}") from e
+
+    # ==================== War Analyzer Methods ====================
+
+    def get_demand_analysis(self, region_id: int, days: int) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get demand analysis data (ships and items lost with market stock).
+
+        Args:
+            region_id: Region ID to analyze
+            days: Number of days to look back
+
+        Returns:
+            Dictionary with 'ships' and 'items' lists
+
+        Raises:
+            RepositoryError: If database operation fails
+        """
+        try:
+            with self.db.connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    # Get top ships lost
+                    cur.execute(
+                        """
+                        SELECT
+                            csl.ship_type_id as type_id,
+                            it."typeName" as name,
+                            SUM(csl.quantity) as quantity,
+                            COALESCE(mp.sell_volume, 0) as market_stock
+                        FROM combat_ship_losses csl
+                        JOIN "invTypes" it ON csl.ship_type_id = it."typeID"
+                        LEFT JOIN market_prices mp ON mp.type_id = csl.ship_type_id
+                            AND mp.region_id = %s
+                        WHERE csl.region_id = %s
+                        AND csl.date >= CURRENT_DATE - %s
+                        GROUP BY csl.ship_type_id, it."typeName", mp.sell_volume
+                        ORDER BY quantity DESC
+                        LIMIT 20
+                        """,
+                        (region_id, region_id, days)
+                    )
+                    ships = [dict(row) for row in cur.fetchall()]
+
+                    # Get top items lost
+                    cur.execute(
+                        """
+                        SELECT
+                            cil.item_type_id as type_id,
+                            it."typeName" as name,
+                            SUM(cil.quantity_destroyed) as quantity,
+                            COALESCE(mp.sell_volume, 0) as market_stock
+                        FROM combat_item_losses cil
+                        JOIN "invTypes" it ON cil.item_type_id = it."typeID"
+                        LEFT JOIN market_prices mp ON mp.type_id = cil.item_type_id
+                            AND mp.region_id = %s
+                        WHERE cil.region_id = %s
+                        AND cil.date >= CURRENT_DATE - %s
+                        GROUP BY cil.item_type_id, it."typeName", mp.sell_volume
+                        ORDER BY quantity DESC
+                        LIMIT 20
+                        """,
+                        (region_id, region_id, days)
+                    )
+                    items = [dict(row) for row in cur.fetchall()]
+
+                    return {"ships": ships, "items": items}
+
+        except Exception as e:
+            raise RepositoryError(f"Failed to get demand analysis: {str(e)}") from e
+
+    def get_heatmap_data(self, days: int, min_kills: int) -> List[Dict[str, Any]]:
+        """
+        Get kill heatmap data with system coordinates.
+
+        Args:
+            days: Number of days to look back
+            min_kills: Minimum kills to include system
+
+        Returns:
+            List of system dictionaries with coordinates and kills
+
+        Raises:
+            RepositoryError: If database operation fails
+        """
+        try:
+            with self.db.connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        """
+                        SELECT
+                            csl.solar_system_id as system_id,
+                            srm.solar_system_name as name,
+                            srm.region_id,
+                            srm.region_name as region,
+                            srm.security_status as security,
+                            s.x / 1e16 as x,
+                            s.z / 1e16 as z,
+                            SUM(csl.quantity) as kills
+                        FROM combat_ship_losses csl
+                        JOIN system_region_map srm ON csl.solar_system_id = srm.solar_system_id
+                        JOIN "mapSolarSystems" s ON csl.solar_system_id = s."solarSystemID"
+                        WHERE csl.date >= CURRENT_DATE - %s
+                        GROUP BY csl.solar_system_id, srm.solar_system_name,
+                                 srm.region_id, srm.region_name, srm.security_status,
+                                 s.x, s.z
+                        HAVING SUM(csl.quantity) >= %s
+                        ORDER BY kills DESC
+                        """,
+                        (days, min_kills)
+                    )
+
+                    results = cur.fetchall()
+                    return [dict(row) for row in results]
+
+        except Exception as e:
+            raise RepositoryError(f"Failed to get heatmap data: {str(e)}") from e
+
+    def get_doctrine_losses(self, region_id: int, days: int, min_size: int) -> List[Dict[str, Any]]:
+        """
+        Get bulk ship losses (potential fleet doctrines).
+
+        Args:
+            region_id: Region ID to analyze
+            days: Number of days to look back
+            min_size: Minimum fleet size to detect
+
+        Returns:
+            List of doctrine detection dictionaries
+
+        Raises:
+            RepositoryError: If database operation fails
+        """
+        try:
+            with self.db.connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        """
+                        SELECT
+                            csl.date,
+                            csl.solar_system_id as system_id,
+                            srm.solar_system_name as system_name,
+                            csl.ship_type_id,
+                            it."typeName" as ship_name,
+                            csl.quantity as fleet_size
+                        FROM combat_ship_losses csl
+                        JOIN system_region_map srm ON csl.solar_system_id = srm.solar_system_id
+                        JOIN "invTypes" it ON csl.ship_type_id = it."typeID"
+                        WHERE csl.region_id = %s
+                        AND csl.date >= CURRENT_DATE - %s
+                        AND csl.quantity >= %s
+                        ORDER BY csl.quantity DESC
+                        LIMIT 20
+                        """,
+                        (region_id, days, min_size)
+                    )
+
+                    results = cur.fetchall()
+                    return [dict(row) for row in results]
+
+        except Exception as e:
+            raise RepositoryError(f"Failed to get doctrine losses: {str(e)}") from e
+
+    def get_system_kills(self, system_id: int, days: int) -> int:
+        """
+        Get total kills in a system over specified days.
+
+        Args:
+            system_id: Solar system ID
+            days: Number of days to look back
+
+        Returns:
+            Total number of kills
+
+        Raises:
+            RepositoryError: If database operation fails
+        """
+        try:
+            with self.db.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT COALESCE(SUM(quantity), 0)
+                        FROM combat_ship_losses
+                        WHERE solar_system_id = %s
+                        AND date >= CURRENT_DATE - %s
+                        """,
+                        (system_id, days)
+                    )
+
+                    result = cur.fetchone()
+                    return int(result[0]) if result else 0
+
+        except Exception as e:
+            raise RepositoryError(f"Failed to get system kills: {str(e)}") from e
+
+    def get_conflict_intel(self, alliance_id: Optional[int], days: int) -> List[Dict[str, Any]]:
+        """
+        Get alliance conflict intelligence.
+
+        Args:
+            alliance_id: Optional alliance ID to filter, None for all
+            days: Number of days to look back
+
+        Returns:
+            List of conflict intel dictionaries
+
+        Raises:
+            RepositoryError: If database operation fails
+        """
+        try:
+            with self.db.connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    if alliance_id is not None:
+                        # Get specific alliance conflicts
+                        cur.execute(
+                            """
+                            SELECT
+                                alliance_a as alliance_id,
+                                alliance_a as alliance_name,
+                                ARRAY_AGG(DISTINCT alliance_b) as enemy_alliances,
+                                SUM(kill_count) as total_losses,
+                                COUNT(DISTINCT region_id) as active_fronts
+                            FROM alliance_conflicts
+                            WHERE alliance_a = %s
+                            AND date >= CURRENT_DATE - %s
+                            GROUP BY alliance_a
+                            """,
+                            (alliance_id, days)
+                        )
+                    else:
+                        # Get all alliance conflicts
+                        cur.execute(
+                            """
+                            SELECT
+                                alliance_a as alliance_id,
+                                alliance_a as alliance_name,
+                                ARRAY_AGG(DISTINCT alliance_b) as enemy_alliances,
+                                SUM(kill_count) as total_losses,
+                                COUNT(DISTINCT region_id) as active_fronts
+                            FROM alliance_conflicts
+                            WHERE date >= CURRENT_DATE - %s
+                            GROUP BY alliance_a
+                            ORDER BY total_losses DESC
+                            LIMIT 20
+                            """,
+                            (days,)
+                        )
+
+                    results = cur.fetchall()
+                    return [dict(row) for row in results]
+
+        except Exception as e:
+            raise RepositoryError(f"Failed to get conflict intel: {str(e)}") from e
