@@ -13,8 +13,8 @@ class OAuthToken(BaseModel):
     access_token: str = Field(..., description="OAuth access token")
     refresh_token: str = Field(..., description="OAuth refresh token")
     expires_at: datetime = Field(..., description="Token expiration timestamp")
-    character_id: int = Field(..., description="EVE character ID")
-    character_name: str = Field(..., description="EVE character name")
+    character_id: Optional[int] = Field(None, description="EVE character ID")
+    character_name: Optional[str] = Field(None, description="EVE character name")
     scopes: List[str] = Field(default_factory=list, description="Granted ESI scopes")
 
     def is_expired(self) -> bool:
@@ -64,6 +64,24 @@ class CharacterAuth(BaseModel):
 
 
 # Legacy models for backward compatibility
+class CharacterAuthLegacy(BaseModel):
+    """Legacy character authentication model for compatibility."""
+    character_id: int
+    character_name: str
+    access_token: str
+    refresh_token: str
+    expires_at: float
+    scopes: List[str]
+    updated_at: datetime
+
+
+class OAuthTokenResponse(BaseModel):
+    """Simple OAuth token response for refresh operations."""
+    access_token: str
+    refresh_token: str
+    expires_at: float
+
+
 class CharacterAuthSummary(BaseModel):
     """Summary view of character authentication (legacy)."""
     character_id: int
@@ -92,7 +110,7 @@ class TokenVerifyResponse(BaseModel):
     """Token verification response from ESI."""
     CharacterID: int
     CharacterName: str
-    ExpiresOn: str
+    ExpiresOn: Optional[str] = None
     Scopes: str = ""
     TokenType: str = "Character"
     CharacterOwnerHash: str = ""

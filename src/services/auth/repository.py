@@ -297,3 +297,87 @@ class AuthRepository:
         """Save auth state to JSON file."""
         with open(self.state_file, 'w') as f:
             json.dump(states, f, indent=2)
+
+    # Adapter methods for Protocol compatibility
+
+    def save_pkce_state(self, state: str, state_data: Dict) -> None:
+        """Save PKCE state for OAuth2 flow (Protocol adapter)."""
+        auth_state = AuthState(
+            state=state,
+            code_verifier=state_data["code_verifier"],
+            created_at=datetime.fromtimestamp(state_data["created_at"]),
+            expires_at=datetime.fromtimestamp(state_data["expires_at"])
+        )
+        self.save_state(state, auth_state)
+
+    def get_pkce_state(self, state: str) -> Optional[Dict]:
+        """Retrieve PKCE state by state parameter (Protocol adapter)."""
+        auth_state = self.get_state(state)
+        if auth_state is None:
+            return None
+
+        return {
+            "code_verifier": auth_state.code_verifier,
+            "created_at": auth_state.created_at.timestamp(),
+            "expires_at": auth_state.expires_at.timestamp()
+        }
+
+    def delete_pkce_state(self, state: str) -> bool:
+        """Delete PKCE state after use (Protocol adapter)."""
+        return self.delete_state(state)
+
+    def save_character_auth(self, character_id: int, auth_data: Dict) -> None:
+        """Save character authentication tokens (Protocol adapter)."""
+        # Convert timestamp to datetime if needed
+        if isinstance(auth_data["expires_at"], (int, float)):
+            expires_at = datetime.fromtimestamp(auth_data["expires_at"])
+        else:
+            expires_at = datetime.fromisoformat(auth_data["expires_at"])
+
+        token = OAuthToken(
+            access_token=auth_data["access_token"],
+            refresh_token=auth_data["refresh_token"],
+            expires_at=expires_at,
+            character_id=character_id,
+            character_name=auth_data["character_name"],
+            scopes=auth_data.get("scopes", [])
+        )
+        self.save_token(character_id, token)
+
+    def get_character_auth(self, character_id: int) -> Optional[Dict]:
+        """Get character authentication by character ID (Protocol adapter)."""
+        token = self.get_token(character_id)
+        if token is None:
+            return None
+
+        return {
+            "character_id": token.character_id,
+            "character_name": token.character_name,
+            "access_token": token.access_token,
+            "refresh_token": token.refresh_token,
+            "expires_at": token.expires_at.timestamp(),
+            "scopes": token.scopes,
+            "updated_at": datetime.now().isoformat()
+        }
+
+    def get_all_character_auths(self) -> List[Dict]:
+        """Get all stored character authentications (Protocol adapter)."""
+        characters = self.list_tokens()
+        results = []
+
+        for char_auth in characters:
+            results.append({
+                "character_id": char_auth.character_id,
+                "character_name": char_auth.character_name,
+                "access_token": char_auth.token.access_token,
+                "refresh_token": char_auth.token.refresh_token,
+                "expires_at": char_auth.token.expires_at.timestamp(),
+                "scopes": char_auth.token.scopes,
+                "updated_at": char_auth.authenticated_at.isoformat()
+            })
+
+        return results
+
+    def delete_character_auth(self, character_id: int) -> bool:
+        """Delete character authentication (Protocol adapter)."""
+        return self.delete_token(character_id)
