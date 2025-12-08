@@ -97,7 +97,7 @@ class WarRoomRepository:
             RepositoryError: If database operation fails
         """
         try:
-            with self.db.connection() as conn:
+            with self.db.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     if region_id is not None:
                         # Filter by region using system_region_map
@@ -241,7 +241,7 @@ class WarRoomRepository:
             RepositoryError: If database operation fails
         """
         try:
-            with self.db.connection() as conn:
+            with self.db.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     if contested_only:
                         cur.execute(
@@ -287,7 +287,7 @@ class WarRoomRepository:
             RepositoryError: If database operation fails
         """
         try:
-            with self.db.connection() as conn:
+            with self.db.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute(
                         """
@@ -335,7 +335,7 @@ class WarRoomRepository:
             RepositoryError: If database operation fails
         """
         try:
-            with self.db.connection() as conn:
+            with self.db.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     # Get top ships lost
                     cur.execute(
@@ -401,7 +401,7 @@ class WarRoomRepository:
             RepositoryError: If database operation fails
         """
         try:
-            with self.db.connection() as conn:
+            with self.db.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute(
                         """
@@ -449,7 +449,7 @@ class WarRoomRepository:
             RepositoryError: If database operation fails
         """
         try:
-            with self.db.connection() as conn:
+            with self.db.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute(
                         """
@@ -493,7 +493,7 @@ class WarRoomRepository:
             RepositoryError: If database operation fails
         """
         try:
-            with self.db.connection() as conn:
+            with self.db.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """
@@ -526,7 +526,7 @@ class WarRoomRepository:
             RepositoryError: If database operation fails
         """
         try:
-            with self.db.connection() as conn:
+            with self.db.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     if alliance_id is not None:
                         # Get specific alliance conflicts
