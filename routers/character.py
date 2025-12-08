@@ -2,114 +2,239 @@
 Character router - Character and Corporation data endpoints.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional
 
-from character import character_api
+from src.core.config import get_settings
+from src.core.database import DatabasePool
+from src.core.exceptions import NotFoundError, ExternalAPIError, AuthenticationError, EVECopilotError
+from src.services.character.service import CharacterService
+from src.services.auth.service import AuthService
+from src.services.auth.repository import AuthRepository
+from src.integrations.esi.client import ESIClient
 
 router = APIRouter(prefix="/api/character", tags=["Character"])
 
 
+def get_character_service() -> CharacterService:
+    """Dependency injection for CharacterService."""
+    settings = get_settings()
+    db = DatabasePool(settings)
+    esi_client = ESIClient(settings)
+
+    # Initialize AuthService for token management
+    auth_repository = AuthRepository()
+    auth_service = AuthService(auth_repository, esi_client, settings)
+
+    return CharacterService(esi_client, auth_service, db)
+
+
 @router.get("/{character_id}/wallet")
-async def character_wallet(character_id: int):
+async def character_wallet(
+    character_id: int,
+    service: CharacterService = Depends(get_character_service)
+):
     """Get character's wallet balance"""
-    result = character_api.get_wallet_balance(character_id)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    try:
+        result = service.get_wallet_balance(character_id)
+        return result.model_dump()
+    except AuthenticationError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ExternalAPIError as e:
+        raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{character_id}/assets")
 async def character_assets(
     character_id: int,
-    location_id: Optional[int] = Query(None)
+    location_id: Optional[int] = Query(None),
+    service: CharacterService = Depends(get_character_service)
 ):
     """Get character's assets"""
-    result = character_api.get_assets(character_id, location_id)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    try:
+        result = service.get_assets(character_id, location_id)
+        return result.model_dump()
+    except AuthenticationError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ExternalAPIError as e:
+        raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{character_id}/skills")
-async def character_skills(character_id: int):
+async def character_skills(
+    character_id: int,
+    service: CharacterService = Depends(get_character_service)
+):
     """Get character's skills"""
-    result = character_api.get_skills(character_id)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    try:
+        result = service.get_skills(character_id)
+        return result.model_dump()
+    except AuthenticationError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ExternalAPIError as e:
+        raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{character_id}/skillqueue")
-async def character_skillqueue(character_id: int):
+async def character_skillqueue(
+    character_id: int,
+    service: CharacterService = Depends(get_character_service)
+):
     """Get character's skill queue"""
-    result = character_api.get_skill_queue(character_id)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    try:
+        result = service.get_skill_queue(character_id)
+        return result.model_dump()
+    except AuthenticationError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ExternalAPIError as e:
+        raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{character_id}/orders")
-async def character_orders(character_id: int):
+async def character_orders(
+    character_id: int,
+    service: CharacterService = Depends(get_character_service)
+):
     """Get character's active market orders"""
-    result = character_api.get_market_orders(character_id)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    try:
+        result = service.get_market_orders(character_id)
+        return result.model_dump()
+    except AuthenticationError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ExternalAPIError as e:
+        raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{character_id}/industry")
-async def character_industry(character_id: int, include_completed: bool = Query(False)):
+async def character_industry(
+    character_id: int,
+    include_completed: bool = Query(False),
+    service: CharacterService = Depends(get_character_service)
+):
     """Get character's industry jobs"""
-    result = character_api.get_industry_jobs(character_id, include_completed)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    try:
+        result = service.get_industry_jobs(character_id, include_completed)
+        return result.model_dump()
+    except AuthenticationError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ExternalAPIError as e:
+        raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{character_id}/blueprints")
-async def character_blueprints(character_id: int):
+async def character_blueprints(
+    character_id: int,
+    service: CharacterService = Depends(get_character_service)
+):
     """Get character's blueprints"""
-    result = character_api.get_blueprints(character_id)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    try:
+        result = service.get_blueprints(character_id)
+        return result.model_dump()
+    except AuthenticationError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ExternalAPIError as e:
+        raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{character_id}/info")
-async def character_info(character_id: int):
+async def character_info(
+    character_id: int,
+    service: CharacterService = Depends(get_character_service)
+):
     """Get public character information"""
-    result = character_api.get_character_info(character_id)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    try:
+        result = service.get_character_info(character_id)
+        return result.model_dump()
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ExternalAPIError as e:
+        raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{character_id}/corporation/wallet")
-async def corporation_wallet(character_id: int):
+async def corporation_wallet(
+    character_id: int,
+    service: CharacterService = Depends(get_character_service)
+):
     """Get corporation wallet balances"""
-    result = character_api.get_corporation_wallets(character_id)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    try:
+        result = service.get_corporation_wallets(character_id)
+        return result.model_dump()
+    except AuthenticationError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ExternalAPIError as e:
+        raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{character_id}/corporation/info")
-async def corporation_info(character_id: int):
+async def corporation_info(
+    character_id: int,
+    service: CharacterService = Depends(get_character_service)
+):
     """Get corporation info for a character"""
-    corp_id = character_api.get_corporation_id(character_id)
-    if not corp_id:
-        raise HTTPException(status_code=404, detail="Corporation not found")
-    result = character_api.get_corporation_info(corp_id)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    try:
+        corp_id = service.get_corporation_id(character_id)
+        if not corp_id:
+            raise HTTPException(status_code=404, detail="Corporation not found")
+        result = service.get_corporation_info(corp_id)
+        return result.model_dump()
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ExternalAPIError as e:
+        raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{character_id}/corporation/journal/{division}")
-async def corporation_journal(character_id: int, division: int = 1):
+async def corporation_journal(
+    character_id: int,
+    division: int = 1,
+    service: CharacterService = Depends(get_character_service)
+):
     """Get corporation wallet journal for a specific division (1-7)"""
-    result = character_api.get_corporation_wallet_journal(character_id, division)
-    if isinstance(result, dict) and "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    try:
+        result = service.get_corporation_wallet_journal(character_id, division)
+        return result
+    except AuthenticationError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ExternalAPIError as e:
+        raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
