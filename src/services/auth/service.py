@@ -355,6 +355,31 @@ class AuthService:
         """
         return self.repo.delete_character_auth(character_id)
 
+    def get_valid_token(self, character_id: int) -> str:
+        """Get valid access token for a character, refreshing if needed.
+
+        Args:
+            character_id: Character ID to get token for
+
+        Returns:
+            str: Valid access token
+
+        Raises:
+            AuthenticationError: If character not found or token refresh fails
+        """
+        auth_data = self.repo.get_character_auth(character_id)
+        if not auth_data:
+            raise AuthenticationError(f"No token found for character {character_id}")
+
+        # Check if token is still valid (with 60 second buffer)
+        expires_at = auth_data.get("expires_at", 0)
+        if time.time() < (expires_at - 60):
+            return auth_data["access_token"]
+
+        # Token expired or about to expire, refresh it
+        token_response = self.refresh_token(character_id)
+        return token_response.access_token
+
     def _verify_access_token(self, access_token: str) -> TokenVerifyResponse:
         """Verify access token and get character info.
 
