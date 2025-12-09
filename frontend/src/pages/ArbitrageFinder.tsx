@@ -191,7 +191,7 @@ export default function ArbitrageFinder() {
           group_id: selectedGroup!.id,
         },
       });
-      return response.data;
+      return response.data.results;  // Extract results array
     },
     enabled: !!selectedGroup?.id && selectedGroup.isLeaf && searchQuery.length === 0,
   });
@@ -205,7 +205,7 @@ export default function ArbitrageFinder() {
         params.group_id = selectedGroup.id;
       }
       const response = await api.get('/api/items/search', { params });
-      return response.data;
+      return response.data.results;  // Extract results array
     },
     enabled: searchQuery.length >= 2,
   });
