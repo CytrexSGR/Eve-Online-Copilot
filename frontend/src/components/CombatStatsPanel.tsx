@@ -10,22 +10,21 @@ interface CombatStatsPanelProps {
 
 interface CombatStats {
   type_id: number;
-  type_name: string;
-  days: number;
   total_destroyed: number;
-  by_region: Array<{
+  total_value_destroyed: number;
+  regions_affected: number;
+  systems_affected: number;
+  top_regions: Array<{
     region_id: number;
     region_name: string;
-    destroyed: number;
+    quantity: number;
   }>;
-  market_comparison: Array<{
-    region: string;
-    region_name: string;
-    destroyed: number;
-    stock: number;
-    gap: number;
+  top_systems: Array<{
+    solar_system_id: number;
+    system_name: string;
+    quantity: number;
+    security: number;
   }>;
-  has_data: boolean;
 }
 
 export default function CombatStatsPanel({ typeId, days = 7 }: CombatStatsPanelProps) {
@@ -34,8 +33,9 @@ export default function CombatStatsPanel({ typeId, days = 7 }: CombatStatsPanelP
     queryFn: () => getItemCombatStats(typeId, days),
   });
 
-  const badgeValue = data?.has_data ? data.total_destroyed : undefined;
-  const badgeColor = data?.has_data && data.total_destroyed > 0 ? 'red' : 'blue';
+  const hasData = data && data.total_destroyed > 0;
+  const badgeValue = hasData ? data.total_destroyed : undefined;
+  const badgeColor = hasData ? 'red' : 'blue';
 
   return (
     <CollapsiblePanel
@@ -47,7 +47,7 @@ export default function CombatStatsPanel({ typeId, days = 7 }: CombatStatsPanelP
     >
       {isLoading ? (
         <div className="loading-small">Loading combat data...</div>
-      ) : !data?.has_data ? (
+      ) : !hasData ? (
         <div className="no-data">
           <Swords size={24} style={{ opacity: 0.3 }} />
           <p>No recent combat data</p>
@@ -60,23 +60,48 @@ export default function CombatStatsPanel({ typeId, days = 7 }: CombatStatsPanelP
               <span className="stat-number">{data.total_destroyed.toLocaleString()}</span>
               <span className="stat-label">destroyed ({days}d)</span>
             </div>
+            <div className="combat-stat-small">
+              <span className="stat-number-small">{data.regions_affected}</span>
+              <span className="stat-label">regions</span>
+            </div>
+            <div className="combat-stat-small">
+              <span className="stat-number-small">{data.systems_affected}</span>
+              <span className="stat-label">systems</span>
+            </div>
           </div>
 
-          <h4>By Region</h4>
-          <div className="region-breakdown">
-            {data.market_comparison.map((r) => (
-              <div key={r.region} className="region-row">
-                <span className="region-name">{r.region_name}</span>
-                <div className="region-stats">
-                  <span className="destroyed">{r.destroyed} lost</span>
-                  <span className="stock">{r.stock} stock</span>
-                  <span className={`gap ${r.gap >= 0 ? 'positive' : 'negative'}`}>
-                    {r.gap >= 0 ? '+' : ''}{r.gap}
-                  </span>
-                </div>
+          {data.top_regions.length > 0 && (
+            <>
+              <h4>Top Regions</h4>
+              <div className="region-breakdown">
+                {data.top_regions.map((r) => (
+                  <div key={r.region_id} className="region-row">
+                    <span className="region-name">{r.region_name}</span>
+                    <span className="destroyed">{r.quantity.toLocaleString()} destroyed</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
+
+          {data.top_systems.length > 0 && (
+            <>
+              <h4>Top Systems</h4>
+              <div className="system-breakdown">
+                {data.top_systems.map((s) => (
+                  <div key={s.solar_system_id} className="system-row">
+                    <div className="system-info">
+                      <span className="system-name">{s.system_name}</span>
+                      <span className={`security sec-${Math.floor(s.security * 10)}`}>
+                        {s.security.toFixed(1)}
+                      </span>
+                    </div>
+                    <span className="destroyed">{s.quantity.toLocaleString()} destroyed</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -115,10 +140,16 @@ export default function CombatStatsPanel({ typeId, days = 7 }: CombatStatsPanelP
 
         .combat-summary {
           display: flex;
-          gap: 16px;
+          gap: 24px;
+          margin-bottom: 16px;
         }
 
         .combat-stat-big {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .combat-stat-small {
           display: flex;
           flex-direction: column;
         }
@@ -127,6 +158,12 @@ export default function CombatStatsPanel({ typeId, days = 7 }: CombatStatsPanelP
           font-size: 32px;
           font-weight: 700;
           color: var(--color-error);
+        }
+
+        .stat-number-small {
+          font-size: 24px;
+          font-weight: 600;
+          color: var(--text-primary);
         }
 
         .stat-label {
@@ -153,32 +190,58 @@ export default function CombatStatsPanel({ typeId, days = 7 }: CombatStatsPanelP
           font-weight: 500;
         }
 
-        .region-stats {
-          display: flex;
-          gap: 16px;
-          font-size: 13px;
-        }
-
         .destroyed {
           color: var(--color-error);
+          font-size: 13px;
+          font-weight: 500;
         }
 
-        .stock {
-          color: var(--text-secondary);
+        .system-breakdown {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
         }
 
-        .gap {
+        .system-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 12px;
+          background: var(--bg-secondary);
+          border-radius: 6px;
+        }
+
+        .system-info {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .system-name {
+          font-weight: 500;
+        }
+
+        .security {
+          font-size: 11px;
+          padding: 2px 6px;
+          border-radius: 4px;
           font-weight: 600;
-          min-width: 50px;
-          text-align: right;
+          font-family: monospace;
         }
 
-        .gap.positive {
-          color: var(--color-success);
+        .sec-10, .sec-9, .sec-8 {
+          background: rgba(46, 204, 113, 0.2);
+          color: #2ecc71;
         }
 
-        .gap.negative {
-          color: var(--color-error);
+        .sec-7, .sec-6, .sec-5 {
+          background: rgba(241, 196, 15, 0.2);
+          color: #f1c40f;
+        }
+
+        .sec-4, .sec-3, .sec-2, .sec-1, .sec-0 {
+          background: rgba(231, 76, 60, 0.2);
+          color: #e74c3c;
         }
       `}</style>
     </CollapsiblePanel>

@@ -303,3 +303,42 @@ class WarAnalyzer:
         ]
 
         return ships
+
+    def get_item_combat_stats(self, type_id: int, days: int) -> dict:
+        """
+        Get combat statistics for a specific item/ship type.
+
+        Returns detailed combat stats including total destroyed, regions affected,
+        systems affected, and top loss locations.
+
+        Args:
+            type_id: Item/ship type ID
+            days: Number of days to look back
+
+        Returns:
+            Dictionary with combat statistics
+
+        Raises:
+            RepositoryError: If database operation fails
+        """
+        return self.repository.get_item_combat_stats(type_id=type_id, days=days)
+
+    def get_alliance_conflicts(self, days: int, top: int) -> List[ConflictIntel]:
+        """
+        Get top alliance conflicts.
+
+        Wrapper method for compatibility with router expectations.
+
+        Args:
+            days: Number of days to look back
+            top: Maximum number of conflicts to return
+
+        Returns:
+            List of conflict intelligence for top alliances
+
+        Raises:
+            RepositoryError: If database operation fails
+        """
+        # Get all conflicts and limit to top N
+        conflicts = self.get_conflict_intel(alliance_id=None, days=days)
+        return conflicts[:top]

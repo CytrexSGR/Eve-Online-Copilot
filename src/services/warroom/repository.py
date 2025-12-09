@@ -664,3 +664,106 @@ class WarRoomRepository:
 
         except Exception as e:
             raise RepositoryError(f"Failed to get top ships: {str(e)}") from e
+
+    def get_item_combat_stats(self, type_id: int, days: int) -> Dict[str, Any]:
+        """
+        Get combat statistics for a specific item/ship type.
+
+        Returns detailed combat stats including total destroyed, regions affected,
+        systems affected, and top loss locations.
+
+        Args:
+            type_id: Item/ship type ID
+            days: Number of days to look back
+
+        Returns:
+            Dictionary with combat statistics
+
+        Raises:
+            RepositoryError: If database operation fails
+        """
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    # Get aggregate stats
+                    cur.execute(
+                        """
+                        SELECT
+                            SUM(csl.quantity) as total_destroyed,
+                            SUM(csl.total_value_destroyed) as total_value_destroyed,
+                            COUNT(DISTINCT csl.region_id) as regions_affected,
+                            COUNT(DISTINCT csl.solar_system_id) as systems_affected
+                        FROM combat_ship_losses csl
+                        WHERE csl.ship_type_id = %s
+                          AND csl.date >= CURRENT_DATE - %s
+                        """,
+                        (type_id, days)
+                    )
+                    stats = dict(cur.fetchone() or {})
+
+                    # If no stats found, return empty result
+                    if not stats.get('total_destroyed'):
+                        return {
+                            'type_id': type_id,
+                            'total_destroyed': 0,
+                            'total_value_destroyed': 0.0,
+                            'regions_affected': 0,
+                            'systems_affected': 0,
+                            'top_regions': [],
+                            'top_systems': []
+                        }
+
+                    # Get top regions
+                    cur.execute(
+                        """
+                        SELECT
+                            csl.region_id,
+                            COALESCE(srm.region_name, 'Unknown') as region_name,
+                            SUM(csl.quantity) as quantity
+                        FROM combat_ship_losses csl
+                        LEFT JOIN (
+                            SELECT DISTINCT region_id, region_name
+                            FROM system_region_map
+                        ) srm ON csl.region_id = srm.region_id
+                        WHERE csl.ship_type_id = %s
+                          AND csl.date >= CURRENT_DATE - %s
+                        GROUP BY csl.region_id, srm.region_name
+                        ORDER BY quantity DESC
+                        LIMIT 5
+                        """,
+                        (type_id, days)
+                    )
+                    top_regions = [dict(row) for row in cur.fetchall()]
+
+                    # Get top systems
+                    cur.execute(
+                        """
+                        SELECT
+                            csl.solar_system_id,
+                            ms."solarSystemName" as system_name,
+                            SUM(csl.quantity) as quantity,
+                            ROUND(CAST(ms.security AS numeric), 2) as security
+                        FROM combat_ship_losses csl
+                        JOIN "mapSolarSystems" ms ON csl.solar_system_id = ms."solarSystemID"
+                        WHERE csl.ship_type_id = %s
+                          AND csl.date >= CURRENT_DATE - %s
+                        GROUP BY csl.solar_system_id, ms."solarSystemName", ms.security
+                        ORDER BY quantity DESC
+                        LIMIT 10
+                        """,
+                        (type_id, days)
+                    )
+                    top_systems = [dict(row) for row in cur.fetchall()]
+
+                    return {
+                        'type_id': type_id,
+                        'total_destroyed': int(stats['total_destroyed'] or 0),
+                        'total_value_destroyed': float(stats['total_value_destroyed'] or 0.0),
+                        'regions_affected': int(stats['regions_affected'] or 0),
+                        'systems_affected': int(stats['systems_affected'] or 0),
+                        'top_regions': top_regions,
+                        'top_systems': top_systems
+                    }
+
+        except Exception as e:
+            raise RepositoryError(f"Failed to get item combat stats: {str(e)}") from e
