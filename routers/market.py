@@ -262,9 +262,7 @@ async def api_enhanced_arbitrage(
             if profitability_data:
                 enhanced_opp["profitability"] = profitability_data
 
-            # Only include opportunities with positive net profit (or missing profitability data)
-            if not profitability_data or profitability_data.get("net_profit", 0) > 0:
-                enhanced_opportunities.append(enhanced_opp)
+            enhanced_opportunities.append(enhanced_opp)
 
         # Sort by ISK per m³ if available, otherwise by profit percent
         enhanced_opportunities.sort(

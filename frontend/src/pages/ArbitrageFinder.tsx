@@ -212,36 +212,38 @@ export default function ArbitrageFinder() {
       <h1>Arbitrage Finder</h1>
       <p className="subtitle">Find profitable trading opportunities across regions with route planning and cargo optimization</p>
 
-      <div style={{ display: 'flex', gap: '1rem', height: 'calc(100vh - 200px)' }}>
-        {/* Left Panel: Market Groups Tree */}
-        <div className="card" style={{ width: 450, overflowY: 'auto', flexShrink: 0 }}>
-          <h3 style={{ margin: 0, marginBottom: '1rem' }}>Market Groups</h3>
-          {marketTree && (
-            <div>
-              {Object.entries(marketTree.tree).map(([name, node]) => (
-                <TreeNode
-                  key={name}
-                  name={name}
-                  node={node}
-                  level={0}
-                  expanded={expandedNodes}
-                  selected={selectedGroup}
-                  onToggle={(path) => {
-                    setExpandedNodes(prev => ({
-                      ...prev,
-                      [path]: !prev[path]
-                    }));
-                  }}
-                  onSelect={(id, name, path, isLeaf) => {
-                    setSelectedGroup({ id, name, path, isLeaf });
-                    setSelectedItem(null); // Clear selected item when changing group
-                  }}
-                  path={[]}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Top Panel: Market Groups Tree (Horizontal) */}
+      <div className="card" style={{ marginBottom: '1rem', maxHeight: '300px', overflowY: 'auto' }}>
+        <h3 style={{ margin: 0, marginBottom: '1rem' }}>Market Groups</h3>
+        {marketTree && (
+          <div>
+            {Object.entries(marketTree.tree).map(([name, node]) => (
+              <TreeNode
+                key={name}
+                name={name}
+                node={node}
+                level={0}
+                expanded={expandedNodes}
+                selected={selectedGroup}
+                onToggle={(path) => {
+                  setExpandedNodes(prev => ({
+                    ...prev,
+                    [path]: !prev[path]
+                  }));
+                }}
+                onSelect={(id, name, path, isLeaf) => {
+                  setSelectedGroup({ id, name, path, isLeaf });
+                  setSelectedItem(null); // Clear selected item when changing group
+                }}
+                path={[]}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Panels: Items (left) and Arbitrage (right) */}
+      <div style={{ display: 'flex', gap: '1rem', height: 'calc(100vh - 400px)' }}>
 
         {/* Center Panel: Items Table */}
         {selectedGroup ? (
