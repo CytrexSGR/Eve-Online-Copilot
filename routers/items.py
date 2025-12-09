@@ -22,16 +22,17 @@ router = APIRouter(tags=["Items & Catalog"])
 @router.get("/api/items/search")
 async def api_item_search(
     q: str = Query("", min_length=0),
-    group_id: Optional[int] = Query(None)
+    group_id: Optional[int] = Query(None),
+    market_group_id: Optional[int] = Query(None)
 ):
-    """Search for items by name, optionally filtered by group"""
+    """Search for items by name, optionally filtered by inventory group or market group"""
     # Require either a search query or a group filter
-    if not q and not group_id:
-        raise HTTPException(status_code=422, detail="Either 'q' (min 2 chars) or 'group_id' must be provided")
-    if q and len(q) < 2 and not group_id:
+    if not q and not group_id and not market_group_id:
+        raise HTTPException(status_code=422, detail="Either 'q' (min 2 chars), 'group_id', or 'market_group_id' must be provided")
+    if q and len(q) < 2 and not group_id and not market_group_id:
         raise HTTPException(status_code=422, detail="Search query must be at least 2 characters")
 
-    items = get_item_by_name(q, group_id=group_id)
+    items = get_item_by_name(q, group_id=group_id, market_group_id=market_group_id)
     return {"query": q, "results": items, "count": len(items)}
 
 

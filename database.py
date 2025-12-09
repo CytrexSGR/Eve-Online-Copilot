@@ -32,11 +32,36 @@ def get_item_info(type_id: int) -> dict | None:
             return cur.fetchone()
 
 
-def get_item_by_name(name: str, group_id: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Get item by name (case-insensitive partial match), optionally filtered by group"""
+def get_item_by_name(name: str, group_id: Optional[int] = None, market_group_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Get item by name (case-insensitive partial match), optionally filtered by inventory group or market group"""
     with get_db_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            if group_id is not None:
+            if market_group_id is not None:
+                # For market groups, find all items in this group and its descendants
+                cur.execute('''
+                    WITH RECURSIVE market_tree AS (
+                        -- Start with the selected market group
+                        SELECT "marketGroupID"
+                        FROM "invMarketGroups"
+                        WHERE "marketGroupID" = %s
+
+                        UNION ALL
+
+                        -- Recursively find all child market groups
+                        SELECT mg."marketGroupID"
+                        FROM "invMarketGroups" mg
+                        INNER JOIN market_tree mt ON mg."parentGroupID" = mt."marketGroupID"
+                    )
+                    SELECT DISTINCT it."typeID", it."typeName", it."groupID", it."volume", it."basePrice"
+                    FROM "invTypes" it
+                    INNER JOIN market_tree mt ON it."marketGroupID" = mt."marketGroupID"
+                    WHERE LOWER(it."typeName") LIKE LOWER(%s)
+                      AND it."published" = 1
+                    ORDER BY it."typeName"
+                    LIMIT 100
+                ''', (market_group_id, f'%{name}%'))
+            elif group_id is not None:
+                # For inventory groups, use groupID directly
                 cur.execute('''
                     SELECT "typeID", "typeName", "groupID", "volume", "basePrice"
                     FROM "invTypes"

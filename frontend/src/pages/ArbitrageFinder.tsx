@@ -184,14 +184,14 @@ export default function ArbitrageFinder() {
     },
   });
 
-  // Load all items for selected group
+  // Load all items for selected group (using market_group_id since the tree uses market groups)
   const { data: groupItems, isLoading: isLoadingItems } = useQuery<Item[]>({
     queryKey: ['groupItems', selectedGroup?.id],
     queryFn: async () => {
       const response = await api.get('/api/items/search', {
         params: {
           q: '',
-          group_id: selectedGroup!.id,
+          market_group_id: selectedGroup!.id,
         },
       });
       return response.data.results;
