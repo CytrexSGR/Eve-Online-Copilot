@@ -236,6 +236,16 @@ tr:hover {
   background: var(--bg-hover);
 }
 
+/* Selected table row styling */
+.data-table tbody tr.selected {
+  background-color: rgba(88, 166, 255, 0.1);
+  border-left: 3px solid var(--accent-blue);
+}
+
+.data-table tbody tr.selected:hover {
+  background-color: rgba(88, 166, 255, 0.2);
+}
+
 /* Value Colors */
 .positive {
   color: var(--accent-green);
