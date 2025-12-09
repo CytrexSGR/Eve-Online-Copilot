@@ -213,7 +213,7 @@ export default function ArbitrageFinder() {
       <p className="subtitle">Find profitable trading opportunities across regions with route planning and cargo optimization</p>
 
       {/* Top Panel: Market Groups Tree (Horizontal) */}
-      <div className="card" style={{ marginBottom: '1rem', maxHeight: '300px', overflowY: 'auto' }}>
+      <div className="card" style={{ marginBottom: '1rem' }}>
         <h3 style={{ margin: 0, marginBottom: '1rem' }}>Market Groups</h3>
         {marketTree && (
           <div>
@@ -243,7 +243,7 @@ export default function ArbitrageFinder() {
       </div>
 
       {/* Bottom Panels: Items (left) and Arbitrage (right) */}
-      <div style={{ display: 'flex', gap: '1rem', height: 'calc(100vh - 400px)' }}>
+      <div style={{ display: 'flex', gap: '1rem', minHeight: '500px' }}>
 
         {/* Center Panel: Items Table */}
         {selectedGroup ? (
