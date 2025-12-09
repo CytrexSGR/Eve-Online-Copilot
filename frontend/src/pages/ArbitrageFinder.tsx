@@ -213,8 +213,8 @@ export default function ArbitrageFinder() {
       <p className="subtitle">Find profitable trading opportunities across regions with route planning and cargo optimization</p>
 
       {/* Top Panel: Market Groups Tree (Horizontal) */}
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <h3 style={{ margin: 0, marginBottom: '1rem' }}>Market Groups</h3>
+      <div className="card" style={{ marginBottom: '1rem', maxHeight: '200px', overflowY: 'auto' }}>
+        <h3 style={{ margin: 0, marginBottom: '1rem', position: 'sticky', top: 0, background: 'var(--bg-primary)', zIndex: 1 }}>Market Groups</h3>
         {marketTree && (
           <div>
             {Object.entries(marketTree.tree).map(([name, node]) => (
