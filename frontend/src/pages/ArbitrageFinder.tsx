@@ -92,9 +92,9 @@ function TreeNode({
   node: MarketTreeNode;
   level: number;
   expanded: Record<string, boolean>;
-  selected: { id: number | null; name: string; path: string[] } | null;
+  selected: { id: number | null; name: string; path: string[]; isLeaf: boolean } | null;
   onToggle: (path: string) => void;
-  onSelect: (id: number | null, name: string, path: string[]) => void;
+  onSelect: (id: number | null, name: string, path: string[], isLeaf: boolean) => void;
   path: string[];
 }) {
   const currentPath = [...path, name];
@@ -120,7 +120,7 @@ function TreeNode({
           if (hasChildren) {
             onToggle(pathKey);
           }
-          onSelect(node.id, name, currentPath);
+          onSelect(node.id, name, currentPath, !hasChildren);
         }}
       >
         {hasChildren ? (
@@ -169,7 +169,7 @@ export default function ArbitrageFinder() {
   const [showResults, setShowResults] = useState(false);
 
   // Market Group Tree state
-  const [selectedGroup, setSelectedGroup] = useState<{ id: number | null; name: string; path: string[] } | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<{ id: number | null; name: string; path: string[]; isLeaf: boolean } | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
 
   // Load market tree
@@ -179,6 +179,21 @@ export default function ArbitrageFinder() {
       const response = await api.get('/api/hunter/market-tree');
       return response.data;
     },
+  });
+
+  // Load all items for a leaf group (automatically)
+  const { data: groupItems } = useQuery<SearchResult[]>({
+    queryKey: ['groupItems', selectedGroup?.id],
+    queryFn: async () => {
+      const response = await api.get('/api/items/search', {
+        params: {
+          q: '',  // Empty search to get all items
+          group_id: selectedGroup!.id,
+        },
+      });
+      return response.data;
+    },
+    enabled: !!selectedGroup?.id && selectedGroup.isLeaf && searchQuery.length === 0,
   });
 
   // Search items (filtered by group if selected)
@@ -194,6 +209,9 @@ export default function ArbitrageFinder() {
     },
     enabled: searchQuery.length >= 2,
   });
+
+  // Combine results: use groupItems if it's a leaf node with no search, otherwise use searchResults
+  const displayResults = searchQuery.length === 0 && selectedGroup?.isLeaf ? groupItems : searchResults;
 
   // Get enhanced arbitrage opportunities
   const { data: arbitrageData, isLoading, error } = useQuery<EnhancedArbitrageResponse>({
@@ -215,11 +233,15 @@ export default function ArbitrageFinder() {
     }));
   };
 
-  const handleSelectGroup = (id: number | null, name: string, path: string[]) => {
-    setSelectedGroup({ id, name, path });
+  const handleSelectGroup = (id: number | null, name: string, path: string[], isLeaf: boolean) => {
+    setSelectedGroup({ id, name, path, isLeaf });
     // Clear search when changing group
     setSearchQuery('');
     setSelectedItem(null);
+    // Auto-show results for leaf nodes
+    if (isLeaf) {
+      setShowResults(true);
+    }
   };
 
   return (
@@ -270,7 +292,13 @@ export default function ArbitrageFinder() {
                 <Search size={18} />
                 <input
                   type="text"
-                  placeholder={selectedGroup ? `Search in ${selectedGroup.name}...` : "Select a group first..."}
+                  placeholder={
+                    selectedGroup?.isLeaf
+                      ? `Filter items in ${selectedGroup.name}...`
+                      : selectedGroup
+                      ? `Search in ${selectedGroup.name}...`
+                      : "Select a group first..."
+                  }
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -279,9 +307,9 @@ export default function ArbitrageFinder() {
                   onFocus={() => setShowResults(true)}
                   disabled={!selectedGroup}
                 />
-                {showResults && searchResults && searchResults.length > 0 && (
+                {showResults && displayResults && displayResults.length > 0 && (
                   <div className="search-results">
-                    {searchResults.slice(0, 10).map((item) => (
+                    {displayResults.slice(0, 10).map((item) => (
                       <div
                         key={item.typeID}
                         className="search-result-item"
