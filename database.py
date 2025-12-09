@@ -6,6 +6,7 @@ Handles all PostgreSQL SDE queries
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
+from typing import Optional, Dict, List, Any
 from config import DB_CONFIG
 
 
@@ -31,16 +32,27 @@ def get_item_info(type_id: int) -> dict | None:
             return cur.fetchone()
 
 
-def get_item_by_name(name: str) -> dict | None:
-    """Get item by name (case-insensitive partial match)"""
+def get_item_by_name(name: str, group_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Get item by name (case-insensitive partial match), optionally filtered by group"""
     with get_db_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute('''
-                SELECT "typeID", "typeName", "groupID", "volume", "basePrice"
-                FROM "invTypes"
-                WHERE LOWER("typeName") LIKE LOWER(%s)
-                LIMIT 10
-            ''', (f'%{name}%',))
+            if group_id is not None:
+                cur.execute('''
+                    SELECT "typeID", "typeName", "groupID", "volume", "basePrice"
+                    FROM "invTypes"
+                    WHERE "groupID" = %s
+                      AND LOWER("typeName") LIKE LOWER(%s)
+                      AND "published" = 1
+                    ORDER BY "typeName"
+                    LIMIT 50
+                ''', (group_id, f'%{name}%'))
+            else:
+                cur.execute('''
+                    SELECT "typeID", "typeName", "groupID", "volume", "basePrice"
+                    FROM "invTypes"
+                    WHERE LOWER("typeName") LIKE LOWER(%s)
+                    LIMIT 10
+                ''', (f'%{name}%',))
             return cur.fetchall()
 
 

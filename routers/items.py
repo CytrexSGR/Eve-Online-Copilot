@@ -3,7 +3,7 @@ Items router - Item search, groups, materials, regions, routes, cargo, and syste
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import List
+from typing import List, Optional
 
 from config import REGIONS
 from database import get_item_info, get_item_by_name, get_group_by_name, get_material_composition
@@ -20,9 +20,18 @@ router = APIRouter(tags=["Items & Catalog"])
 # ============================================================
 
 @router.get("/api/items/search")
-async def api_item_search(q: str = Query(..., min_length=2)):
-    """Search for items by name"""
-    items = get_item_by_name(q)
+async def api_item_search(
+    q: str = Query("", min_length=0),
+    group_id: Optional[int] = Query(None)
+):
+    """Search for items by name, optionally filtered by group"""
+    # Require either a search query or a group filter
+    if not q and not group_id:
+        raise HTTPException(status_code=422, detail="Either 'q' (min 2 chars) or 'group_id' must be provided")
+    if q and len(q) < 2 and not group_id:
+        raise HTTPException(status_code=422, detail="Search query must be at least 2 characters")
+
+    items = get_item_by_name(q, group_id=group_id)
     return {"query": q, "results": items, "count": len(items)}
 
 
