@@ -247,7 +247,7 @@ export default function ArbitrageFinder() {
   return (
     <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 120px)' }}>
       {/* Market Group Tree Sidebar */}
-      <div className="card" style={{ width: 300, overflowY: 'auto', flexShrink: 0 }}>
+      <div className="card" style={{ width: 450, overflowY: 'auto', flexShrink: 0 }}>
         <h3 style={{ marginBottom: 12, fontSize: 14, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
           Market Groups
         </h3>
