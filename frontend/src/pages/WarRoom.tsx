@@ -203,10 +203,15 @@ export default function WarRoom() {
         <div className="grid-container">
           {/* Row 1: Key Metrics */}
           <div className="card" style={{ gridColumn: 'span 4' }}>
-            <h3 className="card-title">
-              <TrendingUp size={18} />
-              Galaxy Combat Summary ({days} days)
-            </h3>
+            <Link
+              to={`/war-room/galaxy-summary?days=${days}`}
+              className="card-title-link"
+            >
+              <h3 className="card-title">
+                <TrendingUp size={18} />
+                Galaxy Combat Summary ({days} days)
+              </h3>
+            </Link>
             <div className="stats-grid">
               {regionalSummary?.slice(0, 5).map((region) => (
                 <div key={region.region_id} className="stat-card">
@@ -220,10 +225,15 @@ export default function WarRoom() {
 
           {/* Row 2: Ships Destroyed, Items Destroyed, Market Gaps */}
           <div className="card">
-            <h3 className="card-title">
-              <Target size={18} />
-              Ships Destroyed
-            </h3>
+            <Link
+              to={`/war-room/ships-destroyed?region=${regionId}&days=${days}`}
+              className="card-title-link"
+            >
+              <h3 className="card-title">
+                <Target size={18} />
+                Ships Destroyed
+              </h3>
+            </Link>
             <div className="scrollable-list" style={{ maxHeight: '300px' }}>
               {demand?.ships_lost?.slice(0, 15).map((ship) => (
                 <Link key={ship.type_id} to={`/item/${ship.type_id}`} className="list-item clickable">
@@ -238,10 +248,15 @@ export default function WarRoom() {
           </div>
 
           <div className="card">
-            <h3 className="card-title">
-              <Target size={18} />
-              Top Ships Galaxy-Wide
-            </h3>
+            <Link
+              to={`/war-room/top-ships?days=${days}`}
+              className="card-title-link"
+            >
+              <h3 className="card-title">
+                <Target size={18} />
+                Top Ships Galaxy-Wide
+              </h3>
+            </Link>
             <div className="scrollable-list" style={{ maxHeight: '300px' }}>
               {topShips?.map((ship) => (
                 <Link key={ship.type_id} to={`/item/${ship.type_id}`} className="list-item clickable">
@@ -259,10 +274,15 @@ export default function WarRoom() {
           </div>
 
           <div className="card">
-            <h3 className="card-title" style={{ color: 'var(--color-error)' }}>
-              <AlertTriangle size={18} />
-              Market Gaps
-            </h3>
+            <Link
+              to={`/war-room/market-gaps?region=${regionId}&days=${days}`}
+              className="card-title-link"
+            >
+              <h3 className="card-title" style={{ color: 'var(--color-error)' }}>
+                <AlertTriangle size={18} />
+                Market Gaps
+              </h3>
+            </Link>
             <div className="scrollable-list" style={{ maxHeight: '300px' }}>
               {demand?.market_gaps?.length ? (
                 demand.market_gaps.map((item) => (
@@ -316,10 +336,15 @@ export default function WarRoom() {
 
           {/* Row 3: FW Hotspots */}
           <div className="card" style={{ gridColumn: 'span 2' }}>
-            <h3 className="card-title">
-              <Swords size={18} />
-              Faction Warfare Hotspots
-            </h3>
+            <Link
+              to="/war-room/fw-hotspots"
+              className="card-title-link"
+            >
+              <h3 className="card-title">
+                <Swords size={18} />
+                Faction Warfare Hotspots
+              </h3>
+            </Link>
             <div className="scrollable-list" style={{ maxHeight: '280px' }}>
               {fwHotspots && fwHotspots.length > 0 ? (
                 fwHotspots.slice(0, 10).map((h) => (
@@ -350,10 +375,15 @@ export default function WarRoom() {
 
           {/* Row 4: Combat Hotspots Heatmap */}
           <div className="card" style={{ gridColumn: 'span 4' }}>
-            <h3 className="card-title">
-              <MapPin size={18} />
-              Combat Hotspots (Top Systems)
-            </h3>
+            <Link
+              to={`/war-room/combat-hotspots?days=${days}`}
+              className="card-title-link"
+            >
+              <h3 className="card-title">
+                <MapPin size={18} />
+                Combat Hotspots (Top Systems)
+              </h3>
+            </Link>
             <div className="hotspot-grid">
               {heatmapSystems?.slice(0, 15).map((s) => (
                 <div
@@ -587,6 +617,21 @@ export default function WarRoom() {
 
         .list-item.clickable:hover {
           background: var(--bg-tertiary);
+        }
+
+        .card-title-link {
+          text-decoration: none;
+          color: inherit;
+          display: block;
+          cursor: pointer;
+        }
+
+        .card-title-link:hover .card-title {
+          color: var(--accent-blue);
+        }
+
+        .card-title-link .card-title {
+          transition: color 0.15s;
         }
       `}</style>
     </div>

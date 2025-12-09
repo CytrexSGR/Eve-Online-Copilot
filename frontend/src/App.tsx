@@ -10,6 +10,12 @@ import MaterialsOverview from './pages/MaterialsOverview';
 import ShoppingPlanner from './pages/ShoppingPlanner';
 import { ShoppingWizard } from './components/shopping';
 import WarRoom from './pages/WarRoom';
+import WarRoomShipsDestroyed from './pages/WarRoomShipsDestroyed';
+import WarRoomMarketGaps from './pages/WarRoomMarketGaps';
+import WarRoomTopShips from './pages/WarRoomTopShips';
+import WarRoomCombatHotspots from './pages/WarRoomCombatHotspots';
+import WarRoomFWHotspots from './pages/WarRoomFWHotspots';
+import WarRoomGalaxySummary from './pages/WarRoomGalaxySummary';
 import './App.css';
 
 const queryClient = new QueryClient({
@@ -93,6 +99,12 @@ function App() {
               <Route path="/shopping" element={<ShoppingWizard />} />
               <Route path="/shopping-lists" element={<ShoppingPlanner />} />
               <Route path="/war-room" element={<WarRoom />} />
+              <Route path="/war-room/ships-destroyed" element={<WarRoomShipsDestroyed />} />
+              <Route path="/war-room/market-gaps" element={<WarRoomMarketGaps />} />
+              <Route path="/war-room/top-ships" element={<WarRoomTopShips />} />
+              <Route path="/war-room/combat-hotspots" element={<WarRoomCombatHotspots />} />
+              <Route path="/war-room/fw-hotspots" element={<WarRoomFWHotspots />} />
+              <Route path="/war-room/galaxy-summary" element={<WarRoomGalaxySummary />} />
             </Routes>
           </main>
         </div>
