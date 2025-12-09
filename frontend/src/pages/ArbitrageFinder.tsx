@@ -1,11 +1,21 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, TrendingUp, ArrowRight, Ship, Package, Clock, Shield, AlertTriangle } from 'lucide-react';
-import { getEnhancedArbitrage, searchItems, type EnhancedArbitrageResponse } from '../api';
+import { Search, TrendingUp, ArrowRight, Ship, Package, Clock, Shield, AlertTriangle, Folder, FolderOpen, ChevronDown } from 'lucide-react';
+import { getEnhancedArbitrage, type EnhancedArbitrageResponse, api } from '../api';
 
 interface SearchResult {
   typeID: number;
   typeName: string;
+}
+
+interface MarketTreeNode {
+  id: number | null;
+  count: number;
+  children?: Record<string, MarketTreeNode>;
+}
+
+interface MarketTreeResponse {
+  tree: Record<string, MarketTreeNode>;
 }
 
 const REGION_NAMES: Record<string, string> = {
@@ -67,6 +77,90 @@ function getSafetyBadge(safety: string) {
   }
 }
 
+// Tree node component
+function TreeNode({
+  name,
+  node,
+  level,
+  expanded,
+  selected,
+  onToggle,
+  onSelect,
+  path,
+}: {
+  name: string;
+  node: MarketTreeNode;
+  level: number;
+  expanded: Record<string, boolean>;
+  selected: { id: number | null; name: string; path: string[] } | null;
+  onToggle: (path: string) => void;
+  onSelect: (id: number | null, name: string, path: string[]) => void;
+  path: string[];
+}) {
+  const currentPath = [...path, name];
+  const pathKey = currentPath.join(' > ');
+  const isExpanded = expanded[pathKey];
+  const hasChildren = node.children && Object.keys(node.children).length > 0;
+  const isSelected = selected?.id === node.id && selected?.name === name;
+
+  return (
+    <div style={{ marginLeft: level * 16 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '4px 8px',
+          cursor: 'pointer',
+          borderRadius: 4,
+          background: isSelected ? 'var(--accent-blue)' : 'transparent',
+          color: isSelected ? 'white' : 'inherit',
+        }}
+        onClick={() => {
+          if (hasChildren) {
+            onToggle(pathKey);
+          }
+          onSelect(node.id, name, currentPath);
+        }}
+      >
+        {hasChildren ? (
+          isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />
+        ) : (
+          <div style={{ width: 16 }} />
+        )}
+        <span style={{ flex: 1 }}>{name}</span>
+        <span style={{ fontSize: 11, opacity: 0.7 }}>({node.count})</span>
+        {hasChildren && (
+          <ChevronDown
+            size={14}
+            style={{
+              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)',
+              transition: 'transform 0.2s',
+            }}
+          />
+        )}
+      </div>
+      {hasChildren && isExpanded && (
+        <div>
+          {Object.entries(node.children!).map(([childName, childNode]) => (
+            <TreeNode
+              key={childName}
+              name={childName}
+              node={childNode}
+              level={level + 1}
+              expanded={expanded}
+              selected={selected}
+              onToggle={onToggle}
+              onSelect={onSelect}
+              path={currentPath}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ArbitrageFinder() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<SearchResult | null>(null);
@@ -74,10 +168,30 @@ export default function ArbitrageFinder() {
   const [shipType, setShipType] = useState('industrial');
   const [showResults, setShowResults] = useState(false);
 
-  // Search items
+  // Market Group Tree state
+  const [selectedGroup, setSelectedGroup] = useState<{ id: number | null; name: string; path: string[] } | null>(null);
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+
+  // Load market tree
+  const { data: marketTree } = useQuery<MarketTreeResponse>({
+    queryKey: ['marketTree'],
+    queryFn: async () => {
+      const response = await api.get('/api/hunter/market-tree');
+      return response.data;
+    },
+  });
+
+  // Search items (filtered by group if selected)
   const { data: searchResults } = useQuery<SearchResult[]>({
-    queryKey: ['itemSearch', searchQuery],
-    queryFn: () => searchItems(searchQuery),
+    queryKey: ['itemSearch', searchQuery, selectedGroup?.id],
+    queryFn: async () => {
+      const params: any = { q: searchQuery };
+      if (selectedGroup?.id) {
+        params.group_id = selectedGroup.id;
+      }
+      const response = await api.get('/api/items/search', { params });
+      return response.data;
+    },
     enabled: searchQuery.length >= 2,
   });
 
@@ -94,238 +208,287 @@ export default function ArbitrageFinder() {
     setShowResults(false);
   };
 
+  const handleToggleNode = (pathKey: string) => {
+    setExpandedNodes((prev) => ({
+      ...prev,
+      [pathKey]: !prev[pathKey],
+    }));
+  };
+
+  const handleSelectGroup = (id: number | null, name: string, path: string[]) => {
+    setSelectedGroup({ id, name, path });
+    // Clear search when changing group
+    setSearchQuery('');
+    setSelectedItem(null);
+  };
+
   return (
-    <div>
-      <div className="page-header">
-        <h1>Arbitrage Finder</h1>
-        <p>Find profitable trade routes between trade hubs with route planning and cargo optimization</p>
-      </div>
-
-      <div className="card">
-        <div className="filters">
-          <div className="filter-group" style={{ flex: 1 }}>
-            <label>Search Item</label>
-            <div className="search-box">
-              <Search size={18} />
-              <input
-                type="text"
-                placeholder="Search for an item..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setShowResults(true);
-                }}
-                onFocus={() => setShowResults(true)}
+    <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 120px)' }}>
+      {/* Market Group Tree Sidebar */}
+      <div className="card" style={{ width: 300, overflowY: 'auto', flexShrink: 0 }}>
+        <h3 style={{ marginBottom: 12, fontSize: 14, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+          Market Groups
+        </h3>
+        {marketTree && (
+          <div>
+            {Object.entries(marketTree.tree).map(([name, node]) => (
+              <TreeNode
+                key={name}
+                name={name}
+                node={node}
+                level={0}
+                expanded={expandedNodes}
+                selected={selectedGroup}
+                onToggle={handleToggleNode}
+                onSelect={handleSelectGroup}
+                path={[]}
               />
-              {showResults && searchResults && searchResults.length > 0 && (
-                <div className="search-results">
-                  {searchResults.slice(0, 10).map((item) => (
-                    <div
-                      key={item.typeID}
-                      className="search-result-item"
-                      onClick={() => handleSelectItem(item)}
-                    >
-                      {item.typeName}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="filter-group">
-            <label>Ship Type</label>
-            <select
-              value={shipType}
-              onChange={(e) => setShipType(e.target.value)}
-              style={{ minWidth: 220 }}
-            >
-              {SHIP_TYPES.map((ship) => (
-                <option key={ship.value} value={ship.value}>
-                  {ship.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="filter-group">
-            <label>Min Profit %</label>
-            <input
-              type="number"
-              value={minProfit}
-              onChange={(e) => setMinProfit(Number(e.target.value))}
-              style={{ width: 100 }}
-            />
-          </div>
-        </div>
-
-        {selectedItem && arbitrageData && (
-          <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--bg-secondary)', borderRadius: 8 }}>
-            <div style={{ display: 'flex', gap: 24, fontSize: 14 }}>
-              <div>
-                <span className="neutral">Item: </span>
-                <strong>{arbitrageData.item_name}</strong>
-              </div>
-              {arbitrageData.item_volume && (
-                <div>
-                  <Package size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                  <span className="neutral">Volume: </span>
-                  <strong>{formatVolume(arbitrageData.item_volume)}</strong>
-                </div>
-              )}
-              <div>
-                <Ship size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                <span className="neutral">Cargo: </span>
-                <strong>{formatVolume(arbitrageData.ship_capacity)}</strong>
-              </div>
-              <div>
-                <span className="neutral">Opportunities: </span>
-                <strong className="positive">{arbitrageData.opportunity_count}</strong>
-              </div>
-            </div>
+            ))}
           </div>
         )}
       </div>
 
-      {selectedItem && (
+      {/* Main Content */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <div className="page-header" style={{ marginBottom: 0 }}>
+          <h1>Arbitrage Finder</h1>
+          <p>Find profitable trade routes between trade hubs with route planning and cargo optimization</p>
+        </div>
+
         <div className="card">
-          <h3 style={{ marginBottom: 16 }}>
-            <TrendingUp size={18} style={{ marginRight: 8 }} />
-            Enhanced Arbitrage Opportunities
-          </h3>
+          <div className="filters">
+            <div className="filter-group" style={{ flex: 1 }}>
+              <label>
+                Search Item
+                {selectedGroup && (
+                  <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.7 }}>
+                    in {selectedGroup.name}
+                  </span>
+                )}
+              </label>
+              <div className="search-box">
+                <Search size={18} />
+                <input
+                  type="text"
+                  placeholder={selectedGroup ? `Search in ${selectedGroup.name}...` : "Select a group first..."}
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setShowResults(true);
+                  }}
+                  onFocus={() => setShowResults(true)}
+                  disabled={!selectedGroup}
+                />
+                {showResults && searchResults && searchResults.length > 0 && (
+                  <div className="search-results">
+                    {searchResults.slice(0, 10).map((item) => (
+                      <div
+                        key={item.typeID}
+                        className="search-result-item"
+                        onClick={() => handleSelectItem(item)}
+                      >
+                        {item.typeName}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
 
-          {isLoading ? (
-            <div className="loading">
-              <div className="spinner"></div>
-              Calculating routes, cargo, and profitability...
+            <div className="filter-group">
+              <label>Ship Type</label>
+              <select
+                value={shipType}
+                onChange={(e) => setShipType(e.target.value)}
+                style={{ minWidth: 220 }}
+              >
+                {SHIP_TYPES.map((ship) => (
+                  <option key={ship.value} value={ship.value}>
+                    {ship.label}
+                  </option>
+                ))}
+              </select>
             </div>
-          ) : error ? (
-            <div className="empty-state">
-              <p>Error loading data. Please try again.</p>
-            </div>
-          ) : !arbitrageData?.opportunities?.length ? (
-            <div className="empty-state">
-              <p>No arbitrage opportunities found with {minProfit}% minimum profit.</p>
-              <p className="neutral">Try lowering the minimum profit threshold.</p>
-            </div>
-          ) : (
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Route</th>
-                    <th>Safety</th>
-                    <th>Jumps</th>
-                    <th>Time</th>
-                    <th>Units/Trip</th>
-                    <th>Profit/Trip</th>
-                    <th>Net Profit</th>
-                    <th>ISK/m³</th>
-                    <th>Profit/Hour</th>
-                    <th>ROI</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {arbitrageData.opportunities.map((opp, idx) => (
-                    <tr key={idx}>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span className="badge badge-blue">
-                            {REGION_NAMES[opp.buy_region] || opp.buy_region}
-                          </span>
-                          <ArrowRight size={14} className="neutral" />
-                          <span className="badge badge-green">
-                            {REGION_NAMES[opp.sell_region] || opp.sell_region}
-                          </span>
-                        </div>
-                      </td>
-                      <td>
-                        {opp.route ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {getSafetyIcon(opp.route.safety)}
-                            {getSafetyBadge(opp.route.safety)}
-                          </div>
-                        ) : (
-                          <span className="neutral">-</span>
-                        )}
-                      </td>
-                      <td className="neutral">
-                        {opp.route ? `${opp.route.jumps} jumps` : '-'}
-                      </td>
-                      <td className="neutral">
-                        {opp.route ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Clock size={14} />
-                            {opp.route.time_minutes}m
-                          </div>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                      <td className="neutral">
-                        {opp.cargo ? opp.cargo.units_per_trip.toLocaleString() : '-'}
-                      </td>
-                      <td className="isk positive">
-                        {opp.cargo ? `+${formatISK(opp.cargo.gross_profit_per_trip)}` : '-'}
-                      </td>
-                      <td className="isk positive">
-                        <strong>
-                          {opp.profitability
-                            ? `+${formatISK(opp.profitability.net_profit)}`
-                            : '-'}
-                        </strong>
-                      </td>
-                      <td className="isk">
-                        {opp.cargo ? formatISK(opp.cargo.isk_per_m3) : '-'}
-                      </td>
-                      <td className="isk positive">
-                        {opp.profitability?.profit_per_hour ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Clock size={14} />
-                            {formatISK(opp.profitability.profit_per_hour)}/h
-                          </div>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                      <td>
-                        <span
-                          className={`badge ${
-                            opp.profit_percent >= 50 ? 'badge-green' : 'badge-yellow'
-                          }`}
-                        >
-                          {opp.profit_percent.toFixed(1)}%
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
 
-          {arbitrageData && arbitrageData.opportunities.length > 0 && (
+            <div className="filter-group">
+              <label>Min Profit %</label>
+              <input
+                type="number"
+                value={minProfit}
+                onChange={(e) => setMinProfit(Number(e.target.value))}
+                style={{ width: 100 }}
+              />
+            </div>
+          </div>
+
+          {selectedItem && arbitrageData && (
             <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--bg-secondary)', borderRadius: 8 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                <strong>Note:</strong> Profit calculations include broker fees (3% buy + 3% sell) and sales tax (8%).
-                Trip time assumes 2 minutes per jump (round trip = 2× route jumps).
+              <div style={{ display: 'flex', gap: 24, fontSize: 14 }}>
+                <div>
+                  <span className="neutral">Item: </span>
+                  <strong>{arbitrageData.item_name}</strong>
+                </div>
+                {arbitrageData.item_volume && (
+                  <div>
+                    <Package size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                    <span className="neutral">Volume: </span>
+                    <strong>{formatVolume(arbitrageData.item_volume)}</strong>
+                  </div>
+                )}
+                <div>
+                  <Ship size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                  <span className="neutral">Cargo: </span>
+                  <strong>{formatVolume(arbitrageData.ship_capacity)}</strong>
+                </div>
+                <div>
+                  <span className="neutral">Opportunities: </span>
+                  <strong className="positive">{arbitrageData.opportunity_count}</strong>
+                </div>
               </div>
             </div>
           )}
         </div>
-      )}
 
-      {!selectedItem && (
-        <div className="card">
-          <div className="empty-state">
-            <Search size={48} />
-            <p>Search for an item to find enhanced arbitrage opportunities</p>
-            <p className="neutral" style={{ fontSize: 14, marginTop: 8 }}>
-              Now with route planning, cargo calculations, and profitability analysis
-            </p>
+        {selectedItem && (
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <h3 style={{ marginBottom: 16 }}>
+              <TrendingUp size={18} style={{ marginRight: 8 }} />
+              Enhanced Arbitrage Opportunities
+            </h3>
+
+            {isLoading ? (
+              <div className="loading">
+                <div className="spinner"></div>
+                Calculating routes, cargo, and profitability...
+              </div>
+            ) : error ? (
+              <div className="empty-state">
+                <p>Error loading data. Please try again.</p>
+              </div>
+            ) : !arbitrageData?.opportunities?.length ? (
+              <div className="empty-state">
+                <p>No arbitrage opportunities found with {minProfit}% minimum profit.</p>
+                <p className="neutral">Try lowering the minimum profit threshold.</p>
+              </div>
+            ) : (
+              <>
+                <div className="table-container" style={{ flex: 1, overflowY: 'auto' }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Route</th>
+                        <th>Safety</th>
+                        <th>Jumps</th>
+                        <th>Time</th>
+                        <th>Units/Trip</th>
+                        <th>Profit/Trip</th>
+                        <th>Net Profit</th>
+                        <th>ISK/m³</th>
+                        <th>Profit/Hour</th>
+                        <th>ROI</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {arbitrageData.opportunities.map((opp, idx) => (
+                        <tr key={idx}>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className="badge badge-blue">
+                                {REGION_NAMES[opp.buy_region] || opp.buy_region}
+                              </span>
+                              <ArrowRight size={14} className="neutral" />
+                              <span className="badge badge-green">
+                                {REGION_NAMES[opp.sell_region] || opp.sell_region}
+                              </span>
+                            </div>
+                          </td>
+                          <td>
+                            {opp.route ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {getSafetyIcon(opp.route.safety)}
+                                {getSafetyBadge(opp.route.safety)}
+                              </div>
+                            ) : (
+                              <span className="neutral">-</span>
+                            )}
+                          </td>
+                          <td className="neutral">
+                            {opp.route ? `${opp.route.jumps} jumps` : '-'}
+                          </td>
+                          <td className="neutral">
+                            {opp.route ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <Clock size={14} />
+                                {opp.route.time_minutes}m
+                              </div>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td className="neutral">
+                            {opp.cargo ? opp.cargo.units_per_trip.toLocaleString() : '-'}
+                          </td>
+                          <td className="isk positive">
+                            {opp.cargo ? `+${formatISK(opp.cargo.gross_profit_per_trip)}` : '-'}
+                          </td>
+                          <td className="isk positive">
+                            <strong>
+                              {opp.profitability
+                                ? `+${formatISK(opp.profitability.net_profit)}`
+                                : '-'}
+                            </strong>
+                          </td>
+                          <td className="isk">
+                            {opp.cargo ? formatISK(opp.cargo.isk_per_m3) : '-'}
+                          </td>
+                          <td className="isk positive">
+                            {opp.profitability?.profit_per_hour ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <Clock size={14} />
+                                {formatISK(opp.profitability.profit_per_hour)}/h
+                              </div>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td>
+                            <span
+                              className={`badge ${
+                                opp.profit_percent >= 50 ? 'badge-green' : 'badge-yellow'
+                              }`}
+                            >
+                              {opp.profit_percent.toFixed(1)}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--bg-secondary)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    <strong>Note:</strong> Profit calculations include broker fees (3% buy + 3% sell) and sales tax (8%).
+                    Trip time assumes 2 minutes per jump (round trip = 2× route jumps).
+                  </div>
+                </div>
+              </>
+            )}
           </div>
-        </div>
-      )}
+        )}
+
+        {!selectedItem && (
+          <div className="card">
+            <div className="empty-state">
+              <Search size={48} />
+              <p>Select a market group and search for an item to find arbitrage opportunities</p>
+              <p className="neutral" style={{ fontSize: 14, marginTop: 8 }}>
+                Now with route planning, cargo calculations, and profitability analysis
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
