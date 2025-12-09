@@ -44,6 +44,45 @@ export interface ArbitrageOpportunity {
   sell_volume_demand: number;
 }
 
+export interface EnhancedArbitrageOpportunity extends ArbitrageOpportunity {
+  route?: {
+    jumps: number;
+    safety: 'safe' | 'caution' | 'dangerous';
+    time_minutes: number;
+    has_lowsec: boolean;
+    has_nullsec: boolean;
+  };
+  cargo?: {
+    unit_volume: number;
+    units_per_trip: number;
+    gross_profit_per_trip: number;
+    isk_per_m3: number;
+    ship_type: string;
+    ship_capacity: number;
+    fill_percent: number;
+  };
+  profitability?: {
+    gross_profit: number;
+    broker_fees: number;
+    sales_tax: number;
+    total_fees: number;
+    net_profit: number;
+    roi_percent: number;
+    profit_per_hour: number | null;
+  };
+}
+
+export interface EnhancedArbitrageResponse {
+  type_id: number;
+  item_name: string;
+  item_volume: number | null;
+  min_profit_percent: number;
+  ship_type: string;
+  ship_capacity: number;
+  opportunities: EnhancedArbitrageOpportunity[];
+  opportunity_count: number;
+}
+
 export interface RegionPrices {
   type_id: number;
   item_name: string;
@@ -98,6 +137,20 @@ export async function getItemArbitrage(typeId: number, minProfit = 5): Promise<A
     params: { min_profit: minProfit }
   });
   return response.data.opportunities || [];
+}
+
+export async function getEnhancedArbitrage(
+  typeId: number,
+  minProfit = 5,
+  shipType = 'industrial'
+): Promise<EnhancedArbitrageResponse> {
+  const response = await api.get(`/api/arbitrage/enhanced/${typeId}`, {
+    params: {
+      min_profit: minProfit,
+      ship_type: shipType
+    }
+  });
+  return response.data;
 }
 
 export async function compareRegionPrices(typeId: number): Promise<RegionPrices> {

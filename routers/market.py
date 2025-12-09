@@ -11,34 +11,52 @@ from src.core.database import DatabasePool
 from src.core.exceptions import NotFoundError, ExternalAPIError, EVECopilotError
 from src.services.market.service import MarketService
 from src.services.market.repository import MarketRepository
-from src.integrations.esi.client import ESIClient
+from esi_client import esi_client  # Use the legacy ESI client instance
 from services import find_arbitrage
 from database import get_item_info
 from schemas import ArbitrageRequest
+from route_service import route_service, TRADE_HUB_SYSTEMS
+from cargo_service import cargo_service
 
 router = APIRouter(tags=["Market"])
+
+# Mapping of region names to their trade hub system IDs (case-insensitive)
+REGION_TO_HUB_SYSTEM = {
+    "the_forge": TRADE_HUB_SYSTEMS['jita'],
+    "The Forge": TRADE_HUB_SYSTEMS['jita'],
+    "domain": TRADE_HUB_SYSTEMS['amarr'],
+    "Domain": TRADE_HUB_SYSTEMS['amarr'],
+    "heimatar": TRADE_HUB_SYSTEMS['rens'],
+    "Heimatar": TRADE_HUB_SYSTEMS['rens'],
+    "sinq_laison": TRADE_HUB_SYSTEMS['dodixie'],
+    "Sinq Laison": TRADE_HUB_SYSTEMS['dodixie'],
+    "metropolis": TRADE_HUB_SYSTEMS['hek'],
+    "Metropolis": TRADE_HUB_SYSTEMS['hek'],
+}
+
+# Ship cargo capacities for calculations
+SHIP_CAPACITIES = {
+    'industrial': 5000,
+    'blockade_runner': 10000,
+    'deep_space_transport': 60000,
+    'freighter': 1000000,
+}
 
 
 def get_market_service() -> MarketService:
     """Dependency injection for MarketService."""
     settings = get_settings()
     db = DatabasePool(settings)
-    esi_client = ESIClient(settings)
+    from src.integrations.esi.client import ESIClient
+    esi = ESIClient(settings)  # New ESI client needs settings
     repository = MarketRepository(db)
-    return MarketService(esi_client, repository)
-
-
-def get_esi_client() -> ESIClient:
-    """Dependency injection for ESIClient (for endpoints still using direct ESI)."""
-    settings = get_settings()
-    return ESIClient(settings)
+    return MarketService(esi, repository)
 
 
 @router.get("/api/market/stats/{region_id}/{type_id}")
 async def api_market_stats(
     region_id: int,
-    type_id: int,
-    esi_client: ESIClient = Depends(get_esi_client)
+    type_id: int
 ):
     """Get market statistics for an item in a region"""
     try:
@@ -59,8 +77,7 @@ async def api_market_stats(
 
 @router.get("/api/market/compare/{type_id}")
 async def api_compare_prices(
-    type_id: int,
-    esi_client: ESIClient = Depends(get_esi_client)
+    type_id: int
 ):
     """Compare prices for an item across all trade hubs"""
     try:
@@ -96,8 +113,7 @@ async def api_compare_prices(
 @router.get("/api/market/arbitrage/{type_id}")
 async def api_find_arbitrage(
     type_id: int,
-    min_profit: float = Query(5.0),
-    esi_client: ESIClient = Depends(get_esi_client)
+    min_profit: float = Query(5.0)
 ):
     """Find arbitrage opportunities for an item between trade hubs"""
     try:
@@ -116,6 +132,162 @@ async def api_find_arbitrage(
         raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
     except EVECopilotError as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/arbitrage/enhanced/{type_id}")
+async def api_enhanced_arbitrage(
+    type_id: int,
+    min_profit: float = Query(5.0),
+    ship_type: str = Query("industrial"),
+    broker_fee_percent: float = Query(3.0),
+    sales_tax_percent: float = Query(8.0)
+):
+    """
+    Enhanced arbitrage with route planning, cargo calculations, and profitability analysis.
+
+    Integrates RouteService and CargoService for comprehensive trading information.
+    """
+    try:
+        # Get basic arbitrage opportunities
+        opportunities = esi_client.find_arbitrage_opportunities(type_id, min_profit)
+        item = get_item_info(type_id)
+        item_name = item["typeName"] if item else f"Type {type_id}"
+
+        # Get item volume for cargo calculations
+        item_volume = cargo_service.get_item_volume(type_id)
+
+        if item_volume is None:
+            item_volume = 0
+
+        # Get ship capacity
+        ship_capacity = SHIP_CAPACITIES.get(ship_type, 5000)
+
+        # Enhance each opportunity with route and cargo data
+        enhanced_opportunities = []
+        for opp in opportunities:
+            buy_region = opp.get("buy_region")
+            sell_region = opp.get("sell_region")
+
+            # Calculate route if both regions are trade hubs
+            route_data = None
+            if buy_region in REGION_TO_HUB_SYSTEM and sell_region in REGION_TO_HUB_SYSTEM:
+                from_system = REGION_TO_HUB_SYSTEM[buy_region]
+                to_system = REGION_TO_HUB_SYSTEM[sell_region]
+
+                route = route_service.find_route(from_system, to_system, avoid_lowsec=True)
+
+                if route:
+                    # Calculate route safety
+                    has_lowsec = any(sys.get('security', 1.0) < 0.45 for sys in route)
+                    has_nullsec = any(sys.get('security', 1.0) < 0.0 for sys in route)
+
+                    if has_nullsec:
+                        safety = "dangerous"
+                    elif has_lowsec:
+                        safety = "caution"
+                    else:
+                        safety = "safe"
+
+                    # Estimate trip time (2 minutes per jump)
+                    trip_time_minutes = len(route) * 2
+
+                    route_data = {
+                        "jumps": len(route),
+                        "safety": safety,
+                        "time_minutes": trip_time_minutes,
+                        "has_lowsec": has_lowsec,
+                        "has_nullsec": has_nullsec,
+                    }
+
+            # Calculate cargo data
+            cargo_data = None
+            if item_volume > 0:
+                units_per_trip = int(ship_capacity / item_volume)
+                profit_per_unit = opp.get("profit_per_unit", 0)
+
+                if units_per_trip > 0:
+                    gross_profit_per_trip = units_per_trip * profit_per_unit
+                    isk_per_m3 = profit_per_unit / item_volume if item_volume > 0 else 0
+
+                    cargo_data = {
+                        "unit_volume": round(item_volume, 2),
+                        "units_per_trip": units_per_trip,
+                        "gross_profit_per_trip": round(gross_profit_per_trip, 2),
+                        "isk_per_m3": round(isk_per_m3, 2),
+                        "ship_type": ship_type,
+                        "ship_capacity": ship_capacity,
+                        "fill_percent": round((units_per_trip * item_volume / ship_capacity) * 100, 1),
+                    }
+
+            # Calculate profitability with fees and taxes
+            profitability_data = None
+            if cargo_data:
+                buy_price = opp.get("buy_price", 0)
+                sell_price = opp.get("sell_price", 0)
+                units = cargo_data["units_per_trip"]
+
+                # Calculate fees and taxes
+                broker_fee_buy = (buy_price * units) * (broker_fee_percent / 100)
+                broker_fee_sell = (sell_price * units) * (broker_fee_percent / 100)
+                sales_tax = (sell_price * units) * (sales_tax_percent / 100)
+
+                total_fees = broker_fee_buy + broker_fee_sell + sales_tax
+
+                gross_profit = cargo_data["gross_profit_per_trip"]
+                net_profit = gross_profit - total_fees
+
+                # Calculate profit per hour if we have route data
+                profit_per_hour = None
+                if route_data and route_data["time_minutes"] > 0:
+                    # Account for round trip time
+                    total_trip_time = route_data["time_minutes"] * 2  # Round trip
+                    profit_per_hour = (net_profit / total_trip_time) * 60
+
+                profitability_data = {
+                    "gross_profit": round(gross_profit, 2),
+                    "broker_fees": round(broker_fee_buy + broker_fee_sell, 2),
+                    "sales_tax": round(sales_tax, 2),
+                    "total_fees": round(total_fees, 2),
+                    "net_profit": round(net_profit, 2),
+                    "roi_percent": round((net_profit / (buy_price * units)) * 100, 2) if buy_price > 0 else 0,
+                    "profit_per_hour": round(profit_per_hour, 2) if profit_per_hour else None,
+                }
+
+            # Add enhanced data to opportunity
+            enhanced_opp = {**opp}
+            if route_data:
+                enhanced_opp["route"] = route_data
+            if cargo_data:
+                enhanced_opp["cargo"] = cargo_data
+            if profitability_data:
+                enhanced_opp["profitability"] = profitability_data
+
+            enhanced_opportunities.append(enhanced_opp)
+
+        # Sort by ISK per m³ if available, otherwise by profit percent
+        enhanced_opportunities.sort(
+            key=lambda x: x.get("cargo", {}).get("isk_per_m3", 0) or x.get("profit_percent", 0),
+            reverse=True
+        )
+
+        return {
+            "type_id": type_id,
+            "item_name": item_name,
+            "item_volume": round(item_volume, 2) if item_volume else None,
+            "min_profit_percent": min_profit,
+            "ship_type": ship_type,
+            "ship_capacity": ship_capacity,
+            "opportunities": enhanced_opportunities,
+            "opportunity_count": len(enhanced_opportunities),
+        }
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ExternalAPIError as e:
+        raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
+    except EVECopilotError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Enhanced arbitrage failed: {str(e)}")
 
 
 @router.post("/api/trade/arbitrage")
