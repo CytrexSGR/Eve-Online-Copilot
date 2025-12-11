@@ -204,4 +204,17 @@ describe('OpportunitiesTable', () => {
     // Verify callback was called with correct opportunity
     expect(onRowClick).toHaveBeenCalledWith(mockOpportunities[0]);
   });
+
+  it('sorts by profit descending by default', () => {
+    render(<OpportunitiesTable opportunities={mockOpportunities} />);
+
+    const rows = screen.getAllByRole('row');
+    // First data row should be Raven (8B profit - highest)
+    const firstDataRow = rows[1];
+    expect(within(firstDataRow).getByText('Raven')).toBeInTheDocument();
+
+    // Last data row should be Damage Control II (500M profit - lowest)
+    const lastDataRow = rows[rows.length - 1];
+    expect(within(lastDataRow).getByText('Damage Control II')).toBeInTheDocument();
+  });
 });

@@ -161,7 +161,11 @@ export default function OpportunitiesTable({
         </thead>
         <tbody>
           {sortedOpportunities.map((opportunity) => {
-            const config = CATEGORY_CONFIG[opportunity.category];
+            const config = CATEGORY_CONFIG[opportunity.category] || {
+              label: 'UNKNOWN',
+              icon: '❓',
+              color: '#6e7681'
+            };
             return (
               <tr
                 key={opportunity.type_id}
