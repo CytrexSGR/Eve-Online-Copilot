@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TrendingUp, Search, Factory, BarChart3, Star, Package, Swords, Wand2, List } from 'lucide-react';
+import Dashboard from './pages/Dashboard';
 import MarketScanner from './pages/MarketScanner';
 import ArbitrageFinder from './pages/ArbitrageFinder';
 import ProductionPlanner from './pages/ProductionPlanner';
@@ -90,7 +91,7 @@ function App() {
           </nav>
           <main className="content">
             <Routes>
-              <Route path="/" element={<MarketScanner />} />
+              <Route path="/" element={<Dashboard />} />
               <Route path="/item/:typeId" element={<ItemDetail />} />
               <Route path="/arbitrage" element={<ArbitrageFinder />} />
               <Route path="/production" element={<ProductionPlanner />} />

@@ -1,0 +1,81 @@
+.dashboard {
+  display: flex;
+  height: calc(100vh - 60px); /* Account for header */
+  gap: 20px;
+  padding: 20px;
+}
+
+.dashboard-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.dashboard-sidebar {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Opportunities Feed */
+.opportunities-feed {
+  flex: 3;
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  overflow-y: auto;
+}
+
+.opportunities-feed h2 {
+  margin: 0 0 16px 0;
+  font-size: 24px;
+}
+
+/* Character Overview */
+.character-overview {
+  flex: 1;
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.character-overview h2 {
+  margin: 0 0 16px 0;
+  font-size: 20px;
+}
+
+.character-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.character-card {
+  background: #f5f5f5;
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.character-card h3 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+}
+
+/* Sidebar */
+.war-alerts,
+.active-projects {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.war-alerts h3,
+.active-projects h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+}
