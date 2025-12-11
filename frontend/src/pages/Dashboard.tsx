@@ -1,55 +1,37 @@
-import OpportunitiesFeed from '../components/dashboard/OpportunitiesFeed';
+import OpportunitiesTable from '../components/dashboard/OpportunitiesTable';
+import CharacterOverview from '../components/dashboard/CharacterOverview';
+import WarRoomAlerts from '../components/dashboard/WarRoomAlerts';
+import ActiveProjects from '../components/dashboard/ActiveProjects';
+import { useOpportunities } from '../hooks/dashboard/useOpportunities';
 import './Dashboard.css';
 
 /**
  * Dashboard - Main landing page for EVE Co-Pilot 2.0
  *
- * Layout:
- * - Opportunities Feed (60% height) - Top profitable actions
- * - Character Overview (20% height) - 3 character cards
- * - War Room Alerts (sidebar right) - Combat intel
- * - Active Projects (sidebar right) - Shopping lists, bookmarks
+ * Layout (70/30 split):
+ * - Main Content (70%):
+ *   - OpportunitiesTable (75%) - Top profitable actions in table format
+ *   - CharacterOverview (25%) - 3 character cards with stats
+ * - Sidebar (30%):
+ *   - WarRoomAlerts (top) - Combat intel and alerts
+ *   - ActiveProjects (bottom) - Shopping lists and active tasks
  */
 export default function Dashboard() {
+  const { data: opportunities = [], isLoading } = useOpportunities();
+
   return (
     <div className="dashboard">
       <div className="dashboard-main">
-        {/* Opportunities Feed */}
-        <section className="opportunities-feed">
-          <OpportunitiesFeed />
-        </section>
-
-        {/* Character Overview */}
-        <section className="character-overview">
-          <h2>Your Characters</h2>
-          <div className="character-cards">
-            <div className="character-card">
-              <h3>Artallus</h3>
-              <p>Loading...</p>
-            </div>
-            <div className="character-card">
-              <h3>Cytrex</h3>
-              <p>Loading...</p>
-            </div>
-            <div className="character-card">
-              <h3>Cytricia</h3>
-              <p>Loading...</p>
-            </div>
-          </div>
-        </section>
+        <OpportunitiesTable
+          opportunities={opportunities}
+          loading={isLoading}
+        />
+        <CharacterOverview />
       </div>
 
-      {/* Sidebar */}
       <aside className="dashboard-sidebar">
-        <section className="war-alerts">
-          <h3>War Room Alerts</h3>
-          <p>Loading alerts...</p>
-        </section>
-
-        <section className="active-projects">
-          <h3>Active Projects</h3>
-          <p>Loading projects...</p>
-        </section>
+        <WarRoomAlerts />
+        <ActiveProjects />
       </aside>
     </div>
   );
