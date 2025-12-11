@@ -1,0 +1,129 @@
+.active-projects {
+  background: var(--bg-surface, #161b22);
+  border: 1px solid var(--border, #21262d);
+  border-left: 2px solid #58a6ff;
+  border-radius: 6px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.active-projects-header {
+  margin-bottom: 16px;
+}
+
+.active-projects-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary, #e6edf3);
+  margin: 0;
+}
+
+/* Loading, Error, and Empty States */
+.loading-state,
+.error-state,
+.empty-state {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-secondary, #8b949e);
+  font-size: 14px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.empty-icon {
+  font-size: 32px;
+  opacity: 0.6;
+}
+
+.empty-state p {
+  margin: 0;
+  color: var(--text-secondary, #8b949e);
+}
+
+/* Projects List */
+.projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Project Item */
+.project-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+}
+
+.project-item:not(:last-child) {
+  border-bottom: 1px solid var(--border, #21262d);
+  padding-bottom: 16px;
+}
+
+.project-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.project-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e6edf3);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-status {
+  font-size: 13px;
+  color: var(--text-secondary, #8b949e);
+  white-space: nowrap;
+}
+
+/* Progress Bar */
+.progress-bar-container {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-elevated, #21262d);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #58a6ff, #79c0ff);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  min-width: 0;
+}
+
+/* Hover Effects */
+.project-item:hover .project-name {
+  color: #58a6ff;
+  cursor: pointer;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .active-projects {
+    padding: 16px;
+  }
+
+  .project-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .project-status {
+    align-self: flex-start;
+  }
+}
