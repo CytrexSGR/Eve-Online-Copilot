@@ -1,4 +1,4 @@
-import React from 'react';
+import OpportunitiesFeed from '../components/dashboard/OpportunitiesFeed';
 import './Dashboard.css';
 
 /**
@@ -16,8 +16,7 @@ export default function Dashboard() {
       <div className="dashboard-main">
         {/* Opportunities Feed */}
         <section className="opportunities-feed">
-          <h2>Top Opportunities</h2>
-          <p>Loading opportunities...</p>
+          <OpportunitiesFeed />
         </section>
 
         {/* Character Overview */}
