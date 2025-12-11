@@ -13,9 +13,88 @@ import logging
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
 import psycopg2
-from database import get_db_connection
+from database import get_db_connection, get_item_info
+from esi_client import esi_client
+from config import REGIONS
 
 logger = logging.getLogger(__name__)
+
+
+# Mapping of region IDs to names for REGIONS dict
+REGION_ID_TO_NAME = {v: k for k, v in REGIONS.items()}
+
+
+def get_best_arbitrage_opportunities(limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Calculate best arbitrage opportunities between trade hubs
+
+    Returns top opportunities sorted by profit
+    """
+    # High-volume items to check for arbitrage
+    popular_items = [
+        645,   # Thorax
+        638,   # Vexor
+        11987, # Dominix
+        641,   # Myrmidon
+        16236  # Gila
+    ]
+
+    opportunities = []
+
+    for type_id in popular_items:
+        try:
+            # Get item name
+            item_info = get_item_info(type_id)
+            type_name = item_info.get('typeName', 'Unknown') if item_info else 'Unknown'
+
+            # Get prices in all trade hubs
+            prices = {}
+            for region_name, region_id in REGIONS.items():
+                try:
+                    stats = esi_client.get_market_stats(region_id, type_id)
+                    if stats:
+                        prices[region_id] = {
+                            'name': region_name,
+                            'buy': stats.get('highest_buy', 0) or 0,
+                            'sell': stats.get('lowest_sell', 0) or 0
+                        }
+                except Exception as e:
+                    logger.debug(f"Failed to get price for {type_id} in region {region_id}: {e}")
+                    continue
+
+            # Find best arbitrage
+            for buy_region_id, buy_data in prices.items():
+                for sell_region_id, sell_data in prices.items():
+                    if buy_region_id == sell_region_id:
+                        continue
+
+                    buy_price = buy_data['sell']  # Buy at lowest sell
+                    sell_price = sell_data['buy']  # Sell at highest buy
+
+                    if buy_price > 0 and sell_price > buy_price:
+                        profit = sell_price - buy_price
+                        roi = (profit / buy_price) * 100
+
+                        if profit > 1000000:  # Min 1M profit
+                            opportunities.append({
+                                'type_id': type_id,
+                                'type_name': type_name,
+                                'buy_region_id': buy_region_id,
+                                'buy_region_name': buy_data['name'],
+                                'sell_region_id': sell_region_id,
+                                'sell_region_name': sell_data['name'],
+                                'buy_price': buy_price,
+                                'sell_price': sell_price,
+                                'profit': profit,
+                                'roi': roi
+                            })
+
+        except Exception as e:
+            logger.error(f"Error calculating arbitrage for {type_id}: {e}")
+            continue
+
+    # Sort by profit and limit
+    return sorted(opportunities, key=lambda x: -x['profit'])[:limit]
 
 
 class DashboardService:
@@ -112,14 +191,28 @@ class DashboardService:
 
     def _get_trade_opportunities(self) -> List[Dict[str, Any]]:
         """Get arbitrage opportunities"""
-        # Mock data for testing - will be replaced with real integration
-        return [{
-            'category': 'trade',
-            'type_id': 645,
-            'name': 'Thorax',
-            'profit': 2000000,
-            'roi': 15.3
-        }]
+        try:
+            arbitrage_ops = get_best_arbitrage_opportunities(limit=5)
+
+            opportunities = []
+            for arb in arbitrage_ops:
+                opportunities.append({
+                    'category': 'trade',
+                    'type_id': arb['type_id'],
+                    'name': arb.get('type_name', 'Unknown'),
+                    'profit': arb['profit'],
+                    'roi': arb['roi'],
+                    'buy_region_id': arb['buy_region_id'],
+                    'sell_region_id': arb['sell_region_id'],
+                    'buy_price': arb['buy_price'],
+                    'sell_price': arb['sell_price']
+                })
+
+            return opportunities
+
+        except Exception as e:
+            logger.error(f"Error fetching trade opportunities: {e}")
+            return []
 
     def _get_war_demand_opportunities(self) -> List[Dict[str, Any]]:
         """Get combat demand opportunities from War Analyzer"""

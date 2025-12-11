@@ -60,3 +60,27 @@ def test_production_opportunities_from_database(dashboard_service):
         assert result[0]['name'] == 'Thorax'
         assert result[0]['profit'] == 5000000
         assert result[0]['category'] == 'production'
+
+def test_trade_opportunities_from_arbitrage(dashboard_service):
+    """Should calculate arbitrage opportunities between trade hubs"""
+    with patch('services.dashboard_service.get_best_arbitrage_opportunities') as mock_arbitrage:
+        mock_arbitrage.return_value = [
+            {
+                'type_id': 645,
+                'type_name': 'Thorax',
+                'buy_region_id': 10000002,
+                'buy_region_name': 'The Forge',
+                'sell_region_id': 10000032,
+                'sell_region_name': 'Sinq Laison',
+                'buy_price': 20000000,
+                'sell_price': 25000000,
+                'profit': 5000000,
+                'roi': 25.0
+            }
+        ]
+
+        result = dashboard_service._get_trade_opportunities()
+
+        assert len(result) == 1
+        assert result[0]['category'] == 'trade'
+        assert result[0]['profit'] == 5000000
