@@ -234,3 +234,8 @@ export async function getItemCombatStats(typeId: number, days = 7) {
   const response = await api.get(`/api/war/item/${typeId}/stats`, { params: { days } });
   return response.data;
 }
+
+export async function getWarAlerts(limit = 5) {
+  const response = await api.get('/api/war/alerts', { params: { limit } });
+  return response.data;
+}
