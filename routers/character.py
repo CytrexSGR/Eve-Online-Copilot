@@ -20,7 +20,7 @@ def get_character_service() -> CharacterService:
     """Dependency injection for CharacterService."""
     settings = get_settings()
     db = DatabasePool(settings)
-    esi_client = ESIClient(settings)
+    esi_client = ESIClient()
 
     # Initialize AuthService for token management
     auth_repository = AuthRepository()
@@ -238,3 +238,32 @@ async def corporation_journal(
         raise HTTPException(status_code=502, detail=f"ESI API error: {e}")
     except EVECopilotError as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{character_id}/portrait")
+async def character_portrait(
+    character_id: int,
+    service: CharacterService = Depends(get_character_service)
+):
+    """
+    Get character portrait URL (px256x256) with 24h caching.
+
+    This endpoint proxies ESI's character portrait endpoint and caches
+    results for 24 hours to reduce API calls. If the character is not found
+    or an error occurs, a default avatar URL is returned.
+
+    Args:
+        character_id: EVE Online character ID
+
+    Returns:
+        dict: {"url": "https://images.evetech.net/characters/{id}/portrait?size=256"}
+    """
+    try:
+        result = service.get_character_portrait(character_id)
+        return result
+    except ExternalAPIError as e:
+        # Return default avatar on any ESI error
+        return {"url": "https://images.evetech.net/characters/1/portrait?size=256"}
+    except EVECopilotError as e:
+        # Return default avatar on any error
+        return {"url": "https://images.evetech.net/characters/1/portrait?size=256"}

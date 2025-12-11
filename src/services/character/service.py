@@ -672,3 +672,106 @@ class CharacterService:
             "entries": len(result),
             "journal": result
         }
+
+    def get_character_portrait(self, character_id: int) -> Dict[str, str]:
+        """
+        Get character portrait URL with 24h caching.
+
+        This method fetches the character portrait from ESI and caches it
+        in the database for 24 hours to reduce API calls.
+
+        Args:
+            character_id: Character ID
+
+        Returns:
+            Dict containing portrait URL: {"url": "https://..."}
+
+        Raises:
+            ExternalAPIError: If ESI request fails
+        """
+        from datetime import datetime, timedelta
+
+        # Check cache first
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT portrait_url, last_updated
+                        FROM character_portraits_cache
+                        WHERE character_id = %s
+                    """, (character_id,))
+                    cached = cur.fetchone()
+
+                    # If cache exists and is less than 24h old, return it
+                    if cached:
+                        age = datetime.now() - cached['last_updated']
+                        if age < timedelta(hours=24):
+                            return {"url": cached['portrait_url']}
+        except Exception:
+            # If cache lookup fails, continue to fetch from ESI
+            pass
+
+        # Fetch from ESI
+        try:
+            url = f"{self.esi.base_url}/characters/{character_id}/portrait/"
+            response = self.esi.session.get(
+                url,
+                params={"datasource": "tranquility"},
+                timeout=10
+            )
+
+            if response.status_code == 404:
+                # Character not found - return default avatar
+                default_url = "https://images.evetech.net/characters/1/portrait?size=256"
+                return {"url": default_url}
+
+            if response.status_code != 200:
+                raise ExternalAPIError(
+                    service_name="ESI",
+                    status_code=response.status_code,
+                    message=f"Failed to fetch character portrait: {response.text}"
+                )
+
+            data = response.json()
+            portrait_url = data.get("px256x256", "")
+
+            # Cache the result
+            try:
+                with self.db.get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO character_portraits_cache (character_id, portrait_url, last_updated)
+                            VALUES (%s, %s, NOW())
+                            ON CONFLICT (character_id)
+                            DO UPDATE SET
+                                portrait_url = EXCLUDED.portrait_url,
+                                last_updated = NOW()
+                        """, (character_id, portrait_url))
+                        conn.commit()
+            except Exception:
+                # If cache write fails, still return the result
+                pass
+
+            return {"url": portrait_url}
+
+        except Timeout:
+            raise ExternalAPIError(
+                service_name="ESI",
+                status_code=0,
+                message="Request timeout while fetching character portrait"
+            )
+        except RequestException as e:
+            raise ExternalAPIError(
+                service_name="ESI",
+                status_code=0,
+                message=f"Request failed: {str(e)}"
+            )
+        except ExternalAPIError:
+            # Re-raise our own exceptions
+            raise
+        except Exception as e:
+            raise ExternalAPIError(
+                service_name="ESI",
+                status_code=0,
+                message=f"Unexpected error: {str(e)}"
+            )
