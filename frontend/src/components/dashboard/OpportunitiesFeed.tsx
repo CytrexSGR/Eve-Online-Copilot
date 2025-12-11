@@ -1,13 +1,36 @@
+import { useState } from 'react';
 import { useOpportunities, type Opportunity } from '../../hooks/dashboard/useOpportunities';
 import OpportunityCard from './OpportunityCard';
+import CharacterSelector from '../shared/CharacterSelector';
+import { useCharacterSelection } from '../../hooks/useCharacterSelection';
 import './OpportunitiesFeed.css';
 
 export default function OpportunitiesFeed() {
+  const [showCharacterSelector, setShowCharacterSelector] = useState(false);
+  const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
+
+  const {
+    characters,
+    selectedCharacterId,
+    selectCharacter
+  } = useCharacterSelection('production');
+
   const { data: opportunities, isLoading, error } = useOpportunities(10);
 
   const handleQuickAction = (opportunity: Opportunity) => {
-    console.log('Quick action for:', opportunity);
-    // TODO: Open character selector, then navigate to appropriate page
+    setSelectedOpportunity(opportunity);
+    setShowCharacterSelector(true);
+  };
+
+  const handleCharacterSelected = (characterId: number) => {
+    selectCharacter(characterId);
+    setShowCharacterSelector(false);
+
+    // Navigate to appropriate page based on opportunity category
+    if (selectedOpportunity) {
+      console.log(`Action for ${selectedOpportunity.name} with character ${characterId}`);
+      // TODO: Navigate to production/trade page
+    }
   };
 
   const handleViewDetails = (opportunity: Opportunity) => {
@@ -36,6 +59,24 @@ export default function OpportunitiesFeed() {
   return (
     <div className="opportunities-feed">
       <h2>Top Opportunities</h2>
+
+      {showCharacterSelector && selectedOpportunity && (
+        <div className="character-selector-modal">
+          <div className="modal-content">
+            <h3>Select Character</h3>
+            <p>Who should perform this action?</p>
+            <CharacterSelector
+              characters={characters}
+              selectedCharacterId={selectedCharacterId}
+              onSelect={handleCharacterSelected}
+            />
+            <button onClick={() => setShowCharacterSelector(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="opportunities-grid">
         {opportunities?.map((op, index) => (
           <OpportunityCard
