@@ -3,7 +3,7 @@
   height: calc(100vh - 60px); /* Account for header */
   gap: 24px;
   padding: 24px;
-  background: #f8f9fa;
+  background: #0d1117;
 }
 
 .dashboard-main {
@@ -25,10 +25,11 @@
 /* Opportunities Feed */
 .opportunities-feed {
   flex: 3;
-  background: #ffffff;
+  background: #161b22;
+  border: 1px solid #30363d;
   border-radius: 12px;
   padding: 28px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   overflow-y: auto;
 }
 
@@ -36,7 +37,7 @@
   margin: 0 0 24px 0;
   font-size: 32px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: #e6edf3;
   letter-spacing: -0.5px;
 }
 
@@ -44,17 +45,18 @@
 .character-overview {
   flex: 1;
   min-height: 200px;
-  background: #ffffff;
+  background: #161b22;
+  border: 1px solid #30363d;
   border-radius: 12px;
   padding: 24px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
 
 .character-overview h2 {
   margin: 0 0 20px 0;
   font-size: 24px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: #e6edf3;
   letter-spacing: -0.3px;
 }
 
@@ -65,16 +67,16 @@
 }
 
 .character-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #58a6ff 0%, #bc8cff 100%);
   border-radius: 8px;
   padding: 20px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(88,166,255,0.2);
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .character-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 8px 24px rgba(88,166,255,0.3);
 }
 
 .character-card h3 {
@@ -87,16 +89,17 @@
 .character-card p {
   margin: 0;
   font-size: 14px;
-  color: rgba(255,255,255,0.9);
+  color: rgba(255,255,255,0.95);
 }
 
 /* Sidebar */
 .war-alerts,
 .active-projects {
-  background: #ffffff;
+  background: #161b22;
+  border: 1px solid #30363d;
   border-radius: 12px;
   padding: 24px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   min-height: 180px;
 }
 
@@ -105,13 +108,13 @@
   margin: 0 0 16px 0;
   font-size: 20px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: #e6edf3;
   letter-spacing: -0.3px;
 }
 
 .war-alerts p,
 .active-projects p {
-  color: #6c757d;
+  color: #8b949e;
   font-size: 15px;
   margin: 0;
 }

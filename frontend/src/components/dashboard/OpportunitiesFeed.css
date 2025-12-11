@@ -8,7 +8,7 @@
   margin: 0 0 24px 0;
   font-size: 32px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: #e6edf3;
   letter-spacing: -0.5px;
 }
 
@@ -20,6 +20,25 @@
   padding-right: 4px; /* Space for scrollbar */
 }
 
+/* Custom scrollbar for dark mode */
+.opportunities-grid::-webkit-scrollbar {
+  width: 8px;
+}
+
+.opportunities-grid::-webkit-scrollbar-track {
+  background: #161b22;
+  border-radius: 4px;
+}
+
+.opportunities-grid::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+
+.opportunities-grid::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}
+
 .loading,
 .error,
 .empty-state {
@@ -29,21 +48,22 @@
 }
 
 .loading {
-  color: #6c757d;
+  color: #8b949e;
   font-weight: 500;
 }
 
 .error {
-  color: #dc3545;
+  color: #f85149;
   font-weight: 600;
-  background: #f8d7da;
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid rgba(248, 81, 73, 0.3);
   border-radius: 8px;
   padding: 20px;
   margin: 20px 0;
 }
 
 .empty-state {
-  color: #6c757d;
+  color: #8b949e;
   font-weight: 500;
 }
 
@@ -53,8 +73,8 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
+  background: rgba(1, 4, 9, 0.8);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -72,12 +92,13 @@
 }
 
 .modal-content {
-  background: white;
+  background: #161b22;
+  border: 1px solid #30363d;
   padding: 32px;
   border-radius: 16px;
   max-width: 480px;
   width: 90%;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
   animation: slideUp 0.3s ease-out;
 }
 
@@ -96,13 +117,13 @@
   margin: 0 0 12px 0;
   font-size: 24px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: #e6edf3;
   letter-spacing: -0.3px;
 }
 
 .modal-content p {
   margin: 0 0 24px 0;
-  color: #6c757d;
+  color: #8b949e;
   font-size: 16px;
 }
 
@@ -110,10 +131,10 @@
   margin-top: 16px;
   width: 100%;
   padding: 14px;
-  border: none;
+  border: 1px solid #30363d;
   border-radius: 8px;
-  background: #e9ecef;
-  color: #495057;
+  background: #21262d;
+  color: #e6edf3;
   cursor: pointer;
   font-size: 16px;
   font-weight: 600;
@@ -121,7 +142,7 @@
 }
 
 .modal-content button:hover {
-  background: #dee2e6;
-  color: #212529;
+  background: #30363d;
+  border-color: #58a6ff;
   transform: translateY(-1px);
 }
