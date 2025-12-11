@@ -1,0 +1,77 @@
+/**
+ * CharacterOverview Component Styles
+ *
+ * Layout: Horizontal flex container for 3 character cards
+ * Dark mode theme with EVE Online aesthetic
+ */
+
+.character-overview {
+  width: 100%;
+  padding: 16px;
+  background-color: #0d1117; /* Deep space dark background */
+}
+
+.character-overview-header {
+  font-size: 24px;
+  font-weight: 700;
+  color: #e6edf3; /* Text primary */
+  margin: 0 0 20px 0;
+  padding: 0;
+}
+
+.character-cards-container {
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  justify-content: flex-start;
+  align-items: flex-start;
+  flex-wrap: wrap; /* Wrap on smaller screens */
+}
+
+/* Loading State */
+.character-loading-placeholder {
+  width: 100%;
+  padding: 40px;
+  text-align: center;
+  color: #8b949e; /* Text secondary */
+  font-size: 16px;
+  background-color: #161b22; /* Surface */
+  border: 1px solid #30363d; /* Border */
+  border-radius: 8px;
+}
+
+/* Error State */
+.character-error-message {
+  width: 100%;
+  padding: 20px;
+  text-align: center;
+  color: #f85149; /* Danger */
+  font-size: 16px;
+  font-weight: 600;
+  background-color: #161b22; /* Surface */
+  border: 1px solid #f85149; /* Danger border */
+  border-radius: 8px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .character-cards-container {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .character-overview {
+    padding: 12px;
+  }
+
+  .character-overview-header {
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+
+  .character-cards-container {
+    gap: 16px;
+  }
+}
