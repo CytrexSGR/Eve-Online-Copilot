@@ -130,3 +130,24 @@ def test_trade_opportunities_from_arbitrage(dashboard_service):
         assert len(result) == 1
         assert result[0]['category'] == 'trade'
         assert result[0]['profit'] == 5000000
+
+def test_war_demand_opportunities_from_analyzer(dashboard_service):
+    """Should fetch war demand opportunities from war analyzer"""
+    with patch('services.dashboard_service.war_analyzer.war_analyzer') as mock_war:
+        mock_war.get_demand_opportunities.return_value = [
+            {
+                'type_id': 16236,
+                'type_name': 'Gila',
+                'region_id': 10000032,
+                'region_name': 'Sinq Laison',
+                'destroyed_count': 150,
+                'market_stock': 20,
+                'estimated_profit': 10000000
+            }
+        ]
+
+        result = dashboard_service._get_war_demand_opportunities()
+
+        assert len(result) == 1
+        assert result[0]['category'] == 'war_demand'
+        assert result[0]['type_id'] == 16236

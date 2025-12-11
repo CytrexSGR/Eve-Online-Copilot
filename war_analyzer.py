@@ -388,6 +388,63 @@ class WarAnalyzer:
                     'has_data': True
                 }
 
+    def get_demand_opportunities(self, limit: int = 5) -> List[Dict]:
+        """
+        Get top war demand opportunities for dashboard
+
+        Returns items with high combat losses and low market supply
+        """
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT
+                            sl.ship_type_id,
+                            t."typeName",
+                            sl.region_id,
+                            r.region_name,
+                            SUM(sl.quantity) as destroyed_count,
+                            COALESCE(mp.sell_volume, 0) as market_stock,
+                            COALESCE(AVG(NULLIF(sl.total_value_destroyed, 0) / NULLIF(sl.quantity, 0)), 0) as avg_value
+                        FROM combat_ship_losses sl
+                        JOIN "invTypes" t ON sl.ship_type_id = t."typeID"
+                        JOIN system_region_map r ON sl.region_id = r.region_id
+                        LEFT JOIN (
+                            SELECT type_id, region_id, SUM(sell_volume) as sell_volume
+                            FROM market_prices
+                            GROUP BY type_id, region_id
+                        ) mp ON sl.ship_type_id = mp.type_id AND sl.region_id = mp.region_id
+                        WHERE sl.date >= CURRENT_DATE - 7
+                        GROUP BY sl.ship_type_id, t."typeName", sl.region_id, r.region_name, mp.sell_volume
+                        HAVING SUM(sl.quantity) > 10
+                        ORDER BY (SUM(sl.quantity) / NULLIF(COALESCE(mp.sell_volume, 1), 0)) DESC
+                        LIMIT %s
+                    """, (limit,))
+
+                    rows = cursor.fetchall()
+
+                    opportunities = []
+                    for row in rows:
+                        gap_ratio = row[4] / max(row[5], 1)
+                        avg_value = float(row[6]) if row[6] else 0.0
+                        estimated_profit = gap_ratio * avg_value
+
+                        opportunities.append({
+                            'type_id': row[0],
+                            'type_name': row[1],
+                            'region_id': row[2],
+                            'region_name': row[3],
+                            'destroyed_count': row[4],
+                            'market_stock': row[5],
+                            'estimated_profit': estimated_profit
+                        })
+
+                    return opportunities
+
+        except Exception as e:
+            print(f"Error fetching war demand opportunities: {e}")
+            return []
+
 
 # Singleton instance
 war_analyzer = WarAnalyzer()

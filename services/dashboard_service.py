@@ -16,6 +16,7 @@ import psycopg2
 from database import get_db_connection, get_item_info
 from esi_client import esi_client
 from config import REGIONS
+import war_analyzer
 
 logger = logging.getLogger(__name__)
 
@@ -216,14 +217,28 @@ class DashboardService:
 
     def _get_war_demand_opportunities(self) -> List[Dict[str, Any]]:
         """Get combat demand opportunities from War Analyzer"""
-        # Mock data for testing - will be replaced with real integration
-        return [{
-            'category': 'war_demand',
-            'type_id': 16236,
-            'name': 'Gila',
-            'profit': 10000000,
-            'roi': 35.0
-        }]
+        try:
+            war_ops = war_analyzer.war_analyzer.get_demand_opportunities(limit=5)
+
+            opportunities = []
+            for war_op in war_ops:
+                opportunities.append({
+                    'category': 'war_demand',
+                    'type_id': war_op['type_id'],
+                    'name': war_op['type_name'],
+                    'profit': war_op['estimated_profit'],
+                    'roi': 0,  # ROI not applicable for war demand
+                    'region_id': war_op['region_id'],
+                    'region_name': war_op['region_name'],
+                    'destroyed_count': war_op['destroyed_count'],
+                    'market_stock': war_op['market_stock']
+                })
+
+            return opportunities
+
+        except Exception as e:
+            print(f"Error fetching war demand opportunities: {e}")
+            return []
 
     def _sort_opportunities(self, opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
