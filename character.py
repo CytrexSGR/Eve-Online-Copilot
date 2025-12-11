@@ -278,6 +278,24 @@ class CharacterAPI:
         except Exception as e:
             return {"error": f"Request error: {str(e)}"}
 
+    def get_character_location(self, character_id: int) -> dict:
+        """Get character's current location (requires auth)"""
+        try:
+            response = self.session.get(
+                f"{self.base_url}/characters/{character_id}/location/",
+                headers=self._get_headers(character_id),
+                params={"datasource": "tranquility"},
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                return response.json()
+
+            return {"error": f"Failed to get character location: {response.status_code}"}
+
+        except Exception as e:
+            return {"error": f"Request error: {str(e)}"}
+
     def get_corporation_id(self, character_id: int) -> int | None:
         """Get corporation ID for a character"""
         info = self.get_character_info(character_id)

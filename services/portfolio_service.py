@@ -50,10 +50,10 @@ class PortfolioService:
         wallet_data = character_api.get_wallet_balance(character_id)
         wallet = wallet_data.get('balance', 0) if isinstance(wallet_data, dict) else 0
 
-        # Get location from character info
-        char_info = character_api.get_character_info(character_id)
-        system_id = None
-        system_name = "Unknown"
+        # Get location from ESI
+        location_data = character_api.get_character_location(character_id)
+        system_id = location_data.get('solar_system_id') if isinstance(location_data, dict) else None
+        system_name = self._get_system_name(system_id) if system_id else "Unknown"
 
         # Get active jobs
         jobs_data = character_api.get_industry_jobs(character_id)
@@ -107,27 +107,29 @@ class PortfolioService:
     def _get_character_name(self, character_id: int) -> str:
         """Get character name from database"""
         try:
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT character_name FROM characters WHERE character_id = %s",
-                    (character_id,)
-                )
-                row = cursor.fetchone()
-                return row[0] if row else f"Character_{character_id}"
-        except Exception:
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT character_name FROM characters WHERE character_id = %s",
+                        (character_id,)
+                    )
+                    row = cursor.fetchone()
+                    return row[0] if row else f"Character_{character_id}"
+        except Exception as e:
+            print(f"Error fetching character name for {character_id}: {e}")
             return f"Character_{character_id}"
 
     def _get_system_name(self, system_id: int) -> str:
         """Get system name from SDE"""
         try:
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT solarSystemName FROM mapSolarSystems WHERE solarSystemID = %s",
-                    (system_id,)
-                )
-                row = cursor.fetchone()
-                return row[0] if row else "Unknown"
-        except Exception:
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT solarSystemName FROM mapSolarSystems WHERE solarSystemID = %s",
+                        (system_id,)
+                    )
+                    row = cursor.fetchone()
+                    return row[0] if row else "Unknown"
+        except Exception as e:
+            print(f"Error fetching system name for {system_id}: {e}")
             return "Unknown"
