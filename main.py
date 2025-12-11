@@ -21,6 +21,7 @@ from routers import (
     mining_router,
     war_router,
     dashboard_router,
+    research_router,
 )
 
 # FastAPI App
@@ -53,6 +54,7 @@ app.include_router(mcp_router)
 app.include_router(mining_router)
 app.include_router(war_router)
 app.include_router(dashboard_router)
+app.include_router(research_router)
 
 
 @app.get("/")
