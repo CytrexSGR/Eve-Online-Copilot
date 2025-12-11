@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { get } from '@/api';
+import { api } from '@/api';
 import CharacterCard from './CharacterCard';
 import './CharacterOverview.css';
 
@@ -40,7 +40,7 @@ export default function CharacterOverview() {
     try {
       setLoading(true);
       setError(null);
-      const response = await get('/api/dashboard/characters/summary');
+      const response = await api.get('/api/dashboard/characters/summary');
       setCharacters(response.data || []);
     } catch (err) {
       console.error('Error fetching characters:', err);
