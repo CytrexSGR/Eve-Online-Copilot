@@ -87,3 +87,55 @@ async def get_dashboard_portfolio() -> Dict[str, Any]:
         'character_count': len(character_ids),
         'characters': character_ids
     }
+
+
+@router.get("/projects")
+async def get_active_projects() -> List[Dict[str, Any]]:
+    """
+    Get active projects (shopping lists) with item counts and progress
+
+    Returns:
+    - id: Shopping list ID
+    - name: Shopping list name
+    - total_items: Total number of items in the list
+    - checked_items: Number of purchased items (is_purchased=true)
+    - progress: Completion percentage (0-100)
+    """
+    from database import get_db_connection
+    from psycopg2.extras import RealDictCursor
+
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Query shopping lists with item counts
+            cur.execute('''
+                SELECT
+                    sl.id,
+                    sl.name,
+                    COUNT(sli.id) as total_items,
+                    COUNT(sli.id) FILTER (WHERE sli.is_purchased = true) as checked_items
+                FROM shopping_lists sl
+                LEFT JOIN shopping_list_items sli ON sl.id = sli.list_id
+                GROUP BY sl.id, sl.name
+                ORDER BY sl.updated_at DESC, sl.created_at DESC
+            ''')
+
+            projects = []
+            for row in cur.fetchall():
+                total = int(row['total_items'])
+                checked = int(row['checked_items'])
+
+                # Calculate progress percentage
+                if total > 0:
+                    progress = round((checked / total) * 100, 1)
+                else:
+                    progress = 0.0
+
+                projects.append({
+                    'id': row['id'],
+                    'name': row['name'],
+                    'total_items': total,
+                    'checked_items': checked,
+                    'progress': progress
+                })
+
+            return projects

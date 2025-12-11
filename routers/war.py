@@ -330,3 +330,79 @@ async def get_item_combat_stats(
         return stats
     except EVECopilotError as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# War Room Alerts Endpoint
+# ============================================================
+
+@router.get("/alerts")
+async def get_war_alerts(
+    limit: int = Query(5, ge=1, le=50),
+    repository: WarRoomRepository = Depends(get_war_room_repository)
+):
+    """
+    Get recent high-priority war events from combat losses.
+
+    Returns alerts for high-value ship kills (>1B ISK) from the last 24 hours.
+    Alerts are prioritized as:
+    - high: >5B ISK
+    - medium: >1B ISK
+
+    Args:
+        limit: Maximum number of alerts to return (default: 5)
+
+    Returns:
+        List of alert objects with priority, message, timestamp, and value
+    """
+    try:
+        async with repository.db_pool.get_connection() as conn:
+            async with conn.cursor() as cursor:
+                # Query high-value kills from last 24 hours
+                await cursor.execute("""
+                    SELECT
+                        csl.ship_type_id as type_id,
+                        t.typeName,
+                        csl.date,
+                        csl.total_value_destroyed,
+                        csl.region_id,
+                        r.regionName,
+                        csl.solar_system_id,
+                        ms.solarSystemName
+                    FROM combat_ship_losses csl
+                    JOIN invTypes t ON csl.ship_type_id = t.typeID
+                    JOIN mapRegions r ON csl.region_id = r.regionID
+                    LEFT JOIN mapSolarSystems ms ON csl.solar_system_id = ms.solarSystemID
+                    WHERE csl.total_value_destroyed > 1000000000
+                        AND csl.date >= CURRENT_DATE - INTERVAL '1 day'
+                    ORDER BY csl.date DESC, csl.total_value_destroyed DESC
+                    LIMIT %s
+                """, (limit,))
+
+                rows = await cursor.fetchall()
+
+                alerts = []
+                for row in rows:
+                    type_id, type_name, kill_date, value, region_id, region_name, system_id, system_name = row
+
+                    # Determine priority based on value
+                    priority = "high" if value > 5_000_000_000 else "medium"
+
+                    # Create alert message
+                    location = system_name if system_name else region_name
+                    message = f"High-value {type_name} destroyed in {location}"
+
+                    # Convert date to ISO format timestamp
+                    timestamp = kill_date.isoformat() + "T00:00:00Z"
+
+                    alerts.append({
+                        "priority": priority,
+                        "message": message,
+                        "timestamp": timestamp,
+                        "value": float(value)
+                    })
+
+                return alerts
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch war alerts: {str(e)}")
