@@ -11,6 +11,7 @@ Sorts by user priorities: Industrie → Handel → War Room
 
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
+from database import get_db_connection
 
 
 class DashboardService:
@@ -63,14 +64,44 @@ class DashboardService:
 
     def _get_production_opportunities(self) -> List[Dict[str, Any]]:
         """Get manufacturing opportunities from Market Hunter"""
-        # Mock data for testing - will be replaced with real integration
-        return [{
-            'category': 'production',
-            'type_id': 645,
-            'name': 'Thorax',
-            'profit': 5000000,
-            'roi': 25.5
-        }]
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT
+                            product_id,
+                            product_name,
+                            profit,
+                            roi,
+                            difficulty,
+                            cheapest_material_cost,
+                            best_sell_price
+                        FROM manufacturing_opportunities
+                        WHERE profit > 1000000
+                        ORDER BY profit DESC
+                        LIMIT 10
+                    """)
+
+                    rows = cursor.fetchall()
+
+                    opportunities = []
+                    for row in rows:
+                        opportunities.append({
+                            'category': 'production',
+                            'type_id': row[0],
+                            'name': row[1],
+                            'profit': row[2],
+                            'roi': row[3],
+                            'difficulty': row[4],
+                            'material_cost': row[5],
+                            'sell_price': row[6]
+                        })
+
+                    return opportunities
+
+        except Exception as e:
+            print(f"Error fetching production opportunities: {e}")
+            return []
 
     def _get_trade_opportunities(self) -> List[Dict[str, Any]]:
         """Get arbitrage opportunities"""
