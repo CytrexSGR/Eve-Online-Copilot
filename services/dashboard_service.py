@@ -9,9 +9,13 @@ Aggregates opportunities from:
 Sorts by user priorities: Industrie → Handel → War Room
 """
 
+import logging
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
+import psycopg2
 from database import get_db_connection
+
+logger = logging.getLogger(__name__)
 
 
 class DashboardService:
@@ -90,17 +94,20 @@ class DashboardService:
                             'category': 'production',
                             'type_id': row[0],
                             'name': row[1],
-                            'profit': row[2],
-                            'roi': row[3],
+                            'profit': float(row[2]) if row[2] else 0.0,
+                            'roi': float(row[3]) if row[3] else 0.0,
                             'difficulty': row[4],
-                            'material_cost': row[5],
-                            'sell_price': row[6]
+                            'material_cost': float(row[5]) if row[5] else 0.0,
+                            'sell_price': float(row[6]) if row[6] else 0.0
                         })
 
                     return opportunities
 
+        except psycopg2.Error as e:
+            logger.error(f"Database error fetching production opportunities: {e}", exc_info=True)
+            return []
         except Exception as e:
-            print(f"Error fetching production opportunities: {e}")
+            logger.exception(f"Unexpected error fetching production opportunities: {e}")
             return []
 
     def _get_trade_opportunities(self) -> List[Dict[str, Any]]:
