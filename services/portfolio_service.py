@@ -9,7 +9,7 @@ Provides aggregated views across multiple EVE Online characters:
 """
 
 from typing import List, Dict, Any
-import character
+from character import character_api
 from database import get_db_connection
 
 
@@ -47,25 +47,29 @@ class PortfolioService:
         char_name = self._get_character_name(character_id)
 
         # Get wallet balance
-        wallet = character.get_character_wallet(character_id)
+        wallet_data = character_api.get_wallet_balance(character_id)
+        wallet = wallet_data.get('balance', 0) if isinstance(wallet_data, dict) else 0
 
-        # Get location
-        location = character.get_character_location(character_id)
-        system_id = location.get('solar_system_id') if location else None
-        system_name = self._get_system_name(system_id) if system_id else "Unknown"
+        # Get location from character info
+        char_info = character_api.get_character_info(character_id)
+        system_id = None
+        system_name = "Unknown"
 
         # Get active jobs
-        jobs = character.get_character_industry_jobs(character_id, status='active')
+        jobs_data = character_api.get_industry_jobs(character_id)
+        jobs = jobs_data.get('jobs', []) if isinstance(jobs_data, dict) else []
         active_jobs = []
         for job in jobs[:3]:  # Max 3 jobs shown
-            active_jobs.append({
-                'blueprint_id': job.get('blueprint_id'),
-                'runs': job.get('runs'),
-                'end_date': job.get('end_date')
-            })
+            if job.get('status') == 'active':
+                active_jobs.append({
+                    'blueprint_id': job.get('blueprint_id'),
+                    'runs': job.get('runs'),
+                    'end_date': job.get('end_date')
+                })
 
         # Get skill queue
-        skill_queue = character.get_character_skillqueue(character_id)
+        skill_queue_data = character_api.get_skill_queue(character_id)
+        skill_queue = skill_queue_data.get('queue', []) if isinstance(skill_queue_data, dict) else []
         next_skill = None
         if skill_queue and len(skill_queue) > 0:
             skill = skill_queue[0]
@@ -92,7 +96,8 @@ class PortfolioService:
 
         for char_id in character_ids:
             try:
-                wallet = character.get_character_wallet(char_id)
+                wallet_data = character_api.get_wallet_balance(char_id)
+                wallet = wallet_data.get('balance', 0) if isinstance(wallet_data, dict) else 0
                 total += wallet
             except Exception as e:
                 print(f"Error getting wallet for character {char_id}: {e}")
