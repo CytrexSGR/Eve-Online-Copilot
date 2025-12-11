@@ -1,0 +1,213 @@
+/* OpportunitiesTable Component Styles */
+
+.opportunities-table-container {
+  width: 100%;
+  overflow-x: auto;
+  background: #161b22;
+  border-radius: 8px;
+  border: 1px solid #30363d;
+}
+
+/* Table Structure */
+.opportunities-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums; /* Tabular numbers for alignment */
+}
+
+/* Header Styles */
+.opportunities-table thead {
+  background: #0d1117;
+  border-bottom: 2px solid #30363d;
+}
+
+.opportunities-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 14px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.opportunities-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s;
+}
+
+.opportunities-table th.sortable:hover {
+  color: #e6edf3;
+}
+
+.sort-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  color: #58a6ff;
+}
+
+/* Row Styles */
+.opportunities-table tbody tr {
+  height: 48px;
+  border-bottom: 1px solid #21262d;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.opportunities-table tbody tr:hover {
+  background: #21262d;
+  border-left: 2px solid #58a6ff;
+}
+
+.opportunities-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+/* Cell Styles */
+.opportunities-table td {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #e6edf3;
+  vertical-align: middle;
+}
+
+/* Icon Cell */
+.icon-cell {
+  width: 48px;
+  text-align: center;
+}
+
+.category-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 16px;
+}
+
+/* Name Cell */
+.name-cell {
+  font-weight: 500;
+  color: #e6edf3;
+  min-width: 200px;
+}
+
+/* Profit Cell */
+.profit-cell {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 100px;
+}
+
+/* ROI Cell */
+.roi-cell {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 80px;
+}
+
+/* Category Cell */
+.category-cell {
+  min-width: 100px;
+}
+
+.category-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Actions Cell */
+.actions-cell {
+  min-width: 120px;
+  text-align: right;
+}
+
+.action-button {
+  padding: 6px 12px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #58a6ff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-button:hover {
+  background: #30363d;
+  border-color: #58a6ff;
+  transform: translateY(-1px);
+}
+
+.action-button:active {
+  transform: translateY(0);
+}
+
+/* Empty and Loading States */
+.empty-state,
+.loading-state {
+  padding: 48px 24px;
+  text-align: center;
+  color: #8b949e;
+  font-size: 16px;
+}
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.loading-state::before {
+  content: '';
+  width: 20px;
+  height: 20px;
+  border: 2px solid #30363d;
+  border-top-color: #58a6ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .opportunities-table th,
+  .opportunities-table td {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .opportunities-table tbody tr {
+    height: 44px;
+  }
+
+  .icon-cell {
+    width: 40px;
+  }
+
+  .category-icon {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+
+  .name-cell {
+    min-width: 150px;
+  }
+}
