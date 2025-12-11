@@ -356,30 +356,30 @@ async def get_war_alerts(
         List of alert objects with priority, message, timestamp, and value
     """
     try:
-        async with repository.db_pool.get_connection() as conn:
-            async with conn.cursor() as cursor:
+        with repository.db.get_connection() as conn:
+            with conn.cursor() as cursor:
                 # Query high-value kills from last 24 hours
-                await cursor.execute("""
+                cursor.execute("""
                     SELECT
                         csl.ship_type_id as type_id,
-                        t.typeName,
+                        t."typeName",
                         csl.date,
                         csl.total_value_destroyed,
                         csl.region_id,
-                        r.regionName,
+                        r."regionName",
                         csl.solar_system_id,
-                        ms.solarSystemName
+                        ms."solarSystemName"
                     FROM combat_ship_losses csl
-                    JOIN invTypes t ON csl.ship_type_id = t.typeID
-                    JOIN mapRegions r ON csl.region_id = r.regionID
-                    LEFT JOIN mapSolarSystems ms ON csl.solar_system_id = ms.solarSystemID
+                    JOIN "invTypes" t ON csl.ship_type_id = t."typeID"
+                    JOIN "mapRegions" r ON csl.region_id = r."regionID"
+                    LEFT JOIN "mapSolarSystems" ms ON csl.solar_system_id = ms."solarSystemID"
                     WHERE csl.total_value_destroyed > 1000000000
                         AND csl.date >= CURRENT_DATE - INTERVAL '1 day'
                     ORDER BY csl.date DESC, csl.total_value_destroyed DESC
                     LIMIT %s
                 """, (limit,))
 
-                rows = await cursor.fetchall()
+                rows = cursor.fetchall()
 
                 alerts = []
                 for row in rows:
