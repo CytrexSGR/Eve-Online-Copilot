@@ -11,6 +11,7 @@ from .hunter import router as hunter_router
 from .mcp import router as mcp_router
 from .mining import router as mining_router
 from .war import router as war_router
+from .dashboard import router as dashboard_router
 
 __all__ = [
     'auth_router',
@@ -25,4 +26,5 @@ __all__ = [
     'mcp_router',
     'mining_router',
     'war_router',
+    'dashboard_router',
 ]
