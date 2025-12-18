@@ -1,29 +1,34 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TrendingUp, Search, Factory, BarChart3, Star, Package, Swords, Wand2, List } from 'lucide-react';
-import Dashboard from './pages/Dashboard';
-import MarketScanner from './pages/MarketScanner';
-import ArbitrageFinder from './pages/ArbitrageFinder';
-import ProductionPlanner from './pages/ProductionPlanner';
-import ItemDetail from './pages/ItemDetail';
-import Bookmarks from './pages/Bookmarks';
-import MaterialsOverview from './pages/MaterialsOverview';
-import ShoppingPlanner from './pages/ShoppingPlanner';
-import { ShoppingWizard } from './components/shopping';
-import WarRoom from './pages/WarRoom';
-import WarRoomShipsDestroyed from './pages/WarRoomShipsDestroyed';
-import WarRoomMarketGaps from './pages/WarRoomMarketGaps';
-import WarRoomTopShips from './pages/WarRoomTopShips';
-import WarRoomCombatHotspots from './pages/WarRoomCombatHotspots';
-import WarRoomFWHotspots from './pages/WarRoomFWHotspots';
-import WarRoomGalaxySummary from './pages/WarRoomGalaxySummary';
 import './App.css';
+
+// Lazy load all pages for code splitting
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const ArbitrageFinder = lazy(() => import('./pages/ArbitrageFinder'));
+const ProductionPlanner = lazy(() => import('./pages/ProductionPlanner'));
+const ItemDetail = lazy(() => import('./pages/ItemDetail'));
+const Bookmarks = lazy(() => import('./pages/Bookmarks'));
+const MaterialsOverview = lazy(() => import('./pages/MaterialsOverview'));
+const ShoppingPlanner = lazy(() => import('./pages/ShoppingPlanner'));
+const ShoppingWizard = lazy(() => import('./components/shopping').then(m => ({ default: m.ShoppingWizard })));
+const WarRoom = lazy(() => import('./pages/WarRoom'));
+const WarRoomShipsDestroyed = lazy(() => import('./pages/WarRoomShipsDestroyed'));
+const WarRoomMarketGaps = lazy(() => import('./pages/WarRoomMarketGaps'));
+const WarRoomTopShips = lazy(() => import('./pages/WarRoomTopShips'));
+const WarRoomCombatHotspots = lazy(() => import('./pages/WarRoomCombatHotspots'));
+const WarRoomFWHotspots = lazy(() => import('./pages/WarRoomFWHotspots'));
+const WarRoomGalaxySummary = lazy(() => import('./pages/WarRoomGalaxySummary'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60000,
+      staleTime: 5 * 60 * 1000, // 5 minutes (most data changes slowly)
+      cacheTime: 10 * 60 * 1000, // 10 minutes (keep in cache even if unused)
       retry: 2,
+      refetchOnWindowFocus: false, // Don't refetch on tab focus (reduces load)
+      refetchOnReconnect: true, // Refetch when connection restored
     },
   },
 });
@@ -90,15 +95,21 @@ function App() {
             </ul>
           </nav>
           <main className="content">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/item/:typeId" element={<ItemDetail />} />
-              <Route path="/arbitrage" element={<ArbitrageFinder />} />
-              <Route path="/production" element={<ProductionPlanner />} />
-              <Route path="/bookmarks" element={<Bookmarks />} />
-              <Route path="/materials" element={<MaterialsOverview />} />
-              <Route path="/shopping" element={<ShoppingWizard />} />
-              <Route path="/shopping-lists" element={<ShoppingPlanner />} />
+            <Suspense fallback={
+              <div className="loading">
+                <div className="spinner"></div>
+                Loading...
+              </div>
+            }>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/item/:typeId" element={<ItemDetail />} />
+                <Route path="/arbitrage" element={<ArbitrageFinder />} />
+                <Route path="/production" element={<ProductionPlanner />} />
+                <Route path="/bookmarks" element={<Bookmarks />} />
+                <Route path="/materials" element={<MaterialsOverview />} />
+                <Route path="/shopping" element={<ShoppingWizard />} />
+                <Route path="/shopping-lists" element={<ShoppingPlanner />} />
               <Route path="/war-room" element={<WarRoom />} />
               <Route path="/war-room/ships-destroyed" element={<WarRoomShipsDestroyed />} />
               <Route path="/war-room/market-gaps" element={<WarRoomMarketGaps />} />
@@ -106,7 +117,8 @@ function App() {
               <Route path="/war-room/combat-hotspots" element={<WarRoomCombatHotspots />} />
               <Route path="/war-room/fw-hotspots" element={<WarRoomFWHotspots />} />
               <Route path="/war-room/galaxy-summary" element={<WarRoomGalaxySummary />} />
-            </Routes>
+              </Routes>
+            </Suspense>
           </main>
         </div>
       </BrowserRouter>

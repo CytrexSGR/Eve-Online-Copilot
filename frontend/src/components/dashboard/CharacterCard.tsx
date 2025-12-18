@@ -32,7 +32,7 @@ export default function CharacterCard({
   location,
   online,
 }: CharacterCardProps) {
-  const { url, loading, error } = useCharacterPortrait(characterId);
+  const { url, loading } = useCharacterPortrait(characterId);
 
   // Truncate location to 15 characters
   const truncatedLocation = location.length > 15
