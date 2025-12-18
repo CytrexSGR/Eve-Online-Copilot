@@ -1,4 +1,5 @@
-import { ReactNode, useState } from 'react';
+import { useState } from 'react';
+import type { ReactNode } from 'react';
 import './Tooltip.css';
 
 interface TooltipProps {
@@ -10,7 +11,7 @@ interface TooltipProps {
 
 export function Tooltip({ content, children, position = 'top', delay = 300 }: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
-  const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  const [timeoutId, setTimeoutId] = useState<number | null>(null);
 
   const showTooltip = () => {
     const id = setTimeout(() => setIsVisible(true), delay);
