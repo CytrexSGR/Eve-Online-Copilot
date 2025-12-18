@@ -79,7 +79,7 @@ export default function MaterialsOverview() {
 
   // Fetch production data for each bookmark
   const { data: productionDataMap, isLoading: productionLoading, refetch: refetchProduction } = useQuery<Record<number, ProductionData>>({
-    queryKey: ['bookmarks-production', bookmarks?.map(b => b.type_id).join(',')],
+    queryKey: ['bookmarks-production-v2', bookmarks?.map(b => b.type_id).join(',')],
     queryFn: async () => {
       if (!bookmarks || bookmarks.length === 0) return {};
       const result: Record<number, ProductionData> = {};
@@ -87,8 +87,9 @@ export default function MaterialsOverview() {
       await Promise.all(
         bookmarks.map(async (bookmark) => {
           try {
-            const response = await api.get(`/api/production/optimize/${bookmark.type_id}`, {
-              params: { me: 10 }
+            // NEW: Use production chains API
+            const response = await api.get(`/api/production/chains/${bookmark.type_id}/materials`, {
+              params: { me: 10, runs: 1 }
             });
             result[bookmark.type_id] = response.data;
           } catch {
@@ -120,7 +121,7 @@ export default function MaterialsOverview() {
             name: mat.name,
             total_quantity: 0,
             from_items: [],
-            prices_by_region: { ...mat.prices_by_region },
+            prices_by_region: {}, // Will be populated from volumeDataMap
             volumes_by_region: {},
           };
         }
@@ -164,17 +165,38 @@ export default function MaterialsOverview() {
     staleTime: 60000,
   });
 
+  // Enrich materials with prices from volume data
+  const enrichedMaterials = useMemo(() => {
+    if (!volumeDataMap) return aggregatedMaterials;
+
+    return aggregatedMaterials.map(mat => {
+      const volumeData = volumeDataMap[mat.type_id];
+      if (!volumeData) return mat;
+
+      // Extract prices from volumes_by_region
+      const prices_by_region: Record<string, number> = {};
+      Object.entries(volumeData.volumes_by_region || {}).forEach(([region, data]) => {
+        prices_by_region[region] = data.lowest_sell || 0;
+      });
+
+      return {
+        ...mat,
+        prices_by_region,
+      };
+    });
+  }, [aggregatedMaterials, volumeDataMap]);
+
   // Calculate totals
   const totalCost = useMemo(() => {
-    return aggregatedMaterials.reduce((sum, mat) => {
+    return enrichedMaterials.reduce((sum, mat) => {
       const price = mat.prices_by_region[selectedRegion] || 0;
       return sum + (price * mat.total_quantity);
     }, 0);
-  }, [aggregatedMaterials, selectedRegion]);
+  }, [enrichedMaterials, selectedRegion]);
 
   // Export to clipboard (EVE multibuy format)
   const handleExport = () => {
-    const lines = aggregatedMaterials.map(mat => `${mat.name} ${mat.total_quantity}`);
+    const lines = enrichedMaterials.map(mat => `${mat.name} ${mat.total_quantity}`);
     navigator.clipboard.writeText(lines.join('\n'));
     alert('Copied to clipboard in EVE Multibuy format!');
   };
@@ -201,7 +223,7 @@ export default function MaterialsOverview() {
     );
   }
 
-  if (aggregatedMaterials.length === 0) {
+  if (enrichedMaterials.length === 0) {
     return (
       <div className="empty-state">
         <Package size={48} />
@@ -232,7 +254,7 @@ export default function MaterialsOverview() {
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-label">Total Materials</div>
-          <div className="stat-value">{aggregatedMaterials.length}</div>
+          <div className="stat-value">{enrichedMaterials.length}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">From Items</div>
@@ -277,7 +299,7 @@ export default function MaterialsOverview() {
               </tr>
             </thead>
             <tbody>
-              {aggregatedMaterials.map((mat) => {
+              {enrichedMaterials.map((mat) => {
                 const unitPrice = mat.prices_by_region[selectedRegion] || 0;
                 const totalMatCost = unitPrice * mat.total_quantity;
                 const volume = volumeDataMap?.[mat.type_id]?.volumes_by_region?.[selectedRegion]?.sell_volume || 0;
