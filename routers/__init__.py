@@ -4,6 +4,9 @@ from .auth import router as auth_router
 from .character import router as character_router
 from .bookmarks import router as bookmarks_router
 from .production import router as production_router, simulation_router
+from .production_chains import router as production_chains_router
+from .production_economics import router as production_economics_router
+from .production_workflow import router as production_workflow_router
 from .market import router as market_router
 from .items import router as items_router
 from .shopping import router as shopping_router
@@ -20,6 +23,9 @@ __all__ = [
     'bookmarks_router',
     'production_router',
     'simulation_router',
+    'production_chains_router',
+    'production_economics_router',
+    'production_workflow_router',
     'market_router',
     'items_router',
     'shopping_router',

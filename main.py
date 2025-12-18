@@ -13,6 +13,9 @@ from routers import (
     bookmarks_router,
     production_router,
     simulation_router,
+    production_chains_router,
+    production_economics_router,
+    production_workflow_router,
     market_router,
     items_router,
     shopping_router,
@@ -46,6 +49,9 @@ app.include_router(character_router)
 app.include_router(bookmarks_router)
 app.include_router(production_router)
 app.include_router(simulation_router)
+app.include_router(production_chains_router)
+app.include_router(production_economics_router)
+app.include_router(production_workflow_router)
 app.include_router(market_router)
 app.include_router(items_router)
 app.include_router(shopping_router)
