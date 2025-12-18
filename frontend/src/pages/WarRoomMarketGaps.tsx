@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowUpDown, ArrowLeft } from 'lucide-react';
-import { getWarDemand } from '../api';
+import { AlertTriangle, ArrowUpDown, ArrowLeft, TrendingUp, Plus } from 'lucide-react';
+import { getWarDemand, api } from '../api';
 
 const REGIONS: Record<number, string> = {
   10000002: 'The Forge (Jita)',
@@ -20,15 +20,25 @@ interface MarketGap {
   gap: number;
 }
 
-type SortField = 'name' | 'quantity' | 'market_stock' | 'gap';
+interface EconomicsData {
+  type_id: number;
+  profitability: {
+    roi_sell_percent: number;
+    profit_sell: number;
+  };
+}
+
+type SortField = 'name' | 'quantity' | 'market_stock' | 'gap' | 'roi';
 
 export default function WarRoomMarketGaps() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const regionId = Number(searchParams.get('region') || 10000002);
   const days = Number(searchParams.get('days') || 7);
 
   const [sortField, setSortField] = useState<SortField>('gap');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc'); // asc for most negative gaps first
+  const [showProfitableOnly, setShowProfitableOnly] = useState(false);
 
   const demandQuery = useQuery({
     queryKey: ['warDemand', regionId, days],
@@ -41,10 +51,67 @@ export default function WarRoomMarketGaps() {
     return demandQuery.data.market_gaps;
   }, [demandQuery.data]);
 
+  // Fetch production economics for top 30 items
+  const topItemIds = useMemo(() => {
+    return gaps
+      .sort((a, b) => a.gap - b.gap) // Most negative gaps first
+      .slice(0, 30)
+      .map(g => g.type_id);
+  }, [gaps]);
+
+  const { data: economicsMap } = useQuery<Record<number, EconomicsData>>({
+    queryKey: ['warGaps-economics', regionId, topItemIds.join(',')],
+    queryFn: async () => {
+      if (topItemIds.length === 0) return {};
+      const results: Record<number, EconomicsData> = {};
+
+      // Fetch economics for each item (limit concurrency to 5)
+      const chunks: number[][] = [];
+      for (let i = 0; i < topItemIds.length; i += 5) {
+        chunks.push(topItemIds.slice(i, i + 5));
+      }
+
+      for (const chunk of chunks) {
+        await Promise.all(
+          chunk.map(async (typeId) => {
+            try {
+              const response = await api.get(`/api/production/economics/${typeId}`, {
+                params: { region_id: regionId, me: 10 }
+              });
+              results[typeId] = response.data;
+            } catch {
+              // Not manufacturable or no economics data
+            }
+          })
+        );
+      }
+
+      return results;
+    },
+    enabled: topItemIds.length > 0,
+    staleTime: 300000, // 5 minutes
+    retry: false,
+  });
+
   const filteredAndSorted = useMemo(() => {
     let results = [...gaps];
 
+    // Filter: Show profitable only
+    if (showProfitableOnly && economicsMap) {
+      results = results.filter(item => {
+        const economics = economicsMap[item.type_id];
+        return economics && economics.profitability.roi_sell_percent > 10;
+      });
+    }
+
+    // Sort
     results.sort((a, b) => {
+      if (sortField === 'roi') {
+        const aRoi = economicsMap?.[a.type_id]?.profitability?.roi_sell_percent || -999;
+        const bRoi = economicsMap?.[b.type_id]?.profitability?.roi_sell_percent || -999;
+        return sortDir === 'desc' ? bRoi - aRoi : aRoi - bRoi;
+      }
+
       let aVal: any = a[sortField];
       let bVal: any = b[sortField];
 
@@ -60,15 +127,20 @@ export default function WarRoomMarketGaps() {
     });
 
     return results;
-  }, [gaps, sortField, sortDir]);
+  }, [gaps, sortField, sortDir, showProfitableOnly, economicsMap]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDir(sortDir === 'desc' ? 'asc' : 'desc');
     } else {
       setSortField(field);
-      setSortDir(field === 'gap' ? 'asc' : 'desc'); // Default ascending for gaps (most negative first)
+      setSortDir(field === 'gap' ? 'asc' : field === 'roi' ? 'desc' : 'desc');
     }
+  };
+
+  const handlePlanProduction = (typeId: number) => {
+    // Navigate to Production Planner with pre-selected item
+    navigate(`/production?item=${typeId}`);
   };
 
   const stats = useMemo(() => {
@@ -76,8 +148,13 @@ export default function WarRoomMarketGaps() {
     const totalShortage = gaps.reduce((sum, g) => sum + Math.abs(Math.min(g.gap, 0)), 0);
     const avgGap = gaps.length > 0 ? totalShortage / gaps.length : 0;
 
-    return { criticalGaps, totalShortage, avgGap };
-  }, [gaps]);
+    // Count profitable items
+    const profitableItems = economicsMap ? Object.values(economicsMap).filter(
+      e => e.profitability.roi_sell_percent > 10
+    ).length : 0;
+
+    return { criticalGaps, totalShortage, avgGap, profitableItems };
+  }, [gaps, economicsMap]);
 
   return (
     <div className="page-container">
@@ -139,7 +216,35 @@ export default function WarRoomMarketGaps() {
           <div className="stat-label">Avg Gap Size</div>
           <div className="stat-value">{Math.round(stats.avgGap).toLocaleString()}</div>
         </div>
+        <div className="stat-card">
+          <div className="stat-label">
+            <TrendingUp size={14} style={{ display: 'inline', marginRight: 4 }} />
+            Profitable Items
+          </div>
+          <div className="stat-value positive">{stats.profitableItems.toLocaleString()}</div>
+          <div className="stat-detail">ROI &gt; 10%</div>
+        </div>
       </div>
+
+      {/* Filter Toggle */}
+      {economicsMap && Object.keys(economicsMap).length > 0 && (
+        <div className="card" style={{ marginBottom: 16, padding: 16 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={showProfitableOnly}
+              onChange={(e) => setShowProfitableOnly(e.target.checked)}
+              style={{ width: 18, height: 18, cursor: 'pointer' }}
+            />
+            <span style={{ fontWeight: 500 }}>
+              Show Profitable Items Only (ROI &gt; 10%)
+            </span>
+            <span className="neutral" style={{ fontSize: 13 }}>
+              ({stats.profitableItems} items)
+            </span>
+          </label>
+        </div>
+      )}
 
       {/* Results Table */}
       <div className="card">
@@ -161,30 +266,40 @@ export default function WarRoomMarketGaps() {
                   <th
                     className="sortable"
                     onClick={() => handleSort('name')}
-                    style={{ width: '40%' }}
+                    style={{ width: '30%' }}
                   >
                     Item Name <ArrowUpDown size={14} />
                   </th>
                   <th
                     className="sortable"
                     onClick={() => handleSort('quantity')}
-                    style={{ width: '20%' }}
+                    style={{ width: '12%' }}
                   >
                     Lost <ArrowUpDown size={14} />
                   </th>
                   <th
                     className="sortable"
                     onClick={() => handleSort('market_stock')}
-                    style={{ width: '20%' }}
+                    style={{ width: '12%' }}
                   >
-                    Market Stock <ArrowUpDown size={14} />
+                    Market <ArrowUpDown size={14} />
                   </th>
                   <th
                     className="sortable"
                     onClick={() => handleSort('gap')}
-                    style={{ width: '20%' }}
+                    style={{ width: '12%' }}
                   >
                     Gap <ArrowUpDown size={14} />
+                  </th>
+                  <th
+                    className="sortable"
+                    onClick={() => handleSort('roi')}
+                    style={{ width: '18%' }}
+                  >
+                    Production ROI <ArrowUpDown size={14} />
+                  </th>
+                  <th style={{ width: '16%' }}>
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -199,6 +314,10 @@ export default function WarRoomMarketGaps() {
                       : severity > 100
                       ? 'medium'
                       : 'low';
+
+                  const economics = economicsMap?.[item.type_id];
+                  const roi = economics?.profitability?.roi_sell_percent;
+                  const isProfitable = roi !== undefined && roi > 10;
 
                   return (
                     <tr key={item.type_id} className={`gap-row ${severityClass}`}>
@@ -222,6 +341,33 @@ export default function WarRoomMarketGaps() {
                           {item.gap < 0 ? '' : '+'}
                           {item.gap.toLocaleString()}
                         </span>
+                      </td>
+                      <td>
+                        {economics ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span className={isProfitable ? 'positive roi-badge' : 'neutral'} style={{ fontWeight: 600, fontSize: 14 }}>
+                              {roi!.toFixed(1)}% ROI
+                            </span>
+                            <span className="neutral" style={{ fontSize: 11 }}>
+                              {economics.profitability.profit_sell >= 0 ? '+' : ''}
+                              {(economics.profitability.profit_sell / 1000000).toFixed(1)}M ISK
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="neutral" style={{ fontSize: 12 }}>-</span>
+                        )}
+                      </td>
+                      <td>
+                        {isProfitable && (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handlePlanProduction(item.type_id)}
+                            title="Plan production in Production Planner"
+                          >
+                            <Plus size={14} style={{ marginRight: 4 }} />
+                            Plan
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
