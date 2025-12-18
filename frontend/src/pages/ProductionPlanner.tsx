@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Factory, Package, TrendingUp, Clock, ShoppingCart, Download, Zap } from 'lucide-react';
+import { Search, Factory, Package, TrendingUp, Clock, ShoppingCart, Download, Zap, Info } from 'lucide-react';
 import { api, searchItems } from '../api';
 import { formatISK, formatQuantity } from '../utils/format';
+import { Tooltip } from '../components/Tooltip';
 
 // ============================================================
 // Interfaces
@@ -325,7 +326,18 @@ export default function ProductionPlanner() {
 
           {/* ME Level */}
           <div className="filter-group">
-            <label>ME Level</label>
+            <label>
+              ME Level
+              <Tooltip content={
+                <div style={{ maxWidth: 200, whiteSpace: 'normal' }}>
+                  <strong>Material Efficiency</strong><br />
+                  Each level reduces material requirements by 1%<br />
+                  ME 10 = 10% material savings
+                </div>
+              }>
+                <Info size={14} style={{ marginLeft: 4, opacity: 0.6, cursor: 'help' }} />
+              </Tooltip>
+            </label>
             <select
               value={meLevel}
               onChange={(e) => setMeLevel(Number(e.target.value))}
@@ -338,7 +350,18 @@ export default function ProductionPlanner() {
 
           {/* TE Level */}
           <div className="filter-group">
-            <label>TE Level</label>
+            <label>
+              TE Level
+              <Tooltip content={
+                <div style={{ maxWidth: 200, whiteSpace: 'normal' }}>
+                  <strong>Time Efficiency</strong><br />
+                  Each level reduces production time by 1%<br />
+                  TE 20 = 20% faster production
+                </div>
+              }>
+                <Info size={14} style={{ marginLeft: 4, opacity: 0.6, cursor: 'help' }} />
+              </Tooltip>
+            </label>
             <select
               value={teLevel}
               onChange={(e) => setTeLevel(Number(e.target.value))}

@@ -2,6 +2,8 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TrendingUp, Search, Factory, BarChart3, Star, Package, Swords, Wand2, List } from 'lucide-react';
+import { useGlobalShortcuts } from './hooks/useKeyboardShortcuts';
+import { ShortcutsHelp } from './components/ShortcutsHelp';
 import './App.css';
 
 // Lazy load all pages for code splitting
@@ -33,11 +35,12 @@ const queryClient = new QueryClient({
   },
 });
 
-function App() {
+function AppContent() {
+  // Enable global keyboard shortcuts
+  useGlobalShortcuts();
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <div className="app">
+    <div className="app">
           <nav className="sidebar">
             <div className="logo">
               <BarChart3 size={32} />
@@ -120,7 +123,16 @@ function App() {
               </Routes>
             </Suspense>
           </main>
+          <ShortcutsHelp />
         </div>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AppContent />
       </BrowserRouter>
     </QueryClientProvider>
   );
