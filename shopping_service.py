@@ -8,6 +8,7 @@ from psycopg2.extras import RealDictCursor
 from typing import Optional, List
 from datetime import datetime
 import math
+from services.production.chain_service import ProductionChainService
 
 
 class ShoppingService:
@@ -763,7 +764,7 @@ class ShoppingService:
 
     def calculate_materials(self, item_id: int) -> Optional[dict]:
         """
-        Calculate materials for a product item.
+        Calculate materials for a product item using new Production Chains API.
         Returns materials and sub-products (items that can also be built).
         """
         with get_db_connection() as conn:
@@ -783,10 +784,9 @@ class ShoppingService:
                 runs = product['runs'] or 1
                 me_level = product['me_level'] or 10
 
-                # Get blueprint/formula type ID for this product
-                # activityID 1 = Manufacturing, 11 = Reactions
+                # Get blueprint output info for total_output calculation
                 cur.execute('''
-                    SELECT bp."typeID" as blueprint_type_id, bp."quantity" as output_per_run, bp."activityID" as activity_id
+                    SELECT bp."quantity" as output_per_run
                     FROM "industryActivityProducts" bp
                     WHERE bp."productTypeID" = %s AND bp."activityID" IN (1, 11)
                     LIMIT 1
@@ -796,34 +796,24 @@ class ShoppingService:
                 if not blueprint_info:
                     return None
 
-                blueprint_type_id = blueprint_info['blueprint_type_id']
                 output_per_run = blueprint_info['output_per_run'] or 1
-                activity_id = blueprint_info['activity_id']  # 1 for manufacturing, 11 for reactions
 
-                # Get materials from industryActivityMaterials
-                # Use the same activityID as the blueprint/formula
-                cur.execute('''
-                    SELECT
-                        m."materialTypeID" as type_id,
-                        t."typeName" as item_name,
-                        m."quantity" as base_quantity,
-                        t."volume" as volume
-                    FROM "industryActivityMaterials" m
-                    JOIN "invTypes" t ON m."materialTypeID" = t."typeID"
-                    WHERE m."typeID" = %s AND m."activityID" = %s
-                    ORDER BY t."typeName"
-                ''', (blueprint_type_id, activity_id))
-                raw_materials = cur.fetchall()
+                # NEW: Use Production Chains API to get materials
+                chain_service = ProductionChainService()
+                materials_data = chain_service.get_materials_list(type_id, me=me_level, runs=runs)
 
-                # Calculate quantities and check for sub-products
+                if not materials_data or 'materials' not in materials_data:
+                    return None
+
+                # Separate materials from sub-products
+                # Sub-products are items that have blueprints themselves
                 materials = []
                 sub_products = []
 
-                for mat in raw_materials:
+                for mat in materials_data['materials']:
                     mat_type_id = mat['type_id']
 
-                    # Check if this material has a blueprint or reaction formula (= is a sub-product)
-                    # activityID 1 = Manufacturing, 11 = Reactions
+                    # Check if this material has a blueprint (is a sub-product)
                     cur.execute('''
                         SELECT bp."typeID"
                         FROM "industryActivityProducts" bp
@@ -832,18 +822,19 @@ class ShoppingService:
                     ''', (mat_type_id,))
                     has_blueprint = cur.fetchone() is not None
 
-                    # EVE Online rule: ME only applies to raw materials, NOT to sub-products
-                    # Sub-products (Capital Components, T2 parts, etc.) require exact quantities
-                    calculated_qty = self._calculate_material_quantity(
-                        mat['base_quantity'], runs, me_level, apply_me=(not has_blueprint)
-                    )
+                    # Get volume info
+                    cur.execute('''
+                        SELECT "volume" FROM "invTypes" WHERE "typeID" = %s
+                    ''', (mat_type_id,))
+                    volume_result = cur.fetchone()
+                    volume = float(volume_result['volume']) if volume_result and volume_result['volume'] else 0
 
                     material_data = {
                         'type_id': mat_type_id,
-                        'item_name': mat['item_name'],
-                        'quantity': calculated_qty,
+                        'item_name': mat['name'],
+                        'quantity': mat['adjusted_quantity'],
                         'base_quantity': mat['base_quantity'],
-                        'volume': float(mat['volume']) if mat['volume'] else 0,
+                        'volume': volume,
                         'has_blueprint': has_blueprint
                     }
 
