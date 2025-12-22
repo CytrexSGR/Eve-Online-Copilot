@@ -60,23 +60,26 @@ Single FastAPI application serving REST API endpoints.
 **Routers:**
 | Router | Prefix | Purpose |
 |--------|--------|---------|
+| `auth.py` | `/api/auth` | EVE SSO authentication |
+| `character.py` | `/api/character` | Character data (wallet, assets, skills) |
+| `bookmarks.py` | `/api/bookmarks` | Bookmark management |
+| `production.py` | `/api/production` | Manufacturing cost calculations |
+| `production_chains.py` | `/api/production/chains` | Production chain analysis |
+| `production_economics.py` | `/api/production/economics` | Economic opportunities |
+| `production_workflow.py` | `/api/production/workflow` | Production job management |
+| `market.py` | `/api/market` | Market data and arbitrage |
+| `items.py` | `/api/items`, `/api/materials`, `/api/route`, `/api/cargo` | Item search, materials, navigation |
 | `shopping.py` | `/api/shopping` | Shopping list management |
 | `hunter.py` | `/api/hunter` | Market opportunity scanning |
 | `mining.py` | `/api/mining` | Mining route planning |
 | `war.py` | `/api/war` | Combat intelligence (War Room) |
+| `dashboard.py` | `/api/dashboard` | Dashboard opportunities and portfolio |
+| `research.py` | `/api/research` | Skill recommendations and research |
 | `mcp.py` | `/mcp/tools` | MCP tool integration |
-
-**Core Endpoints in main.py:**
-- `/api/auth/*` - EVE SSO authentication
-- `/api/character/*` - Character data
-- `/api/production/*` - Manufacturing calculations
-- `/api/market/*` - Market data and arbitrage
-- `/api/bookmarks/*` - Bookmark management
-- `/api/route/*` - Navigation and routing
-- `/api/cargo/*` - Cargo calculations
 
 ### 2. Services
 
+**Core Services:**
 | Service | File | Purpose |
 |---------|------|---------|
 | ESI Client | `esi_client.py` | EVE API calls with rate limiting |
@@ -89,6 +92,19 @@ Single FastAPI application serving REST API endpoints.
 | Route | `route_service.py` | A* pathfinding between systems |
 | Cargo | `cargo_service.py` | Volume calculation, ship recommendations |
 | Notifications | `notification_service.py` | Discord webhooks |
+| Dashboard | `services/dashboard_service.py` | Dashboard data aggregation |
+| Portfolio | `services/portfolio_service.py` | Character portfolio analysis |
+| Research | `services/research_service.py` | Skill recommendations |
+
+**Production Services (services/production/):**
+| Service | File | Purpose |
+|---------|------|---------|
+| Chain Service | `chain_service.py` | Production chain analysis |
+| Chain Repository | `chain_repository.py` | Database access for chains |
+| Economics Service | `economics_service.py` | Economic analysis |
+| Economics Repository | `economics_repository.py` | Economic data access |
+| Workflow Service | `workflow_service.py` | Production job management |
+| Workflow Repository | `workflow_repository.py` | Job data persistence |
 
 ### 3. War Room Services
 
@@ -148,16 +164,23 @@ Single FastAPI application serving REST API endpoints.
 
 #### Pages
 
-| Page | File | Purpose |
-|------|------|---------|
-| Market Scanner | `MarketScanner.tsx` | Find manufacturing opportunities |
-| Production Planner | `ProductionPlanner.tsx` | Plan production runs |
-| Shopping Planner | `ShoppingPlanner.tsx` | Manage shopping lists |
-| Arbitrage Finder | `ArbitrageFinder.tsx` | Find trade opportunities |
-| Bookmarks | `Bookmarks.tsx` | Manage saved items |
-| Materials Overview | `MaterialsOverview.tsx` | Material availability |
-| Item Detail | `ItemDetail.tsx` | Detailed item view with combat stats |
-| War Room | `WarRoom.tsx` | Combat intelligence dashboard |
+| Page | File | Route | Purpose |
+|------|------|-------|---------|
+| Dashboard | `Dashboard.tsx` | `/` | Main dashboard with opportunities |
+| Item Detail | `ItemDetail.tsx` | `/item/:typeId` | Detailed item view with combat stats |
+| Arbitrage Finder | `ArbitrageFinder.tsx` | `/arbitrage` | Find trade opportunities |
+| Production Planner | `ProductionPlanner.tsx` | `/production` | Plan production runs with new chains API |
+| Bookmarks | `Bookmarks.tsx` | `/bookmarks` | Manage saved items |
+| Materials Overview | `MaterialsOverview.tsx` | `/materials` | Material availability |
+| Shopping Wizard | `ShoppingWizard.tsx` | `/shopping` | Guided shopping list creation |
+| Shopping Planner | `ShoppingPlanner.tsx` | `/shopping-lists` | Manage shopping lists |
+| War Room | `WarRoom.tsx` | `/war-room` | Combat intelligence dashboard |
+| War Room - Ships Destroyed | `WarRoomShipsDestroyed.tsx` | `/war-room/ships-destroyed` | Ship losses by region |
+| War Room - Market Gaps | `WarRoomMarketGaps.tsx` | `/war-room/market-gaps` | Market gaps with production economics |
+| War Room - Top Ships | `WarRoomTopShips.tsx` | `/war-room/top-ships` | Most destroyed ships galaxy-wide |
+| War Room - Combat Hotspots | `WarRoomCombatHotspots.tsx` | `/war-room/combat-hotspots` | Combat activity heatmap |
+| War Room - FW Hotspots | `WarRoomFWHotspots.tsx` | `/war-room/fw-hotspots` | Faction warfare activity |
+| War Room - Galaxy Summary | `WarRoomGalaxySummary.tsx` | `/war-room/galaxy-summary` | Region-wide summary |
 
 #### Components
 
@@ -275,9 +298,16 @@ User selects item → /api/production/optimize/{type_id} → Material list
 
 ### Caching
 
+**Backend:**
 - ESI responses cached in `esi_client.py` (TTL: varies by endpoint)
 - Regional prices cached in `market_prices` table (30 min refresh)
 - Manufacturing opportunities pre-calculated (5 min refresh)
+
+**Frontend:**
+- React Query caching (5 min staleTime, 10 min gcTime)
+- Optimistic updates for mutations
+- No refetch on window focus (reduces load)
+- Code splitting via lazy loading for all pages
 
 ### Rate Limiting
 
@@ -290,6 +320,13 @@ User selects item → /api/production/optimize/{type_id} → Material list
 - Complex queries use indexed columns
 - SDE tables pre-indexed (EVE provides)
 - App tables indexed on type_id, region_id
+
+### Frontend Optimization
+
+- **Code Splitting:** All pages lazy-loaded with React.lazy()
+- **Bundle Size:** Reduced by dynamic imports
+- **React Query:** Aggressive caching reduces API calls
+- **Keyboard Shortcuts:** Efficient navigation without mouse
 
 ---
 
@@ -339,4 +376,4 @@ tail -f /home/cytrex/eve_copilot/logs/*.log
 
 ---
 
-**Last Updated:** 2025-12-07
+**Last Updated:** 2025-12-22

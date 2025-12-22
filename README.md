@@ -10,19 +10,37 @@ A comprehensive industry and market analysis tool for EVE Online. Built with Fas
 
 ## Features
 
+### Dashboard
+- **Market Opportunities** - Overview of profitable manufacturing opportunities
+- **Character Portfolio** - Multi-character asset and wallet tracking
+- **Active Projects** - Production job monitoring and management
+
 ### Market Analysis
-- **Market Scanner** - Real-time profitability analysis for manufacturing
-- **Arbitrage Finder** - Cross-region trade opportunities
+- **Arbitrage Finder** - Cross-region trade opportunities with routing
 - **Market Hunter** - Automated scanning for profitable T1 products
 - **Live Market Data** - Real-time prices via ESI API with order depth analysis
+- **Enhanced Arbitrage** - Route planning and cargo calculations
 
 ### Production Tools
 - **Production Planner** - Manufacturing cost calculator with ME/TE bonuses
+- **Production Chains** - Full material chain analysis and visualization
+- **Production Economics** - Regional economic opportunities and analysis
+- **Production Workflow** - Job tracking and batch production management
 - **Material Classifier** - Difficulty scoring for material acquisition
+
+### Shopping Tools
+- **Shopping Wizard** - Guided shopping list creation with best prices
 - **Shopping Lists** - Multi-region price comparison with route optimization
+- **Cargo Calculator** - Volume calculations and transport ship recommendations
+- **Build/Buy Decisions** - Automatic comparison of building vs buying
+- **Material Expansion** - Recursive material breakdown for blueprints
 
 ### War Room (Combat Intelligence)
-- **Killmail Analysis** - Track combat losses by region/system
+- **Galaxy Summary** - Region-wide combat activity overview
+- **Ships Destroyed** - Track combat losses by region/system
+- **Market Gaps** - Identify supply shortages with production economics
+- **Top Ships** - Most destroyed ships galaxy-wide
+- **Combat Hotspots** - Heatmap of combat activity
 - **Doctrine Detection** - Identify fleet compositions from loss patterns
 - **Sovereignty Tracking** - Monitor sov campaigns and timers
 - **Faction Warfare** - FW system status and hotspots
@@ -33,11 +51,22 @@ A comprehensive industry and market analysis tool for EVE Online. Built with Fas
 - **Wallet & Assets** - View character finances and inventory
 - **Industry Jobs** - Monitor manufacturing and research
 - **Corporation Support** - Access corp wallets and member lists
+- **Character Portraits** - Display character images
+
+### Research & Skills
+- **Skill Requirements** - View required skills for items
+- **Skill Recommendations** - Character-specific training suggestions
 
 ### Navigation
 - **Route Calculator** - A* pathfinding between systems
 - **Trade Hub Routes** - Optimal paths through major hubs
 - **Danger Scoring** - Route safety based on recent combat activity
+- **Shopping Routes** - Optimized multi-stop shopping paths
+
+### Performance
+- **Code Splitting** - Lazy-loaded pages for faster initial load
+- **React Query Caching** - Aggressive caching reduces API calls
+- **Keyboard Shortcuts** - Fast navigation without mouse
 
 ## Tech Stack
 
@@ -48,8 +77,10 @@ A comprehensive industry and market analysis tool for EVE Online. Built with Fas
 
 **Frontend:**
 - React 18 / TypeScript 5
-- Vite for development
-- TailwindCSS for styling
+- Vite for development with code splitting
+- TanStack Query (React Query v5)
+- React Router v6
+- Lucide React icons
 
 ## Quick Start
 
@@ -130,14 +161,14 @@ npm run dev -- --host 0.0.0.0
 
 ```
 eve_copilot/
-├── main.py                 # FastAPI application & routes
-├── config.example.py       # Configuration template
-├── database.py             # PostgreSQL connection & queries
+├── main.py                 # FastAPI application
+├── config.py               # Configuration
+├── database.py             # PostgreSQL connection
 ├── esi_client.py           # ESI API client
 ├── auth.py                 # EVE SSO OAuth2
 ├── character.py            # Character & corp API
 │
-├── # Services
+├── # Core Services
 ├── market_service.py       # Market price caching
 ├── production_simulator.py # Manufacturing calculations
 ├── shopping_service.py     # Shopping list management
@@ -145,10 +176,26 @@ eve_copilot/
 ├── killmail_service.py     # Combat loss analysis
 ├── war_analyzer.py         # Demand & doctrine detection
 │
-├── routers/                # API route modules
+├── services/               # New service modules
+│   ├── dashboard_service.py
+│   ├── portfolio_service.py
+│   ├── research_service.py
+│   └── production/         # Production services
+│       ├── chain_service.py
+│       ├── economics_service.py
+│       └── workflow_service.py
+│
+├── routers/                # API route modules (16 routers)
+│   ├── auth.py
+│   ├── character.py
+│   ├── production.py
+│   ├── production_chains.py
+│   ├── production_economics.py
+│   ├── production_workflow.py
+│   ├── market.py
 │   ├── shopping.py
-│   ├── hunter.py
-│   ├── mining.py
+│   ├── dashboard.py
+│   ├── research.py
 │   └── war.py
 │
 ├── jobs/                   # Cron jobs
@@ -156,14 +203,16 @@ eve_copilot/
 │   ├── regional_price_fetcher.py
 │   ├── market_hunter.py
 │   ├── killmail_fetcher.py
-│   └── sov_tracker.py
+│   ├── sov_tracker.py
+│   └── fw_tracker.py
 │
 ├── migrations/             # SQL migrations
 │
 └── frontend/               # React application
     └── src/
-        ├── pages/          # Page components
+        ├── pages/          # 15 page components (lazy-loaded)
         ├── components/     # Reusable components
+        ├── hooks/          # Custom hooks (keyboard shortcuts)
         └── api.ts          # API client
 ```
 
@@ -174,20 +223,38 @@ eve_copilot/
 - `GET /api/auth/callback` - OAuth2 callback
 - `GET /api/auth/characters` - List authenticated characters
 
-### Market & Production
+### Dashboard & Portfolio
+- `GET /api/dashboard/opportunities` - Market opportunities
+- `GET /api/dashboard/characters/portfolio` - Portfolio analysis
+- `GET /api/dashboard/projects` - Active projects
+
+### Production
 - `GET /api/production/optimize/{type_id}` - Regional production analysis
+- `GET /api/production/chains/{type_id}` - Full production chain
+- `GET /api/production/economics/{type_id}` - Economic analysis
+- `POST /api/production/workflow/jobs` - Create production job
+
+### Market
 - `GET /api/market/compare/{type_id}` - Multi-region price comparison
 - `GET /api/market/arbitrage/{type_id}` - Arbitrage opportunities
+- `GET /api/arbitrage/enhanced/{type_id}` - Enhanced arbitrage with routing
 
 ### Shopping
 - `GET /api/shopping/lists` - Get shopping lists
 - `POST /api/shopping/lists/{id}/add-production/{type_id}` - Add materials
+- `GET /api/shopping/lists/{id}/regional-comparison` - Compare regions
+- `POST /api/shopping/wizard/calculate-materials` - Wizard calculation
 
 ### War Room
 - `GET /api/war/losses/{region_id}` - Combat losses
-- `GET /api/war/demand/{region_id}` - Demand analysis
+- `GET /api/war/demand/{region_id}` - Demand analysis with market gaps
 - `GET /api/war/doctrines/{region_id}` - Doctrine detection
 - `GET /api/war/campaigns` - Sovereignty campaigns
+- `GET /api/war/top-ships` - Most destroyed ships
+
+### Research
+- `GET /api/research/skills-for-item/{type_id}` - Required skills
+- `GET /api/research/recommendations/{character_id}` - Skill recommendations
 
 Full API documentation available at `/docs` when running.
 
