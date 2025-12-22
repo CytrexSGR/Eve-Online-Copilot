@@ -250,7 +250,13 @@ eve_copilot/
 - `GET /api/war/demand/{region_id}` - Demand analysis with market gaps
 - `GET /api/war/doctrines/{region_id}` - Doctrine detection
 - `GET /api/war/campaigns` - Sovereignty campaigns
+- `GET /api/war/campaigns/update` - Update sov campaigns
+- `GET /api/war/fw/hotspots` - FW hotspots
+- `GET /api/war/fw/vulnerable` - Vulnerable FW systems
+- `GET /api/war/fw/update` - Update FW status
+- `GET /api/war/system/{system_id}/danger` - System danger score
 - `GET /api/war/top-ships` - Most destroyed ships
+- `GET /api/war/alerts` - War alerts
 
 ### Research
 - `GET /api/research/skills-for-item/{type_id}` - Required skills
