@@ -1,0 +1,1320 @@
+"""
+MCP Protocol Router - EXTENDED VERSION
+Model Context Protocol endpoints with FULL API coverage (118 tools)
+"""
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+from config import REGIONS
+from database import get_item_info, get_item_by_name, get_group_by_name
+from esi_client import esi_client
+from auth import eve_auth
+from character import character_api
+from services import calculate_production_cost, find_arbitrage
+from production_simulator import production_simulator
+
+# Import additional services for extended tools
+from killmail_service import killmail_service
+from sovereignty_service import sovereignty_service
+from fw_service import fw_service
+from war_analyzer import war_analyzer
+from route_service import route_service
+from shopping_service import shopping_service
+from bookmark_service import bookmark_service
+from market_service import market_service
+
+router = APIRouter(prefix="/mcp", tags=["MCP Protocol"])
+
+# EVE ONLINE CONTEXT (existing)
+EVE_CONTEXT = """
+# EVE ONLINE CO-PILOT SYSTEM CONTEXT
+
+## AUTHENTICATED CHARACTERS
+| Name     | character_id | Role                      |
+|----------|--------------|---------------------------|
+| Cytrex   | 1117367444   | CEO of Minimal Industries |
+| Cytricia | 110592475    | Member                    |
+| Artallus | 526379435    | Member                    |
+
+## TRADE HUB REGIONS
+| Region       | region_id  | Main Hub   |
+|--------------|------------|------------|
+| The Forge    | 10000002   | Jita 4-4   |
+| Domain       | 10000043   | Amarr      |
+| Heimatar     | 10000030   | Rens       |
+| Sinq Laison  | 10000032   | Dodixie    |
+| Metropolis   | 10000042   | Hek        |
+"""
+
+# ============================================================================
+# MCP TOOL DEFINITIONS - COMPLETE SET (118 TOOLS)
+# ============================================================================
+
+MCP_TOOLS = [
+    # ===== CONTEXT & UTILITY (2 tools) =====
+    {
+        "name": "eve_copilot_context",
+        "description": "CALL THIS FIRST! Returns complete EVE context: character IDs, region IDs, workflows.",
+        "parameters": []
+    },
+    {
+        "name": "get_authenticated_characters",
+        "description": "Get list of all authenticated characters with IDs and scopes.",
+        "parameters": []
+    },
+
+    # ===== ITEM SEARCH & INFO (4 tools) =====
+    {
+        "name": "search_item",
+        "description": "Search EVE items by name to get typeID. Example: 'Tritanium'->34",
+        "parameters": [
+            {"name": "q", "type": "string", "required": True, "description": "Item name to search"}
+        ]
+    },
+    {
+        "name": "search_group",
+        "description": "Search item categories to get groupID. Example: 'Combat Drones'->100",
+        "parameters": [
+            {"name": "q", "type": "string", "required": True, "description": "Category name"}
+        ]
+    },
+    {
+        "name": "get_item_info",
+        "description": "Get item details: name, groupID, volume, base price.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True, "description": "Item typeID"}
+        ]
+    },
+    {
+        "name": "get_regions",
+        "description": "Get list of known trade hub region IDs and names.",
+        "parameters": []
+    },
+
+    # ===== PRODUCTION (8 tools) =====
+    {
+        "name": "get_blueprint_info",
+        "description": "Get blueprint manufacturing details: production time, output quantity, required skills.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True, "description": "Product typeID"}
+        ]
+    },
+    {
+        "name": "simulate_build",
+        "description": "FULL production simulation with asset matching! Shows materials, costs, profit analysis.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": False, "description": "Product typeID"},
+            {"name": "blueprint_name", "type": "string", "required": False, "description": "Or search by name"},
+            {"name": "runs", "type": "integer", "required": False, "description": "Number of runs, default 1"},
+            {"name": "me", "type": "integer", "required": False, "description": "Material Efficiency 0-10, default 0"},
+            {"name": "te", "type": "integer", "required": False, "description": "Time Efficiency 0-20, default 0"},
+            {"name": "character_id", "type": "integer", "required": False, "description": "Character to check assets"},
+            {"name": "region_id", "type": "integer", "required": False, "description": "Region for prices"}
+        ]
+    },
+    {
+        "name": "get_production_cost",
+        "description": "Calculate exact ISK material costs for producing an item, considering ME/TE levels.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True, "description": "Item to produce"},
+            {"name": "me_level", "type": "integer", "required": False, "description": "Material Efficiency 0-10"},
+            {"name": "te_level", "type": "integer", "required": False, "description": "Time Efficiency 0-10"},
+            {"name": "region_id", "type": "integer", "required": False, "description": "Region ID for prices"},
+            {"name": "use_buy_orders", "type": "boolean", "required": False, "description": "Use buy prices"}
+        ]
+    },
+    {
+        "name": "get_production_chains",
+        "description": "Get full production chain tree for an item.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True, "description": "Item typeID"}
+        ]
+    },
+    {
+        "name": "get_chain_materials",
+        "description": "Get all materials needed for production chain.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True, "description": "Item typeID"}
+        ]
+    },
+    {
+        "name": "get_economics_opportunities",
+        "description": "Get economic production opportunities.",
+        "parameters": []
+    },
+    {
+        "name": "get_economics_analysis",
+        "description": "Get economic analysis for an item.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True, "description": "Item typeID"}
+        ]
+    },
+    {
+        "name": "get_economics_regions",
+        "description": "Get regional economic comparison for an item.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True, "description": "Item typeID"}
+        ]
+    },
+
+    # ===== MARKET (7 tools) =====
+    {
+        "name": "get_market_stats",
+        "description": "Get live market statistics for an item in a region.",
+        "parameters": [
+            {"name": "region_id", "type": "integer", "required": True, "description": "Region ID"},
+            {"name": "type_id", "type": "integer", "required": True, "description": "Item typeID"}
+        ]
+    },
+    {
+        "name": "compare_market_prices",
+        "description": "Compare prices across multiple regions.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True, "description": "Item typeID"}
+        ]
+    },
+    {
+        "name": "find_arbitrage",
+        "description": "Find profitable trading opportunities between regions.",
+        "parameters": [
+            {"name": "group_name", "type": "string", "required": False, "description": "Item group name"},
+            {"name": "group_id", "type": "integer", "required": False, "description": "Direct groupID"},
+            {"name": "source_region", "type": "integer", "required": False, "description": "Buy from region"},
+            {"name": "target_region", "type": "integer", "required": False, "description": "Sell in region"},
+            {"name": "min_margin_percent", "type": "number", "required": False, "description": "Min profit %"},
+            {"name": "limit", "type": "integer", "required": False, "description": "Max results"}
+        ]
+    },
+    {
+        "name": "enhanced_arbitrage",
+        "description": "Enhanced arbitrage with route planning and cargo calculations.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True, "description": "Item typeID"}
+        ]
+    },
+    {
+        "name": "submit_custom_arbitrage",
+        "description": "Submit custom arbitrage calculation.",
+        "parameters": [
+            {"name": "source_region", "type": "integer", "required": True},
+            {"name": "target_region", "type": "integer", "required": True},
+            {"name": "min_margin", "type": "number", "required": False}
+        ]
+    },
+    {
+        "name": "get_saved_arbitrage",
+        "description": "Get saved arbitrage results.",
+        "parameters": []
+    },
+    {
+        "name": "clear_market_cache",
+        "description": "Clear market price cache.",
+        "parameters": []
+    },
+
+    # ===== CHARACTER (12 tools) =====
+    {
+        "name": "get_character_wallet",
+        "description": "Get ISK wallet balance for a character.",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True, "description": "Character ID"}
+        ]
+    },
+    {
+        "name": "get_character_assets",
+        "description": "Get inventory/hangar contents for a character.",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True},
+            {"name": "location_id", "type": "integer", "required": False}
+        ]
+    },
+    {
+        "name": "get_character_skills",
+        "description": "Get skill list and total skillpoints.",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_character_skillqueue",
+        "description": "Get skill training queue.",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_character_orders",
+        "description": "Get active market orders.",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_character_industry",
+        "description": "Get manufacturing/research jobs.",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True},
+            {"name": "include_completed", "type": "boolean", "required": False}
+        ]
+    },
+    {
+        "name": "get_character_blueprints",
+        "description": "Get blueprint library (BPOs and BPCs).",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_character_info",
+        "description": "Get character info (name, corp, etc).",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_character_portrait",
+        "description": "Get character portrait image URL.",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_corporation_wallet",
+        "description": "Get corp wallet balances (all 7 divisions). ONLY use Cytrex (1117367444).",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_corporation_info",
+        "description": "Get corporation info.",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_corporation_journal",
+        "description": "Get corp wallet journal.",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True},
+            {"name": "division", "type": "integer", "required": True}
+        ]
+    },
+
+    # ===== WAR ROOM (16 tools) =====
+    {
+        "name": "get_war_losses",
+        "description": "Get combat ship losses for a region over N days.",
+        "parameters": [
+            {"name": "region_id", "type": "integer", "required": True},
+            {"name": "days", "type": "integer", "required": False},
+            {"name": "type", "type": "string", "required": False, "enum": ["all", "ships", "items"]}
+        ]
+    },
+    {
+        "name": "get_war_demand",
+        "description": "Get demand analysis with market gaps for a region.",
+        "parameters": [
+            {"name": "region_id", "type": "integer", "required": True},
+            {"name": "days", "type": "integer", "required": False}
+        ]
+    },
+    {
+        "name": "get_war_heatmap",
+        "description": "Get galaxy heatmap data.",
+        "parameters": [
+            {"name": "days", "type": "integer", "required": False},
+            {"name": "min_kills", "type": "integer", "required": False}
+        ]
+    },
+    {
+        "name": "get_war_campaigns",
+        "description": "Get sovereignty campaigns.",
+        "parameters": [
+            {"name": "hours", "type": "integer", "required": False}
+        ]
+    },
+    {
+        "name": "update_war_campaigns",
+        "description": "Manually update sovereignty campaigns from ESI.",
+        "parameters": []
+    },
+    {
+        "name": "get_war_fw_hotspots",
+        "description": "Get faction warfare hotspots.",
+        "parameters": [
+            {"name": "min_contested", "type": "integer", "required": False}
+        ]
+    },
+    {
+        "name": "get_war_fw_vulnerable",
+        "description": "Get vulnerable FW systems.",
+        "parameters": []
+    },
+    {
+        "name": "update_war_fw",
+        "description": "Manually update FW status from ESI.",
+        "parameters": []
+    },
+    {
+        "name": "get_war_doctrines",
+        "description": "Get detected doctrines for a region.",
+        "parameters": [
+            {"name": "region_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_war_conflicts",
+        "description": "Get alliance conflicts.",
+        "parameters": [
+            {"name": "days", "type": "integer", "required": False}
+        ]
+    },
+    {
+        "name": "get_system_danger",
+        "description": "Get danger score for a system.",
+        "parameters": [
+            {"name": "system_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_war_summary",
+        "description": "Get regional combat summary.",
+        "parameters": []
+    },
+    {
+        "name": "get_war_top_ships",
+        "description": "Get most destroyed ships galaxy-wide.",
+        "parameters": []
+    },
+    {
+        "name": "get_safe_route",
+        "description": "Calculate route with danger scores.",
+        "parameters": [
+            {"name": "from_system", "type": "integer", "required": True},
+            {"name": "to_system", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_item_combat_stats",
+        "description": "Get combat statistics for an item.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_war_alerts",
+        "description": "Get war room alerts.",
+        "parameters": []
+    },
+
+    # ===== DASHBOARD (5 tools) =====
+    {
+        "name": "get_market_opportunities",
+        "description": "Get market opportunities overview.",
+        "parameters": []
+    },
+    {
+        "name": "get_opportunities_by_category",
+        "description": "Get opportunities by category.",
+        "parameters": [
+            {"name": "category", "type": "string", "required": True}
+        ]
+    },
+    {
+        "name": "get_characters_summary",
+        "description": "Get summary of all characters.",
+        "parameters": []
+    },
+    {
+        "name": "get_portfolio_analysis",
+        "description": "Get portfolio analysis.",
+        "parameters": []
+    },
+    {
+        "name": "get_active_projects",
+        "description": "Get active projects.",
+        "parameters": []
+    },
+
+    # ===== RESEARCH (2 tools) =====
+    {
+        "name": "get_skills_for_item",
+        "description": "Get required skills for an item.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_skill_recommendations",
+        "description": "Get skill recommendations for a character.",
+        "parameters": [
+            {"name": "character_id", "type": "integer", "required": True}
+        ]
+    },
+
+    # ===== SHOPPING (26 tools) =====
+    {
+        "name": "list_shopping_lists",
+        "description": "Get all shopping lists.",
+        "parameters": []
+    },
+    {
+        "name": "create_shopping_list",
+        "description": "Create a new shopping list.",
+        "parameters": [
+            {"name": "name", "type": "string", "required": True},
+            {"name": "character_id", "type": "integer", "required": False},
+            {"name": "notes", "type": "string", "required": False}
+        ]
+    },
+    {
+        "name": "get_shopping_list",
+        "description": "Get shopping list details.",
+        "parameters": [
+            {"name": "list_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "update_shopping_list",
+        "description": "Update shopping list.",
+        "parameters": [
+            {"name": "list_id", "type": "integer", "required": True},
+            {"name": "name", "type": "string", "required": False},
+            {"name": "status", "type": "string", "required": False},
+            {"name": "notes", "type": "string", "required": False}
+        ]
+    },
+    {
+        "name": "delete_shopping_list",
+        "description": "Delete shopping list.",
+        "parameters": [
+            {"name": "list_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "add_shopping_item",
+        "description": "Add item to shopping list.",
+        "parameters": [
+            {"name": "list_id", "type": "integer", "required": True},
+            {"name": "type_id", "type": "integer", "required": True},
+            {"name": "item_name", "type": "string", "required": True},
+            {"name": "quantity", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "update_shopping_item",
+        "description": "Update shopping item.",
+        "parameters": [
+            {"name": "item_id", "type": "integer", "required": True},
+            {"name": "quantity", "type": "integer", "required": False}
+        ]
+    },
+    {
+        "name": "delete_shopping_item",
+        "description": "Delete shopping item.",
+        "parameters": [
+            {"name": "item_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "mark_item_purchased",
+        "description": "Mark item as purchased.",
+        "parameters": [
+            {"name": "item_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "set_purchase_region",
+        "description": "Set purchase region for item.",
+        "parameters": [
+            {"name": "item_id", "type": "integer", "required": True},
+            {"name": "region_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "update_item_runs",
+        "description": "Update blueprint runs.",
+        "parameters": [
+            {"name": "item_id", "type": "integer", "required": True},
+            {"name": "runs", "type": "integer", "required": True},
+            {"name": "me_level", "type": "integer", "required": False}
+        ]
+    },
+    {
+        "name": "set_build_decision",
+        "description": "Set build/buy decision.",
+        "parameters": [
+            {"name": "item_id", "type": "integer", "required": True},
+            {"name": "decision", "type": "string", "required": True, "enum": ["build", "buy"]}
+        ]
+    },
+    {
+        "name": "calculate_item_materials",
+        "description": "Calculate materials needed for item.",
+        "parameters": [
+            {"name": "item_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "apply_materials_to_list",
+        "description": "Apply materials to shopping list.",
+        "parameters": [
+            {"name": "item_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_item_with_materials",
+        "description": "Get item with its materials.",
+        "parameters": [
+            {"name": "item_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "add_production_to_list",
+        "description": "Add production materials to list.",
+        "parameters": [
+            {"name": "list_id", "type": "integer", "required": True},
+            {"name": "type_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "export_shopping_list",
+        "description": "Export list to EVE format.",
+        "parameters": [
+            {"name": "list_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_list_by_region",
+        "description": "Get list grouped by region.",
+        "parameters": [
+            {"name": "list_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_regional_comparison",
+        "description": "Compare regional prices for list.",
+        "parameters": [
+            {"name": "list_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_cargo_summary",
+        "description": "Get cargo summary for list.",
+        "parameters": [
+            {"name": "list_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_transport_options",
+        "description": "Get transport ship options.",
+        "parameters": [
+            {"name": "list_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "calculate_shopping_route",
+        "description": "Calculate optimal shopping route.",
+        "parameters": []
+    },
+    {
+        "name": "get_market_orders_for_item",
+        "description": "Get market orders for shopping item.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "wizard_calculate_materials",
+        "description": "Shopping wizard: calculate materials.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True},
+            {"name": "quantity", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "wizard_compare_regions",
+        "description": "Shopping wizard: compare regions.",
+        "parameters": [
+            {"name": "materials", "type": "array", "required": True}
+        ]
+    },
+
+    # ===== BOOKMARKS (9 tools) =====
+    {
+        "name": "create_bookmark",
+        "description": "Create a bookmark.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True},
+            {"name": "notes", "type": "string", "required": False}
+        ]
+    },
+    {
+        "name": "list_bookmarks",
+        "description": "Get all bookmarks.",
+        "parameters": []
+    },
+    {
+        "name": "check_bookmark",
+        "description": "Check if item is bookmarked.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "update_bookmark",
+        "description": "Update bookmark.",
+        "parameters": [
+            {"name": "bookmark_id", "type": "integer", "required": True},
+            {"name": "notes", "type": "string", "required": False}
+        ]
+    },
+    {
+        "name": "delete_bookmark",
+        "description": "Delete bookmark.",
+        "parameters": [
+            {"name": "bookmark_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "create_bookmark_list",
+        "description": "Create bookmark list.",
+        "parameters": [
+            {"name": "name", "type": "string", "required": True}
+        ]
+    },
+    {
+        "name": "list_bookmark_lists",
+        "description": "Get all bookmark lists.",
+        "parameters": []
+    },
+    {
+        "name": "add_to_bookmark_list",
+        "description": "Add bookmark to list.",
+        "parameters": [
+            {"name": "list_id", "type": "integer", "required": True},
+            {"name": "bookmark_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "remove_from_bookmark_list",
+        "description": "Remove bookmark from list.",
+        "parameters": [
+            {"name": "list_id", "type": "integer", "required": True},
+            {"name": "bookmark_id", "type": "integer", "required": True}
+        ]
+    },
+
+    # ===== ITEMS & MATERIALS (6 tools) =====
+    {
+        "name": "search_item_groups",
+        "description": "Search for item groups.",
+        "parameters": [
+            {"name": "q", "type": "string", "required": True}
+        ]
+    },
+    {
+        "name": "get_all_regions",
+        "description": "Get all EVE regions.",
+        "parameters": []
+    },
+    {
+        "name": "get_material_composition",
+        "description": "Get material composition for item.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_material_volumes",
+        "description": "Get material volume information.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "calculate_cargo_volume",
+        "description": "Calculate cargo volume.",
+        "parameters": [
+            {"name": "items", "type": "array", "required": True}
+        ]
+    },
+    {
+        "name": "get_item_volume_info",
+        "description": "Get volume info for item.",
+        "parameters": [
+            {"name": "type_id", "type": "integer", "required": True}
+        ]
+    },
+
+    # ===== ROUTES & NAVIGATION (5 tools) =====
+    {
+        "name": "get_trade_hubs",
+        "description": "Get trade hub systems.",
+        "parameters": []
+    },
+    {
+        "name": "get_hub_distances",
+        "description": "Get distances to all hubs from system.",
+        "parameters": [
+            {"name": "from_system", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "calculate_system_route",
+        "description": "Calculate route between systems.",
+        "parameters": [
+            {"name": "from_system", "type": "integer", "required": True},
+            {"name": "to_system", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "search_systems",
+        "description": "Search for solar systems.",
+        "parameters": [
+            {"name": "q", "type": "string", "required": True}
+        ]
+    },
+    {
+        "name": "calculate_route_with_danger",
+        "description": "Calculate route with danger assessment.",
+        "parameters": [
+            {"name": "from_system", "type": "integer", "required": True},
+            {"name": "to_system", "type": "integer", "required": True}
+        ]
+    },
+
+    # ===== MINING (3 tools) =====
+    {
+        "name": "find_mineral_locations",
+        "description": "Find ore locations for a mineral.",
+        "parameters": [
+            {"name": "mineral_name", "type": "string", "required": True}
+        ]
+    },
+    {
+        "name": "get_system_mining_info",
+        "description": "Get mining info for a system.",
+        "parameters": [
+            {"name": "system_id", "type": "integer", "required": True}
+        ]
+    },
+    {
+        "name": "get_ore_composition",
+        "description": "Get ore composition data.",
+        "parameters": []
+    },
+
+    # ===== HUNTER (4 tools) =====
+    {
+        "name": "get_hunter_categories",
+        "description": "Get available item categories for market hunter.",
+        "parameters": []
+    },
+    {
+        "name": "get_market_tree",
+        "description": "Get market group hierarchy.",
+        "parameters": []
+    },
+    {
+        "name": "scan_market_opportunities",
+        "description": "Scan for profitable manufacturing opportunities.",
+        "parameters": [
+            {"name": "category", "type": "string", "required": False},
+            {"name": "min_roi", "type": "number", "required": False}
+        ]
+    },
+    {
+        "name": "get_hunter_opportunities",
+        "description": "Get pre-calculated opportunities.",
+        "parameters": []
+    },
+]
+
+class MCPToolCallRequest(BaseModel):
+    name: str
+    arguments: dict = {}
+
+
+@router.get("/tools/list")
+async def mcp_tools_list():
+    """List all available MCP tools"""
+    return {"tools": MCP_TOOLS}
+
+
+@router.post("/tools/call")
+async def mcp_tools_call(request: MCPToolCallRequest):
+    """Execute an MCP tool call"""
+    import json
+    import requests
+
+    name = request.name
+    args = request.arguments
+
+    try:
+        result = None
+
+        # Helper to make API calls to backend
+        def call_api(endpoint, method="GET", params=None, data=None):
+            url = f"http://localhost:8000{endpoint}"
+            if method == "GET":
+                response = requests.get(url, params=params)
+            elif method == "POST":
+                response = requests.post(url, json=data)
+            elif method == "PATCH":
+                response = requests.patch(url, json=data)
+            elif method == "DELETE":
+                response = requests.delete(url)
+            else:
+                raise ValueError(f"Unsupported method: {method}")
+
+            response.raise_for_status()
+            return response.json()
+
+        # CONTEXT & UTILITY
+        if name == "eve_copilot_context":
+            result = {"context": EVE_CONTEXT, "hint": "Use the IDs and workflows above for all operations"}
+
+        elif name == "get_authenticated_characters":
+            characters = eve_auth.get_authenticated_characters()
+            result = {"authenticated_characters": len(characters), "characters": characters}
+
+        # ITEM SEARCH & INFO
+        elif name == "search_item":
+            items = get_item_by_name(args.get("q", ""))
+            result = {"query": args.get("q"), "results": items, "count": len(items)}
+
+        elif name == "search_group":
+            groups = get_group_by_name(args.get("q", ""))
+            result = {"query": args.get("q"), "results": groups, "count": len(groups)}
+
+        elif name == "get_item_info":
+            item = get_item_info(args.get("type_id"))
+            result = item if item else {"error": "Item not found"}
+
+        elif name == "get_regions":
+            result = REGIONS
+
+        # PRODUCTION
+        elif name == "get_blueprint_info":
+            from database import get_blueprint_info as db_get_blueprint_info
+            bp_info = db_get_blueprint_info(args.get("type_id"))
+            if bp_info:
+                base_time = bp_info.get("base_time", 0)
+                hours = base_time // 3600
+                minutes = (base_time % 3600) // 60
+                bp_info["base_time_formatted"] = f"{hours}h {minutes}m"
+                result = bp_info
+            else:
+                result = {"error": "Blueprint not found for this item"}
+
+        elif name == "simulate_build":
+            type_id = args.get("type_id")
+            if not type_id and args.get("blueprint_name"):
+                items = get_item_by_name(args.get("blueprint_name"))
+                if items:
+                    for item in items:
+                        if item["typeName"].lower() == args.get("blueprint_name").lower():
+                            type_id = item["typeID"]
+                            break
+                    if not type_id:
+                        type_id = items[0]["typeID"]
+
+            if not type_id:
+                result = {"error": "Could not find item"}
+            else:
+                character_assets = None
+                if args.get("character_id"):
+                    assets_result = character_api.get_assets(args.get("character_id"))
+                    if isinstance(assets_result, dict) and "error" not in assets_result:
+                        character_assets = assets_result.get("assets", [])
+
+                result = production_simulator.simulate_build(
+                    type_id=type_id,
+                    runs=args.get("runs", 1),
+                    me=args.get("me", 0),
+                    te=args.get("te", 0),
+                    character_assets=character_assets,
+                    region_id=args.get("region_id", REGIONS["the_forge"])
+                )
+
+        elif name == "get_production_cost":
+            result = calculate_production_cost(
+                type_id=args.get("type_id"),
+                me_level=args.get("me_level", 0),
+                te_level=args.get("te_level", 0),
+                region_id=args.get("region_id", REGIONS["the_forge"]),
+                use_buy_orders=args.get("use_buy_orders", False)
+            )
+
+        elif name == "get_production_chains":
+            result = call_api(f"/api/production/chains/{args.get('type_id')}")
+
+        elif name == "get_chain_materials":
+            result = call_api(f"/api/production/chains/{args.get('type_id')}/materials")
+
+        elif name == "get_economics_opportunities":
+            result = call_api("/api/production/economics/opportunities")
+
+        elif name == "get_economics_analysis":
+            result = call_api(f"/api/production/economics/{args.get('type_id')}")
+
+        elif name == "get_economics_regions":
+            result = call_api(f"/api/production/economics/{args.get('type_id')}/regions")
+
+        # MARKET
+        elif name == "get_market_stats":
+            stats = esi_client.get_market_stats(args.get("region_id"), args.get("type_id"))
+            item = get_item_info(args.get("type_id"))
+            if item:
+                stats["item_name"] = item["typeName"]
+            result = stats
+
+        elif name == "compare_market_prices":
+            result = call_api(f"/api/market/compare/{args.get('type_id')}")
+
+        elif name == "find_arbitrage":
+            result = find_arbitrage(
+                group_name=args.get("group_name"),
+                group_id=args.get("group_id"),
+                source_region=args.get("source_region", REGIONS["the_forge"]),
+                target_region=args.get("target_region", REGIONS["domain"]),
+                min_margin_percent=args.get("min_margin_percent", 5.0),
+                limit=args.get("limit", 5)
+            )
+
+        elif name == "enhanced_arbitrage":
+            result = call_api(f"/api/arbitrage/enhanced/{args.get('type_id')}")
+
+        elif name == "submit_custom_arbitrage":
+            result = call_api("/api/trade/arbitrage", method="POST", data=args)
+
+        elif name == "get_saved_arbitrage":
+            result = call_api("/api/trade/arbitrage")
+
+        elif name == "clear_market_cache":
+            result = call_api("/api/cache/clear", method="POST")
+
+        # CHARACTER
+        elif name == "get_character_wallet":
+            result = character_api.get_wallet_balance(args.get("character_id"))
+
+        elif name == "get_character_assets":
+            result = character_api.get_assets(args.get("character_id"), args.get("location_id"))
+
+        elif name == "get_character_skills":
+            result = character_api.get_skills(args.get("character_id"))
+
+        elif name == "get_character_skillqueue":
+            result = call_api(f"/api/character/{args.get('character_id')}/skillqueue")
+
+        elif name == "get_character_orders":
+            result = character_api.get_market_orders(args.get("character_id"))
+
+        elif name == "get_character_industry":
+            result = character_api.get_industry_jobs(
+                args.get("character_id"),
+                args.get("include_completed", False)
+            )
+
+        elif name == "get_character_blueprints":
+            result = character_api.get_blueprints(args.get("character_id"))
+
+        elif name == "get_character_info":
+            result = call_api(f"/api/character/{args.get('character_id')}/info")
+
+        elif name == "get_character_portrait":
+            result = call_api(f"/api/character/{args.get('character_id')}/portrait")
+
+        elif name == "get_corporation_wallet":
+            result = character_api.get_corporation_wallets(args.get("character_id"))
+
+        elif name == "get_corporation_info":
+            char_id = args.get("character_id")
+            corp_id = character_api.get_corporation_id(char_id)
+            if corp_id:
+                result = character_api.get_corporation_info(corp_id)
+            else:
+                result = {"error": "Corporation not found"}
+
+        elif name == "get_corporation_journal":
+            result = call_api(f"/api/character/{args.get('character_id')}/corporation/journal/{args.get('division')}")
+
+        # WAR ROOM
+        elif name == "get_war_losses":
+            result = call_api(f"/api/war/losses/{args.get('region_id')}", params={
+                "days": args.get("days", 7),
+                "type": args.get("type", "all")
+            })
+
+        elif name == "get_war_demand":
+            result = call_api(f"/api/war/demand/{args.get('region_id')}", params={
+                "days": args.get("days", 7)
+            })
+
+        elif name == "get_war_heatmap":
+            result = call_api("/api/war/heatmap", params={
+                "days": args.get("days", 7),
+                "min_kills": args.get("min_kills", 5)
+            })
+
+        elif name == "get_war_campaigns":
+            result = call_api("/api/war/campaigns", params={
+                "hours": args.get("hours", 24)
+            })
+
+        elif name == "update_war_campaigns":
+            result = call_api("/api/war/campaigns/update")
+
+        elif name == "get_war_fw_hotspots":
+            result = call_api("/api/war/fw/hotspots", params={
+                "min_contested": args.get("min_contested", 10)
+            })
+
+        elif name == "get_war_fw_vulnerable":
+            result = call_api("/api/war/fw/vulnerable")
+
+        elif name == "update_war_fw":
+            result = call_api("/api/war/fw/update")
+
+        elif name == "get_war_doctrines":
+            result = call_api(f"/api/war/doctrines/{args.get('region_id')}")
+
+        elif name == "get_war_conflicts":
+            result = call_api("/api/war/conflicts", params={
+                "days": args.get("days", 7)
+            })
+
+        elif name == "get_system_danger":
+            result = call_api(f"/api/war/system/{args.get('system_id')}/danger")
+
+        elif name == "get_war_summary":
+            result = call_api("/api/war/summary")
+
+        elif name == "get_war_top_ships":
+            result = call_api("/api/war/top-ships")
+
+        elif name == "get_safe_route":
+            result = call_api(f"/api/war/route/safe/{args.get('from_system')}/{args.get('to_system')}")
+
+        elif name == "get_item_combat_stats":
+            result = call_api(f"/api/war/item/{args.get('type_id')}/stats")
+
+        elif name == "get_war_alerts":
+            result = call_api("/api/war/alerts")
+
+        # DASHBOARD
+        elif name == "get_market_opportunities":
+            result = call_api("/api/dashboard/opportunities")
+
+        elif name == "get_opportunities_by_category":
+            result = call_api(f"/api/dashboard/opportunities/{args.get('category')}")
+
+        elif name == "get_characters_summary":
+            result = call_api("/api/dashboard/characters/summary")
+
+        elif name == "get_portfolio_analysis":
+            result = call_api("/api/dashboard/characters/portfolio")
+
+        elif name == "get_active_projects":
+            result = call_api("/api/dashboard/projects")
+
+        # RESEARCH
+        elif name == "get_skills_for_item":
+            result = call_api(f"/api/research/skills-for-item/{args.get('type_id')}")
+
+        elif name == "get_skill_recommendations":
+            result = call_api(f"/api/research/recommendations/{args.get('character_id')}")
+
+        # SHOPPING (all 26 tools)
+        elif name == "list_shopping_lists":
+            result = call_api("/api/shopping/lists")
+
+        elif name == "create_shopping_list":
+            result = call_api("/api/shopping/lists", method="POST", data=args)
+
+        elif name == "get_shopping_list":
+            result = call_api(f"/api/shopping/lists/{args.get('list_id')}")
+
+        elif name == "update_shopping_list":
+            list_id = args.pop("list_id")
+            result = call_api(f"/api/shopping/lists/{list_id}", method="PATCH", data=args)
+
+        elif name == "delete_shopping_list":
+            result = call_api(f"/api/shopping/lists/{args.get('list_id')}", method="DELETE")
+
+        elif name == "add_shopping_item":
+            list_id = args.pop("list_id")
+            result = call_api(f"/api/shopping/lists/{list_id}/items", method="POST", data=args)
+
+        elif name == "update_shopping_item":
+            item_id = args.pop("item_id")
+            result = call_api(f"/api/shopping/items/{item_id}", method="PATCH", data=args)
+
+        elif name == "delete_shopping_item":
+            result = call_api(f"/api/shopping/items/{args.get('item_id')}", method="DELETE")
+
+        elif name == "mark_item_purchased":
+            result = call_api(f"/api/shopping/items/{args.get('item_id')}/purchased", method="POST")
+
+        elif name == "set_purchase_region":
+            item_id = args.pop("item_id")
+            result = call_api(f"/api/shopping/items/{item_id}/region", method="PATCH", data=args)
+
+        elif name == "update_item_runs":
+            item_id = args.pop("item_id")
+            result = call_api(f"/api/shopping/items/{item_id}/runs", method="PATCH", data=args)
+
+        elif name == "set_build_decision":
+            item_id = args.pop("item_id")
+            result = call_api(f"/api/shopping/items/{item_id}/build-decision", method="PATCH", data=args)
+
+        elif name == "calculate_item_materials":
+            result = call_api(f"/api/shopping/items/{args.get('item_id')}/calculate-materials", method="POST")
+
+        elif name == "apply_materials_to_list":
+            result = call_api(f"/api/shopping/items/{args.get('item_id')}/apply-materials", method="POST")
+
+        elif name == "get_item_with_materials":
+            result = call_api(f"/api/shopping/items/{args.get('item_id')}/with-materials")
+
+        elif name == "add_production_to_list":
+            list_id = args.pop("list_id")
+            type_id = args.pop("type_id")
+            result = call_api(f"/api/shopping/lists/{list_id}/add-production/{type_id}", method="POST")
+
+        elif name == "export_shopping_list":
+            result = call_api(f"/api/shopping/lists/{args.get('list_id')}/export")
+
+        elif name == "get_list_by_region":
+            result = call_api(f"/api/shopping/lists/{args.get('list_id')}/by-region")
+
+        elif name == "get_regional_comparison":
+            result = call_api(f"/api/shopping/lists/{args.get('list_id')}/regional-comparison")
+
+        elif name == "get_cargo_summary":
+            result = call_api(f"/api/shopping/lists/{args.get('list_id')}/cargo-summary")
+
+        elif name == "get_transport_options":
+            result = call_api(f"/api/shopping/lists/{args.get('list_id')}/transport-options")
+
+        elif name == "calculate_shopping_route":
+            result = call_api("/api/shopping/route")
+
+        elif name == "get_market_orders_for_item":
+            result = call_api(f"/api/shopping/orders/{args.get('type_id')}")
+
+        elif name == "wizard_calculate_materials":
+            result = call_api("/api/shopping/wizard/calculate-materials", method="POST", data=args)
+
+        elif name == "wizard_compare_regions":
+            result = call_api("/api/shopping/wizard/compare-regions", method="POST", data=args)
+
+        # BOOKMARKS
+        elif name == "create_bookmark":
+            result = call_api("/api/bookmarks", method="POST", data=args)
+
+        elif name == "list_bookmarks":
+            result = call_api("/api/bookmarks")
+
+        elif name == "check_bookmark":
+            result = call_api(f"/api/bookmarks/check/{args.get('type_id')}")
+
+        elif name == "update_bookmark":
+            bookmark_id = args.pop("bookmark_id")
+            result = call_api(f"/api/bookmarks/{bookmark_id}", method="PATCH", data=args)
+
+        elif name == "delete_bookmark":
+            result = call_api(f"/api/bookmarks/{args.get('bookmark_id')}", method="DELETE")
+
+        elif name == "create_bookmark_list":
+            result = call_api("/api/bookmarks/lists", method="POST", data=args)
+
+        elif name == "list_bookmark_lists":
+            result = call_api("/api/bookmarks/lists")
+
+        elif name == "add_to_bookmark_list":
+            result = call_api(f"/api/bookmarks/lists/{args.get('list_id')}/items/{args.get('bookmark_id')}", method="POST")
+
+        elif name == "remove_from_bookmark_list":
+            result = call_api(f"/api/bookmarks/lists/{args.get('list_id')}/items/{args.get('bookmark_id')}", method="DELETE")
+
+        # ITEMS & MATERIALS
+        elif name == "search_item_groups":
+            result = call_api("/api/groups/search", params={"q": args.get("q")})
+
+        elif name == "get_all_regions":
+            result = call_api("/api/regions")
+
+        elif name == "get_material_composition":
+            result = call_api(f"/api/materials/{args.get('type_id')}/composition")
+
+        elif name == "get_material_volumes":
+            result = call_api(f"/api/materials/{args.get('type_id')}/volumes")
+
+        elif name == "calculate_cargo_volume":
+            result = call_api("/api/cargo/calculate", method="POST", data={"items": args.get("items")})
+
+        elif name == "get_item_volume_info":
+            result = call_api(f"/api/cargo/item/{args.get('type_id')}")
+
+        # ROUTES
+        elif name == "get_trade_hubs":
+            result = call_api("/api/route/hubs")
+
+        elif name == "get_hub_distances":
+            result = call_api(f"/api/route/distances/{args.get('from_system')}")
+
+        elif name == "calculate_system_route":
+            result = call_api(f"/api/route/{args.get('from_system')}/{args.get('to_system')}")
+
+        elif name == "search_systems":
+            result = call_api("/api/systems/search", params={"q": args.get("q")})
+
+        elif name == "calculate_route_with_danger":
+            result = call_api(f"/api/war/route/safe/{args.get('from_system')}/{args.get('to_system')}")
+
+        # MINING
+        elif name == "find_mineral_locations":
+            result = call_api("/api/mining/find-mineral", params={"mineral_name": args.get("mineral_name")})
+
+        elif name == "get_system_mining_info":
+            result = call_api("/api/mining/system-info", params={"system_id": args.get("system_id")})
+
+        elif name == "get_ore_composition":
+            result = call_api("/api/mining/ore-info")
+
+        # HUNTER
+        elif name == "get_hunter_categories":
+            result = call_api("/api/hunter/categories")
+
+        elif name == "get_market_tree":
+            result = call_api("/api/hunter/market-tree")
+
+        elif name == "scan_market_opportunities":
+            result = call_api("/api/hunter/scan", params=args)
+
+        elif name == "get_hunter_opportunities":
+            result = call_api("/api/hunter/opportunities")
+
+        else:
+            return {
+                "content": [{"type": "text", "text": f"Unknown tool: {name}"}],
+                "isError": True
+            }
+
+        # Format response for MCP
+        return {
+            "content": [{"type": "text", "text": json.dumps(result, indent=2, default=str)}],
+            "isError": False
+        }
+
+    except Exception as e:
+        import traceback
+        error_detail = f"Error: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+        return {
+            "content": [{"type": "text", "text": error_detail}],
+            "isError": True
+        }
