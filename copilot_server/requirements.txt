@@ -1,0 +1,23 @@
+# EVE Co-Pilot AI Server Requirements
+
+# FastAPI and dependencies
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+websockets>=12.0
+python-multipart>=0.0.6
+
+# Anthropic Claude API
+anthropic>=0.18.0
+
+# OpenAI (for Whisper STT and TTS)
+openai>=1.12.0
+
+# HTTP Client
+requests>=2.31.0
+
+# Optional: Redis for conversation memory
+redis>=5.0.1
+
+# Utilities
+pydantic>=2.5.0
+python-dotenv>=1.0.0
