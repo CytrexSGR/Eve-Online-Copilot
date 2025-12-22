@@ -1,0 +1,138 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  database:
+    image: postgres:16-alpine
+    container_name: eve_copilot_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-eve_sde}
+      POSTGRES_USER: ${POSTGRES_USER:-eve}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-EvE_Pr0ject_2024}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-eve} -d ${POSTGRES_DB:-eve_sde}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eve_network
+
+  # EVE Co-Pilot Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: eve_copilot_backend
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-eve}:${POSTGRES_PASSWORD:-EvE_Pr0ject_2024}@database:5432/${POSTGRES_DB:-eve_sde}
+
+      # EVE SSO
+      EVE_CLIENT_ID: ${EVE_CLIENT_ID}
+      EVE_CLIENT_SECRET: ${EVE_CLIENT_SECRET}
+      EVE_CALLBACK_URL: ${EVE_CALLBACK_URL:-http://localhost:8000/api/auth/callback}
+
+      # Discord
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
+
+      # Server
+      PORT: 8000
+      HOST: 0.0.0.0
+      RELOAD: ${RELOAD:-false}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./tokens.json:/app/tokens.json
+      - ./logs:/app/logs
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - eve_network
+
+  # AI Copilot Server
+  copilot:
+    build:
+      context: .
+      dockerfile: Dockerfile.copilot
+    container_name: eve_copilot_ai
+    restart: unless-stopped
+    environment:
+      # AI Services
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      WHISPER_MODEL: ${WHISPER_MODEL:-whisper-1}
+      TTS_MODEL: ${TTS_MODEL:-tts-1}
+      TTS_VOICE: ${TTS_VOICE:-nova}
+
+      # Backend API
+      BACKEND_API_URL: http://backend:8000
+
+      # Server
+      COPILOT_PORT: 8001
+      COPILOT_HOST: 0.0.0.0
+
+      # LLM Config
+      MAX_TOKENS: ${MAX_TOKENS:-4096}
+      TEMPERATURE: ${TEMPERATURE:-1.0}
+      MAX_TOOL_ITERATIONS: ${MAX_TOOL_ITERATIONS:-5}
+      MAX_CONVERSATION_HISTORY: ${MAX_CONVERSATION_HISTORY:-50}
+    ports:
+      - "${COPILOT_PORT:-8001}:8001"
+    volumes:
+      - ./copilot_logs:/app/logs
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - eve_network
+
+  # Frontend Chat Interface
+  frontend:
+    build:
+      context: ./frontend_chat
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8001}
+        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8001}
+    container_name: eve_copilot_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - copilot
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - eve_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  eve_network:
+    driver: bridge

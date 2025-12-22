@@ -1,0 +1,57 @@
+# Dockerfile for EVE Co-Pilot Backend API
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    gcc \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY main.py .
+COPY config.py .
+COPY database.py .
+COPY auth.py .
+COPY character.py .
+COPY esi_client.py .
+COPY market_service.py .
+COPY production_simulator.py .
+COPY shopping_service.py .
+COPY bookmark_service.py .
+COPY material_classifier.py .
+COPY route_service.py .
+COPY cargo_service.py .
+COPY notification_service.py .
+COPY services.py .
+COPY killmail_service.py .
+COPY sovereignty_service.py .
+COPY fw_service.py .
+COPY war_analyzer.py .
+
+# Copy routers and services
+COPY routers/ routers/
+COPY services/ services/
+
+# Create directories for logs and tokens
+RUN mkdir -p /app/logs
+RUN touch /app/tokens.json
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/docs || exit 1
+
+# Run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
