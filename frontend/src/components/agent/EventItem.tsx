@@ -1,4 +1,3 @@
-import React from 'react';
 import type { AgentEvent } from '../../types/agent-events';
 import { AgentEventType } from '../../types/agent-events';
 

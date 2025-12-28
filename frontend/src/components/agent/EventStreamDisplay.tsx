@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import type { AgentEvent } from '../../types/agent-events';
 import { EventItem } from './EventItem';
 
