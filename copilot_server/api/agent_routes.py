@@ -6,13 +6,14 @@ REST endpoints for agent runtime.
 import asyncio
 import logging
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Optional
 
 from ..agent.sessions import AgentSessionManager
 from ..agent.runtime import AgentRuntime
 from ..agent.models import SessionStatus, PlanStatus
+from ..agent.events import AgentEvent
 from ..models.user_settings import get_default_settings
 
 logger = logging.getLogger(__name__)
@@ -227,3 +228,52 @@ async def reject_plan(request: RejectRequest):
         "plan_id": plan.id,
         "message": "Plan rejected"
     }
+
+
+@router.websocket("/stream/{session_id}")
+async def websocket_stream(websocket: WebSocket, session_id: str):
+    """
+    WebSocket endpoint for real-time event streaming.
+
+    Args:
+        websocket: WebSocket connection
+        session_id: Session ID to stream events for
+    """
+    # Accept connection
+    await websocket.accept()
+
+    # Verify session exists
+    session = await session_manager.load_session(session_id)
+    if not session:
+        await websocket.close(code=1008, reason="Session not found")
+        return
+
+    # Event handler to send events to WebSocket
+    async def send_event(event: AgentEvent):
+        """Send event to WebSocket client."""
+        try:
+            event_dict = event.to_dict()
+            await websocket.send_json(event_dict)
+        except Exception as e:
+            logger.error(f"Error sending event to WebSocket: {e}")
+
+    # Subscribe to session events
+    session_manager.event_bus.subscribe(session_id, send_event)
+
+    try:
+        # Keep connection alive and handle incoming messages
+        while True:
+            try:
+                # Receive messages (for heartbeat or control commands)
+                data = await websocket.receive_text()
+
+                # Handle ping/pong for keepalive
+                if data == "ping":
+                    await websocket.send_text("pong")
+
+            except WebSocketDisconnect:
+                break
+
+    finally:
+        # Unsubscribe when connection closes
+        session_manager.event_bus.unsubscribe(session_id, send_event)

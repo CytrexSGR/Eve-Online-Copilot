@@ -11,6 +11,8 @@ from .models import AgentSession, SessionStatus
 from .redis_store import RedisSessionStore
 from .pg_repository import PostgresSessionRepository
 from .plan_repository import PlanRepository
+from .event_bus import EventBus
+from .event_repository import EventRepository
 from ..models.user_settings import AutonomyLevel
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,8 @@ class AgentSessionManager:
             host=pg_host
         )
         self.plan_repo: Optional[PlanRepository] = None
+        self.event_bus = EventBus()
+        self.event_repo: Optional[EventRepository] = None
 
     async def startup(self) -> None:
         """Connect to storage backends."""
@@ -61,6 +65,10 @@ class AgentSessionManager:
         self.plan_repo = PlanRepository(database_url)
         await self.plan_repo.connect()
 
+        # Initialize event repository
+        self.event_repo = EventRepository(database_url)
+        await self.event_repo.connect()
+
         logger.info("AgentSessionManager started")
 
     async def shutdown(self) -> None:
@@ -70,6 +78,9 @@ class AgentSessionManager:
 
         if self.plan_repo:
             await self.plan_repo.disconnect()
+
+        if self.event_repo:
+            await self.event_repo.disconnect()
 
         logger.info("AgentSessionManager stopped")
 
