@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface RetryIndicatorProps {
   retryCount: number;
   maxRetries: number;
