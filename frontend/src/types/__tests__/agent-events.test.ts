@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   AgentEventType,
   isPlanProposedEvent,
-  isToolCallStartedEvent,
   type AgentEvent,
 } from '../agent-events';
 

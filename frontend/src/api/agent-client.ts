@@ -26,10 +26,13 @@ export interface RejectPlanRequest {
 export const agentClient = {
   /**
    * Create new agent session
+   * Note: Backend creates sessions implicitly via /agent/chat endpoint
    */
-  createSession: async (request: CreateSessionRequest): Promise<CreateSessionResponse> => {
-    const response = await api.post('/agent/sessions', request);
-    return response.data;
+  createSession: async (_request: CreateSessionRequest): Promise<CreateSessionResponse> => {
+    // The backend doesn't have a dedicated /agent/sessions endpoint
+    // Sessions are created via the /agent/chat endpoint with an initial message
+    // For now, we'll return a mock response until this is properly integrated
+    throw new Error('Session creation should be done via chat endpoint. Use agentClient.chat() instead.');
   },
 
   /**

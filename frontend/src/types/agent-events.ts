@@ -4,36 +4,38 @@
  * Matches backend event models from copilot_server/agent/events.py
  */
 
-export enum AgentEventType {
+export const AgentEventType = {
   // Session Events
-  SESSION_CREATED = "session_created",
-  SESSION_RESUMED = "session_resumed",
+  SESSION_CREATED: "session_created",
+  SESSION_RESUMED: "session_resumed",
 
   // Planning Events
-  PLANNING_STARTED = "planning_started",
-  PLAN_PROPOSED = "plan_proposed",
-  PLAN_APPROVED = "plan_approved",
-  PLAN_REJECTED = "plan_rejected",
+  PLANNING_STARTED: "planning_started",
+  PLAN_PROPOSED: "plan_proposed",
+  PLAN_APPROVED: "plan_approved",
+  PLAN_REJECTED: "plan_rejected",
 
   // Execution Events
-  EXECUTION_STARTED = "execution_started",
-  TOOL_CALL_STARTED = "tool_call_started",
-  TOOL_CALL_COMPLETED = "tool_call_completed",
-  TOOL_CALL_FAILED = "tool_call_failed",
-  THINKING = "thinking",
+  EXECUTION_STARTED: "execution_started",
+  TOOL_CALL_STARTED: "tool_call_started",
+  TOOL_CALL_COMPLETED: "tool_call_completed",
+  TOOL_CALL_FAILED: "tool_call_failed",
+  THINKING: "thinking",
 
   // Completion Events
-  ANSWER_READY = "answer_ready",
-  COMPLETED = "completed",
-  COMPLETED_WITH_ERRORS = "completed_with_errors",
+  ANSWER_READY: "answer_ready",
+  COMPLETED: "completed",
+  COMPLETED_WITH_ERRORS: "completed_with_errors",
 
   // Control Events
-  WAITING_FOR_APPROVAL = "waiting_for_approval",
-  MESSAGE_QUEUED = "message_queued",
-  INTERRUPTED = "interrupted",
-  ERROR = "error",
-  AUTHORIZATION_DENIED = "authorization_denied",
-}
+  WAITING_FOR_APPROVAL: "waiting_for_approval",
+  MESSAGE_QUEUED: "message_queued",
+  INTERRUPTED: "interrupted",
+  ERROR: "error",
+  AUTHORIZATION_DENIED: "authorization_denied",
+} as const;
+
+export type AgentEventType = typeof AgentEventType[keyof typeof AgentEventType];
 
 export interface AgentEvent {
   type: AgentEventType;
