@@ -15,6 +15,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.90.12",
     "axios": "^1.13.2",
+    "highlight.js": "^11.11.1",
     "lucide-react": "^0.556.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
