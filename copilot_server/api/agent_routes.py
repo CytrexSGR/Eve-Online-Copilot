@@ -241,10 +241,12 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
     """
     # Accept connection
     await websocket.accept()
+    logger.info(f"WebSocket connected for session: {session_id}")
 
     # Verify session exists
     session = await session_manager.load_session(session_id)
     if not session:
+        logger.warning(f"WebSocket connection rejected - session not found: {session_id}")
         await websocket.close(code=1008, reason="Session not found")
         return
 
@@ -254,11 +256,22 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
         try:
             event_dict = event.to_dict()
             await websocket.send_json(event_dict)
+        except WebSocketDisconnect:
+            logger.warning(
+                f"WebSocket disconnected while sending event for session {session_id}",
+                exc_info=True
+            )
+            # Unsubscribe on disconnect
+            session_manager.event_bus.unsubscribe(session_id, send_event)
         except Exception as e:
-            logger.error(f"Error sending event to WebSocket: {e}")
+            logger.error(
+                f"Error sending event to WebSocket for session {session_id}: {e}",
+                exc_info=True
+            )
 
     # Subscribe to session events
     session_manager.event_bus.subscribe(session_id, send_event)
+    logger.info(f"WebSocket subscribed to events for session: {session_id}")
 
     try:
         # Keep connection alive and handle incoming messages
@@ -270,6 +283,7 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
                 # Handle ping/pong for keepalive
                 if data == "ping":
                     await websocket.send_text("pong")
+                    logger.debug(f"WebSocket ping/pong for session: {session_id}")
 
             except WebSocketDisconnect:
                 break
@@ -277,3 +291,4 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
     finally:
         # Unsubscribe when connection closes
         session_manager.event_bus.unsubscribe(session_id, send_event)
+        logger.info(f"WebSocket disconnected for session: {session_id}")
