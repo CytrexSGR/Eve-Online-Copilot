@@ -35,9 +35,9 @@ export function useAgentWebSocket({
   const [error, setError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
-  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pingIntervalRef = useRef<number | null>(null);
 
   const connect = useCallback(() => {
     if (!mountedRef.current) return;
@@ -52,6 +52,11 @@ export function useAgentWebSocket({
         setIsConnected(true);
         setError(null);
         onConnect?.();
+
+        // Clear any existing ping interval before creating new one
+        if (pingIntervalRef.current) {
+          clearInterval(pingIntervalRef.current);
+        }
 
         // Send ping to keep connection alive
         pingIntervalRef.current = setInterval(() => {
@@ -82,6 +87,13 @@ export function useAgentWebSocket({
         if (!mountedRef.current) return;
         console.error('[AgentWS] WebSocket error:', event);
         setError('WebSocket connection error');
+
+        // Clear ping interval on error
+        if (pingIntervalRef.current) {
+          clearInterval(pingIntervalRef.current);
+          pingIntervalRef.current = null;
+        }
+
         onError?.(event);
       };
 
@@ -108,6 +120,14 @@ export function useAgentWebSocket({
     } catch (err) {
       console.error('[AgentWS] Failed to connect:', err);
       setError('Failed to establish WebSocket connection');
+
+      // Attempt reconnect if enabled
+      if (autoReconnect && mountedRef.current) {
+        console.log(`[AgentWS] Reconnecting in ${reconnectInterval}ms...`);
+        reconnectTimeoutRef.current = setTimeout(() => {
+          connect();
+        }, reconnectInterval);
+      }
     }
   }, [sessionId, onEvent, onConnect, onDisconnect, onError, autoReconnect, reconnectInterval]);
 
