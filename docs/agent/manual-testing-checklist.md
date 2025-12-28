@@ -1,7 +1,7 @@
-# Agent Runtime Phase 4 - Manual Testing Checklist
+# Agent Runtime - Manual Testing Checklist
 
 ## Purpose
-This checklist verifies the complete agent workflow integration including session creation, WebSocket connection, event streaming, plan approval, and runtime verification.
+This checklist verifies the complete agent workflow integration including session creation, WebSocket connection, event streaming, plan approval, runtime verification, and Phase 5 advanced features (character selection, event filtering, search, keyboard shortcuts, session persistence).
 
 ## Prerequisites
 - Backend server running on http://localhost:8000
@@ -333,9 +333,120 @@ This checklist verifies the complete agent workflow integration including sessio
 
 ---
 
+---
+
+## Phase 5: Advanced Features Tests
+
+### Character Selection
+
+- [ ] Navigate to http://localhost:5173/agent
+- [ ] Verify character dropdown displays all 3 characters:
+  - [ ] Artallus (526379435)
+  - [ ] Cytrex (1117367444)
+  - [ ] Cytricia (110592475)
+- [ ] Select "Artallus" from dropdown
+- [ ] Create session
+- [ ] Verify selected character is used in session creation
+- [ ] End session
+- [ ] Change character to "Cytrex"
+- [ ] Create new session
+- [ ] Verify new character is used
+
+### Event Filtering
+
+- [ ] Create session and generate multiple event types
+- [ ] Click "Filter Events" dropdown
+- [ ] Verify dropdown shows all event types (19 types)
+- [ ] Select "PLAN_PROPOSED" event type
+- [ ] Verify only PLAN_PROPOSED events display in stream
+- [ ] Click "Select All" button
+- [ ] Verify all event types selected
+- [ ] Verify selected count badge shows correct number
+- [ ] Click "Clear All" button
+- [ ] Verify all selections cleared
+- [ ] Verify all events display again
+- [ ] Select multiple types (PLAN_PROPOSED, ERROR, TOOL_CALL_STARTED)
+- [ ] Verify only selected types show in stream
+- [ ] Click outside dropdown to close
+- [ ] Verify dropdown closes
+
+### Event Search
+
+- [ ] Create session with various events
+- [ ] Type "plan" in search input
+- [ ] Verify only events containing "plan" in type or payload display
+- [ ] Verify clear button (X) appears
+- [ ] Type "error" in search
+- [ ] Verify search filters by payload content
+- [ ] Click clear button (X)
+- [ ] Verify search clears and all events display
+- [ ] Test search combined with filters:
+  - [ ] Select event type filter
+  - [ ] Type search query
+  - [ ] Verify both filters apply together
+
+### Session Persistence
+
+- [ ] Create session with RECOMMENDATIONS autonomy level
+- [ ] Note the session ID
+- [ ] Refresh browser page (F5 or Ctrl+R)
+- [ ] Verify session ID persists after reload
+- [ ] Verify autonomy level persists
+- [ ] Verify WebSocket reconnects automatically
+- [ ] Click "End Session"
+- [ ] Refresh browser page
+- [ ] Verify session is cleared (no session restored)
+- [ ] Create new session
+- [ ] Close browser tab
+- [ ] Reopen http://localhost:5173/agent
+- [ ] Verify session persists across tab close
+
+### Keyboard Shortcuts
+
+- [ ] Create session
+- [ ] Press Ctrl+K
+- [ ] Verify search input receives focus
+- [ ] Type in search and press Esc
+- [ ] Verify search clears
+- [ ] Generate some events
+- [ ] Press Ctrl+L
+- [ ] Verify events are cleared
+- [ ] Press Ctrl+/
+- [ ] Verify shortcuts help dialog appears
+- [ ] Verify help shows:
+  - [ ] Ctrl+K: Focus search
+  - [ ] Ctrl+/: Show shortcuts
+  - [ ] Ctrl+L: Clear events
+  - [ ] Esc: Clear filters
+- [ ] Click in search input
+- [ ] Press Ctrl+K while focused
+- [ ] Verify shortcut does NOT trigger (input focused)
+- [ ] Tab to message textarea
+- [ ] Press Ctrl+Enter
+- [ ] Verify shortcut does NOT trigger in textarea
+
+### Chat Message Input (Component Ready - Not Backend Connected)
+
+- [ ] Verify chat input textarea is visible below session info
+- [ ] Type a test message in textarea
+- [ ] Verify "Send" button is enabled
+- [ ] Clear textarea
+- [ ] Verify "Send" button is disabled when empty
+- [ ] Type message and press Ctrl+Enter
+- [ ] Verify message would be sent (currently no backend connection)
+- [ ] Verify textarea clears after send
+
+### Message History Display (Component Ready - Not Backend Connected)
+
+- [ ] Verify message history component displays
+- [ ] Verify empty state shows "No messages yet"
+- [ ] Component ready for future backend integration
+
+---
+
 ## Final Verification
 
-- [ ] All automated tests pass (27/27)
+- [ ] All automated tests pass (68/68)
 - [ ] All manual tests completed
 - [ ] No console errors in browser
 - [ ] No console errors in backend
@@ -349,7 +460,8 @@ This checklist verifies the complete agent workflow integration including sessio
 
 _Document any issues discovered during testing:_
 
--
+- Chat input and message history components are implemented but not yet connected to backend `/agent/chat` endpoint
+- Streaming message support hook is ready but backend SSE implementation pending
 
 ---
 
@@ -357,7 +469,7 @@ _Document any issues discovered during testing:_
 
 - **Tester:** ________________
 - **Date:** ________________
-- **Version:** Phase 4 - Task 7
+- **Version:** Phase 5 - Task 10 (Integration & Final Testing)
 - **Status:** ☐ PASS  ☐ FAIL
 
 ---
