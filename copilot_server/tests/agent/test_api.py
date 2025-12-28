@@ -25,6 +25,8 @@ async def session_manager():
 @pytest.fixture
 def mock_runtime(session_manager):
     """Set up mocked agent runtime for testing."""
+    from unittest.mock import MagicMock
+
     # Mock LLM and orchestrator
     llm_client = AsyncMock()
     llm_client.chat.return_value = {
@@ -32,10 +34,10 @@ def mock_runtime(session_manager):
         "stop_reason": "end_turn"
     }
 
-    orchestrator = AsyncMock()
-    orchestrator.mcp = AsyncMock()
-    orchestrator.mcp.get_tools.return_value = []
-    llm_client.build_tool_schema.return_value = []
+    orchestrator = MagicMock()
+    orchestrator.mcp = MagicMock()
+    orchestrator.mcp.get_tools = MagicMock(return_value=[])
+    llm_client.build_tool_schema = MagicMock(return_value=[])
 
     # Create runtime with actual session manager
     return AgentRuntime(
