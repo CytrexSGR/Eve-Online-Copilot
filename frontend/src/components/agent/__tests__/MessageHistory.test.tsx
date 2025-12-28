@@ -66,4 +66,19 @@ describe('MessageHistory', () => {
     expect(screen.getByText('Streaming...')).toBeInTheDocument();
     // Streaming indicator would be a visual element, check for class or icon
   });
+
+  it('should render system messages with system role', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: '1',
+        role: 'system',
+        content: 'Configuration loaded successfully',
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    render(<MessageHistory messages={messages} />);
+    expect(screen.getByText('Configuration loaded successfully')).toBeInTheDocument();
+    expect(screen.getByText('System')).toBeInTheDocument();
+  });
 });

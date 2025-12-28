@@ -37,24 +37,27 @@ export function MessageHistory({
 
 function MessageItem({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
+  const isSystem = message.role === 'system';
   const timestamp = new Date(message.timestamp).toLocaleTimeString();
+
+  const roleLabel = isUser ? 'You' : isSystem ? 'System' : 'Agent';
+  const roleLabelColor = isUser ? 'text-blue-400' : isSystem ? 'text-gray-400' : 'text-green-400';
+  const backgroundColor = isUser
+    ? 'bg-blue-900 bg-opacity-50'
+    : isSystem
+    ? 'bg-gray-700'
+    : 'bg-gray-800';
 
   return (
     <article
       className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
     >
       <div
-        className={`max-w-[70%] rounded-lg p-3 ${
-          isUser
-            ? 'bg-blue-900 bg-opacity-50'
-            : 'bg-gray-800'
-        }`}
+        className={`max-w-[70%] rounded-lg p-3 ${backgroundColor}`}
       >
         <div className="flex items-center gap-2 mb-1">
-          <span className={`text-sm font-semibold ${
-            isUser ? 'text-blue-400' : 'text-green-400'
-          }`}>
-            {isUser ? 'You' : 'Agent'}
+          <span className={`text-sm font-semibold ${roleLabelColor}`}>
+            {roleLabel}
           </span>
           <span className="text-xs text-gray-500">{timestamp}</span>
           {message.isStreaming && (
