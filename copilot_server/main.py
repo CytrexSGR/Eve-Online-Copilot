@@ -14,8 +14,10 @@ import logging
 from .config import (
     COPILOT_HOST,
     COPILOT_PORT,
+    DATABASE_URL,
     validate_config
 )
+import asyncpg
 from .llm import AnthropicClient, ConversationManager
 from .mcp import MCPClient, ToolOrchestrator
 from .websocket import ConnectionManager, SessionManager
@@ -128,6 +130,17 @@ async def startup():
     except Exception as e:
         logger.error(f"Failed to initialize Agent Runtime: {e}")
         logger.warning("Agent Runtime endpoints will not be available")
+
+    # Initialize database pool for agent routes
+    try:
+        agent_routes.db_pool = await asyncpg.create_pool(
+            DATABASE_URL,
+            min_size=2,
+            max_size=10
+        )
+        logger.info("Database pool initialized for agent routes")
+    except Exception as e:
+        logger.error(f"Failed to initialize database pool: {e}")
 
     logger.info(f"Server ready on http://{COPILOT_HOST}:{COPILOT_PORT}")
 

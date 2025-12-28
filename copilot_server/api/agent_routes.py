@@ -9,11 +9,13 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Optional
+import asyncpg
 
 from ..agent.sessions import AgentSessionManager
 from ..agent.runtime import AgentRuntime
 from ..agent.models import SessionStatus, PlanStatus
 from ..agent.events import AgentEvent
+from ..agent.messages import AgentMessage, MessageRepository
 from ..models.user_settings import get_default_settings
 
 logger = logging.getLogger(__name__)
@@ -23,6 +25,7 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 # Global instances (initialized in main.py)
 session_manager: Optional[AgentSessionManager] = None
 runtime: Optional[AgentRuntime] = None
+db_pool: Optional[asyncpg.Pool] = None
 
 
 class ChatRequest(BaseModel):
@@ -56,8 +59,9 @@ async def agent_chat(request: ChatRequest):
     Send message to agent.
 
     Creates new session if session_id is None, otherwise continues existing.
+    Persists all messages to database.
     """
-    if not session_manager or not runtime:
+    if not session_manager or not runtime or not db_pool:
         raise HTTPException(status_code=500, detail="Agent runtime not initialized")
 
     # Load or create session
@@ -75,14 +79,49 @@ async def agent_chat(request: ChatRequest):
             autonomy_level=user_settings.autonomy_level
         )
 
-    # Add user message
+    # Save user message to database
+    async with db_pool.acquire() as conn:
+        repo = MessageRepository(conn)
+        user_message = AgentMessage.create(
+            session_id=session.id,
+            role="user",
+            content=request.message
+        )
+        await repo.save(user_message)
+
+    # Add user message to session
     session.add_message("user", request.message)
     await session_manager.save_session(session)
 
     # Execute runtime (async, don't await in Phase 1)
     # Phase 2 will add background task execution
     try:
-        await runtime.execute(session)
+        response = await runtime.execute(session)
+
+        # Save assistant response to database if available
+        if response and "content" in response:
+            async with db_pool.acquire() as conn:
+                repo = MessageRepository(conn)
+
+                # Extract text from content blocks
+                text_content = ""
+                for block in response["content"]:
+                    if block.get("type") == "text":
+                        text_content += block.get("text", "")
+
+                assistant_message = AgentMessage.create(
+                    session_id=session.id,
+                    role="assistant",
+                    content=text_content,
+                    content_blocks=response["content"]
+                )
+
+                # Add token usage if available
+                if "usage" in response:
+                    assistant_message.token_usage = response["usage"]
+
+                await repo.save(assistant_message)
+
     except Exception as e:
         logger.error(f"Runtime execution failed: {e}")
         session.status = SessionStatus.ERROR
