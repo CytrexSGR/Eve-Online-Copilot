@@ -68,6 +68,32 @@ A comprehensive industry and market analysis tool for EVE Online. Built with Fas
 - **React Query Caching** - Aggressive caching reduces API calls
 - **Keyboard Shortcuts** - Fast navigation without mouse
 
+### Agent Runtime (Phase 1 ✅)
+
+Conversational AI agent with session management and tool execution:
+- ✅ **Multi-turn Conversations** - Persistent session management with full history
+- ✅ **Hybrid Storage** - Redis cache (< 10ms) + PostgreSQL audit trail
+- ✅ **MCP Tool Integration** - Access to 115 EVE Online tools via conversation
+- ✅ **Session Persistence** - Sessions survive server restarts
+- ✅ **REST API** - `POST /agent/chat`, `GET /agent/session/{id}`, `DELETE /agent/session/{id}`
+- ⏳ **Plan Detection & Approval** - Coming in Phase 2
+- ⏳ **Real-time WebSocket Events** - Coming in Phase 3
+
+**Status:** Phase 1 complete (23/23 tests passing). See [Phase 1 Completion Report](docs/agent/phase1-completion.md) for details.
+
+**What it does:**
+- Create conversational sessions with AI agent
+- Execute EVE Online operations through natural language
+- Automatic tool selection from 115 available MCP tools
+- Full conversation history and audit trail
+- Character-specific sessions with autonomy levels
+
+**Example:**
+```
+User: "What profitable items can I manufacture in Jita?"
+Agent: [Queries market data, analyzes production costs, returns recommendations]
+```
+
 ## Tech Stack
 
 **Backend:**
