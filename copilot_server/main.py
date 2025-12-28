@@ -20,6 +20,7 @@ from .llm import AnthropicClient, ConversationManager
 from .mcp import MCPClient, ToolOrchestrator
 from .websocket import ConnectionManager, SessionManager
 from .audio import AudioTranscriber, TextToSpeech
+from .models.user_settings import get_default_settings
 
 # Configure logging
 logging.basicConfig(
@@ -47,7 +48,7 @@ app.add_middleware(
 # Initialize components
 llm_client = AnthropicClient()
 mcp_client = MCPClient()
-orchestrator = ToolOrchestrator(mcp_client, llm_client)
+# Note: orchestrator now requires user_settings, created per-request
 conv_manager = ConversationManager()
 conn_manager = ConnectionManager()
 session_manager = SessionManager()
@@ -152,6 +153,14 @@ async def chat(request: ChatRequest):
         # Get messages for API
         messages = conv.get_messages_for_api()
 
+        # Get user settings (default for now, will load from DB later)
+        user_settings = get_default_settings(
+            character_id=request.character_id or 0
+        )
+
+        # Create orchestrator with user settings
+        orchestrator = ToolOrchestrator(mcp_client, llm_client, user_settings)
+
         # Execute workflow with tools
         result = await orchestrator.execute_workflow(messages)
 
@@ -215,9 +224,17 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 client_id
             )
 
+            # Get user settings
+            user_settings = get_default_settings(
+                character_id=conv.character_id or 0
+            )
+
+            # Create orchestrator with user settings
+            ws_orchestrator = ToolOrchestrator(mcp_client, llm_client, user_settings)
+
             # Execute workflow
             messages = conv.get_messages_for_api()
-            result = await orchestrator.execute_workflow(messages)
+            result = await ws_orchestrator.execute_workflow(messages)
 
             # Send response
             if "error" in result:

@@ -8,23 +8,46 @@ import logging
 
 from .client import MCPClient
 from ..llm.anthropic_client import AnthropicClient
+from ..models.user_settings import UserSettings
+from ..governance.authorization import AuthorizationChecker
 
 logger = logging.getLogger(__name__)
 
 
 class ToolOrchestrator:
-    """Orchestrates complex multi-tool workflows."""
+    """Orchestrates complex multi-tool workflows with authorization."""
 
-    def __init__(self, mcp_client: MCPClient, llm_client: AnthropicClient):
+    def __init__(
+        self,
+        mcp_client: MCPClient,
+        llm_client: AnthropicClient,
+        user_settings: UserSettings
+    ):
         """
         Initialize orchestrator.
 
         Args:
             mcp_client: MCP client for tool calls
             llm_client: LLM client for reasoning
+            user_settings: User's autonomy preferences
         """
         self.mcp = mcp_client
         self.llm = llm_client
+        self.settings = user_settings
+        self.auth_checker = AuthorizationChecker(user_settings)
+
+    def _is_tool_allowed(self, tool_name: str, arguments: Dict[str, Any]) -> bool:
+        """
+        Check if tool execution is allowed for this user.
+
+        Args:
+            tool_name: Name of MCP tool
+            arguments: Tool arguments
+
+        Returns:
+            True if allowed, False otherwise
+        """
+        return self.auth_checker.is_tool_allowed(tool_name, arguments)
 
     async def execute_workflow(
         self,
@@ -95,9 +118,39 @@ class ToolOrchestrator:
                 tool_input = tool_use["input"]
                 tool_id = tool_use["id"]
 
+                # Check authorization before execution
+                allowed, denial_reason = self.auth_checker.check_authorization(
+                    tool_name,
+                    tool_input
+                )
+
+                if not allowed:
+                    logger.warning(
+                        f"Tool '{tool_name}' blocked for user {self.settings.character_id}: "
+                        f"{denial_reason}"
+                    )
+
+                    # Return authorization error to LLM
+                    tool_result_blocks.append({
+                        "type": "tool_result",
+                        "tool_use_id": tool_id,
+                        "content": f"Authorization Error: {denial_reason}",
+                        "is_error": True
+                    })
+
+                    tool_results.append({
+                        "tool": tool_name,
+                        "input": tool_input,
+                        "error": denial_reason,
+                        "blocked_by": "authorization",
+                        "iteration": iteration
+                    })
+
+                    continue
+
                 logger.info(f"Executing tool: {tool_name}")
 
-                # Call tool via MCP
+                # Call tool via MCP (authorized)
                 result = self.mcp.call_tool(tool_name, tool_input)
 
                 # Store result
