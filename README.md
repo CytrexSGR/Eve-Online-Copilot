@@ -82,6 +82,17 @@ A comprehensive industry and market analysis tool for EVE Online. Built with Fas
 - React Router v6
 - Lucide React icons
 
+## Documentation
+
+- **[User Guide](docs/USER_GUIDE.md)** - Complete user guide with screenshots
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment instructions
+- **[API Documentation](docs/api/README.md)** - Detailed API reference
+- **[Architecture](ARCHITECTURE.md)** - System architecture overview
+- **Developer Guides:**
+  - [Main Development Guide](CLAUDE.md) - Core principles and workflows
+  - [Backend Development](CLAUDE.backend.md) - FastAPI, Database, ESI
+  - [Frontend Development](CLAUDE.frontend.md) - React, TypeScript, Vite
+
 ## Quick Start
 
 ### Prerequisites
