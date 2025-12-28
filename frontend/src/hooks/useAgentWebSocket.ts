@@ -1,0 +1,154 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import type { AgentEvent } from '../types/agent-events';
+
+export interface UseAgentWebSocketOptions {
+  sessionId: string;
+  onEvent?: (event: AgentEvent) => void;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
+  onError?: (error: Event) => void;
+  autoReconnect?: boolean;
+  reconnectInterval?: number;
+}
+
+export interface UseAgentWebSocketReturn {
+  events: AgentEvent[];
+  isConnected: boolean;
+  error: string | null;
+  clearEvents: () => void;
+  reconnect: () => void;
+}
+
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+
+export function useAgentWebSocket({
+  sessionId,
+  onEvent,
+  onConnect,
+  onDisconnect,
+  onError,
+  autoReconnect = true,
+  reconnectInterval = 3000,
+}: UseAgentWebSocketOptions): UseAgentWebSocketReturn {
+  const [events, setEvents] = useState<AgentEvent[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const mountedRef = useRef(true);
+  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const connect = useCallback(() => {
+    if (!mountedRef.current) return;
+
+    try {
+      const ws = new WebSocket(`${WS_URL}/agent/stream/${sessionId}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (!mountedRef.current) return;
+        console.log(`[AgentWS] Connected to session ${sessionId}`);
+        setIsConnected(true);
+        setError(null);
+        onConnect?.();
+
+        // Send ping to keep connection alive
+        pingIntervalRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send('ping');
+          }
+        }, 30000); // Every 30 seconds
+      };
+
+      ws.onmessage = (event) => {
+        if (!mountedRef.current) return;
+
+        if (event.data === 'pong') {
+          return; // Ignore pong responses
+        }
+
+        try {
+          const agentEvent: AgentEvent = JSON.parse(event.data);
+          setEvents((prev) => [...prev, agentEvent]);
+          onEvent?.(agentEvent);
+        } catch (err) {
+          console.error('[AgentWS] Failed to parse event:', err);
+          setError('Failed to parse event data');
+        }
+      };
+
+      ws.onerror = (event) => {
+        if (!mountedRef.current) return;
+        console.error('[AgentWS] WebSocket error:', event);
+        setError('WebSocket connection error');
+        onError?.(event);
+      };
+
+      ws.onclose = (event) => {
+        if (!mountedRef.current) return;
+        console.log(`[AgentWS] Disconnected: ${event.code} ${event.reason}`);
+        setIsConnected(false);
+        onDisconnect?.();
+
+        // Clear ping interval
+        if (pingIntervalRef.current) {
+          clearInterval(pingIntervalRef.current);
+          pingIntervalRef.current = null;
+        }
+
+        // Auto-reconnect if enabled and not a normal closure
+        if (autoReconnect && event.code !== 1000) {
+          console.log(`[AgentWS] Reconnecting in ${reconnectInterval}ms...`);
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, reconnectInterval);
+        }
+      };
+    } catch (err) {
+      console.error('[AgentWS] Failed to connect:', err);
+      setError('Failed to establish WebSocket connection');
+    }
+  }, [sessionId, onEvent, onConnect, onDisconnect, onError, autoReconnect, reconnectInterval]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    connect();
+
+    return () => {
+      mountedRef.current = false;
+
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+      }
+
+      if (wsRef.current) {
+        wsRef.current.close(1000, 'Component unmounted');
+        wsRef.current = null;
+      }
+    };
+  }, [connect]);
+
+  const clearEvents = useCallback(() => {
+    setEvents([]);
+  }, []);
+
+  const reconnect = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close(1000, 'Manual reconnect');
+    }
+    connect();
+  }, [connect]);
+
+  return {
+    events,
+    isConnected,
+    error,
+    clearEvents,
+    reconnect,
+  };
+}
