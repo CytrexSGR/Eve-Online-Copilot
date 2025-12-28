@@ -141,16 +141,28 @@ class AnthropicClient:
             params: Request parameters
 
         Yields:
-            Response chunks
+            Response chunks in format: {"type": "content_block_delta", "delta": {...}}
         """
         try:
             with self.client.messages.stream(**params) as stream:
                 for event in stream:
                     if hasattr(event, 'type'):
-                        yield {
-                            "type": event.type,
-                            "data": event
-                        }
+                        # Extract delta data for content_block_delta events
+                        if event.type == 'content_block_delta' and hasattr(event, 'delta'):
+                            yield {
+                                "type": "content_block_delta",
+                                "delta": {
+                                    "type": event.delta.type,
+                                    "text": getattr(event.delta, 'text', '')
+                                }
+                            }
+                        # Pass through other event types
+                        elif event.type == 'message_stop':
+                            yield {"type": "message_stop"}
+                        # Handle other streaming events if needed
+                        elif event.type in ['message_start', 'content_block_start', 'content_block_stop']:
+                            # These events are informational, can be yielded if needed
+                            pass
         except Exception as e:
             logger.error(f"Streaming error: {e}")
             yield {
