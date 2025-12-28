@@ -68,23 +68,42 @@ A comprehensive industry and market analysis tool for EVE Online. Built with Fas
 - **React Query Caching** - Aggressive caching reduces API calls
 - **Keyboard Shortcuts** - Fast navigation without mouse
 
-### Agent Runtime (Phase 1 ✅)
+### Agent Runtime
 
-Conversational AI agent with session management and tool execution:
+**Status:** Phase 2 Complete ✅
+
+Conversational AI agent with session management, multi-tool plan detection, and approval workflow.
+
+#### Phase 1: Core Infrastructure (Complete ✅)
 - ✅ **Multi-turn Conversations** - Persistent session management with full history
 - ✅ **Hybrid Storage** - Redis cache (< 10ms) + PostgreSQL audit trail
 - ✅ **MCP Tool Integration** - Access to 115 EVE Online tools via conversation
 - ✅ **Session Persistence** - Sessions survive server restarts
 - ✅ **REST API** - `POST /agent/chat`, `GET /agent/session/{id}`, `DELETE /agent/session/{id}`
-- ⏳ **Plan Detection & Approval** - Coming in Phase 2
-- ⏳ **Real-time WebSocket Events** - Coming in Phase 3
 
-**Status:** Phase 1 complete (23/23 tests passing). See [Phase 1 Completion Report](docs/agent/phase1-completion.md) for details.
+See [Phase 1 Completion Report](docs/agent/phase1-completion.md) for details.
+
+#### Phase 2: Plan Detection & Approval (Complete ✅)
+- ✅ **Multi-Tool Plan Detection** - Automatically detects when LLM proposes 3+ tool workflows
+- ✅ **Auto-Execute Decision Matrix** - L0-L3 autonomy levels control auto-execution
+- ✅ **Plan Approval/Rejection API** - `POST /agent/execute`, `POST /agent/reject`
+- ✅ **Plan Lifecycle Tracking** - PostgreSQL storage with full audit trail
+- ✅ **Risk Level Analysis** - Determines max risk level across all plan steps
+- ✅ **Full Test Coverage** - 21 tests (100% passing)
+
+See [Phase 2 Completion Report](docs/agent/phase2-completion.md) for details.
+
+#### Phase 3: Real-time Events & Authorization (Coming Next ⏳)
+- ⏳ **WebSocket Events** - Real-time plan_proposed, tool_call_started, tool_call_completed
+- ⏳ **Authorization Integration** - Per-tool authorization checks
+- ⏳ **Frontend Integration** - Plan approval UI component
 
 **What it does:**
 - Create conversational sessions with AI agent
 - Execute EVE Online operations through natural language
 - Automatic tool selection from 115 available MCP tools
+- Intelligent plan detection for complex multi-tool workflows
+- Human-in-the-loop approval based on autonomy level and risk
 - Full conversation history and audit trail
 - Character-specific sessions with autonomy levels
 
@@ -92,7 +111,19 @@ Conversational AI agent with session management and tool execution:
 ```
 User: "What profitable items can I manufacture in Jita?"
 Agent: [Queries market data, analyzes production costs, returns recommendations]
+
+User: "Create shopping list for 10 Caracals"
+Agent: [Detects 3+ tool plan → waits for approval if L1/L2, auto-executes if L3]
 ```
+
+**Auto-Execute Decision Matrix:**
+
+| Autonomy Level | READ_ONLY Plan | WRITE_LOW_RISK Plan | WRITE_HIGH_RISK Plan |
+|----------------|----------------|---------------------|----------------------|
+| L0 (READ_ONLY) | ❌ Approve      | ❌ Approve           | ❌ Approve            |
+| L1 (RECOMMENDATIONS) | ✅ Auto-Execute | ❌ Approve      | ❌ Approve            |
+| L2 (ASSISTED)  | ✅ Auto-Execute | ✅ Auto-Execute     | ❌ Approve            |
+| L3 (SUPERVISED) | ✅ Auto-Execute | ✅ Auto-Execute    | ✅ Auto-Execute       |
 
 ## Tech Stack
 
