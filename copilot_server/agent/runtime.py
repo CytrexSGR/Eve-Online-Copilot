@@ -13,6 +13,14 @@ from .models import AgentSession, SessionStatus, Plan, PlanStatus
 from .sessions import AgentSessionManager
 from .plan_detector import PlanDetector
 from .auto_execute import should_auto_execute
+from .events import (
+    PlanProposedEvent,
+    ToolCallStartedEvent,
+    ToolCallCompletedEvent,
+    ToolCallFailedEvent,
+    AnswerReadyEvent,
+    WaitingForApprovalEvent
+)
 from ..llm.anthropic_client import AnthropicClient
 from ..mcp.orchestrator import ToolOrchestrator
 
@@ -88,6 +96,22 @@ class AgentRuntime:
                 # Save plan
                 await self.session_manager.plan_repo.save_plan(plan)
 
+                # Emit plan_proposed event
+                plan_proposed_event = PlanProposedEvent(
+                    session_id=session.id,
+                    plan_id=plan.id,
+                    purpose=plan.purpose,
+                    steps=[
+                        {"tool": step.tool, "arguments": step.arguments}
+                        for step in plan.steps
+                    ],
+                    max_risk_level=plan.max_risk_level.value,
+                    tool_count=len(plan.steps),
+                    auto_executing=auto_exec
+                )
+                await self.session_manager.event_bus.emit(plan_proposed_event)
+                await self.session_manager.event_repo.save(plan_proposed_event)
+
                 if auto_exec:
                     # Execute immediately
                     session.status = SessionStatus.EXECUTING
@@ -101,6 +125,15 @@ class AgentRuntime:
                     session.status = SessionStatus.WAITING_APPROVAL
                     session.context["pending_plan_id"] = plan.id
                     await self.session_manager.save_session(session)
+
+                    # Emit waiting_for_approval event
+                    waiting_event = WaitingForApprovalEvent(
+                        session_id=session.id,
+                        plan_id=plan.id,
+                        message="Plan requires user approval due to WRITE operations"
+                    )
+                    await self.session_manager.event_bus.emit(waiting_event)
+                    await self.session_manager.event_repo.save(waiting_event)
                     return
 
             # Single/dual tool execution (existing logic)
@@ -120,6 +153,16 @@ class AgentRuntime:
                 session.add_message("assistant", answer)
                 session.status = SessionStatus.COMPLETED
                 await self.session_manager.save_session(session)
+
+                # Emit answer_ready event
+                answer_event = AnswerReadyEvent(
+                    session_id=session.id,
+                    answer=answer,
+                    tool_calls_count=0,
+                    duration_ms=0  # TODO: Track total duration
+                )
+                await self.session_manager.event_bus.emit(answer_event)
+                await self.session_manager.event_repo.save(answer_event)
 
                 logger.info(f"Session {session.id} completed")
                 return
@@ -224,7 +267,7 @@ class AgentRuntime:
 
     async def _execute_plan(self, session: AgentSession, plan: Plan) -> None:
         """
-        Execute multi-tool plan.
+        Execute multi-tool plan with event emission.
 
         Args:
             session: Agent session
@@ -237,16 +280,58 @@ class AgentRuntime:
 
         results = []
 
-        for step in plan.steps:
+        for step_index, step in enumerate(plan.steps):
+            # Emit tool_call_started event
+            started_event = ToolCallStartedEvent(
+                session_id=session.id,
+                plan_id=plan.id,
+                step_index=step_index,
+                tool=step.tool,
+                arguments=step.arguments
+            )
+            await self.session_manager.event_bus.emit(started_event)
+            await self.session_manager.event_repo.save(started_event)
+
             try:
+                tool_start = time.time()
+
                 result = await asyncio.to_thread(
                     self.orchestrator.mcp.call_tool,
                     step.tool,
                     step.arguments
                 )
+
+                tool_duration = int((time.time() - tool_start) * 1000)
                 results.append(result)
+
+                # Emit tool_call_completed event
+                result_preview = str(result)[:100] if result else ""
+                completed_event = ToolCallCompletedEvent(
+                    session_id=session.id,
+                    plan_id=plan.id,
+                    step_index=step_index,
+                    tool=step.tool,
+                    duration_ms=tool_duration,
+                    result_preview=result_preview
+                )
+                await self.session_manager.event_bus.emit(completed_event)
+                await self.session_manager.event_repo.save(completed_event)
+
             except Exception as e:
                 logger.error(f"Tool execution failed: {step.tool}, error: {e}")
+
+                # Emit tool_call_failed event
+                failed_event = ToolCallFailedEvent(
+                    session_id=session.id,
+                    plan_id=plan.id,
+                    step_index=step_index,
+                    tool=step.tool,
+                    error=str(e),
+                    retry_count=0
+                )
+                await self.session_manager.event_bus.emit(failed_event)
+                await self.session_manager.event_repo.save(failed_event)
+
                 plan.status = PlanStatus.FAILED
                 await self.session_manager.plan_repo.save_plan(plan)
                 session.status = SessionStatus.COMPLETED_WITH_ERRORS
