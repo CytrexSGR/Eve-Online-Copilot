@@ -23,6 +23,7 @@ from .events import (
     AuthorizationDeniedEvent
 )
 from .authorization import AuthorizationChecker
+from .retry_logic import execute_with_retry, RetryConfig
 from ..llm.anthropic_client import AnthropicClient
 from ..mcp.orchestrator import ToolOrchestrator
 
@@ -41,7 +42,8 @@ class AgentRuntime:
         session_manager: AgentSessionManager,
         llm_client: AnthropicClient,
         orchestrator: ToolOrchestrator,
-        auth_checker: AuthorizationChecker = None
+        auth_checker: AuthorizationChecker = None,
+        retry_config: RetryConfig = None
     ):
         """
         Initialize runtime.
@@ -51,6 +53,7 @@ class AgentRuntime:
             llm_client: LLM client
             orchestrator: Tool orchestrator
             auth_checker: Authorization checker (optional)
+            retry_config: Retry configuration (optional)
         """
         # Issue 3: Add null-safety checks
         assert session_manager.event_bus is not None, "EventBus is required in SessionManager"
@@ -61,6 +64,7 @@ class AgentRuntime:
         self.orchestrator = orchestrator
         self.plan_detector = PlanDetector(orchestrator.mcp)
         self.auth_checker = auth_checker or AuthorizationChecker()
+        self.retry_config = retry_config or RetryConfig()
 
     async def execute(self, session: AgentSession, max_iterations: int = 5) -> None:
         """
@@ -356,10 +360,19 @@ class AgentRuntime:
             try:
                 tool_start = time.time()
 
-                result = await asyncio.to_thread(
-                    self.orchestrator.mcp.call_tool,
+                # Execute with retry logic
+                async def execute_tool():
+                    return await asyncio.to_thread(
+                        self.orchestrator.mcp.call_tool,
+                        step.tool,
+                        step.arguments
+                    )
+
+                result = await execute_with_retry(
+                    execute_tool,
                     step.tool,
-                    step.arguments
+                    step.arguments,
+                    config=self.retry_config
                 )
 
                 tool_duration = int((time.time() - tool_start) * 1000)
@@ -383,9 +396,9 @@ class AgentRuntime:
                     logger.error(f"Failed to emit/save tool_call_completed event: {e}", exc_info=True)
 
             except Exception as e:
-                logger.error(f"Tool execution failed: {step.tool}, error: {e}")
+                logger.error(f"Tool execution failed after retries: {step.tool}, error: {e}")
 
-                # Emit tool_call_failed event
+                # Emit tool_call_failed event with retry count
                 # Issue 1: Add error handling for event failures
                 failed_event = ToolCallFailedEvent(
                     session_id=session.id,
@@ -393,7 +406,7 @@ class AgentRuntime:
                     step_index=step_index,
                     tool=step.tool,
                     error=str(e),
-                    retry_count=0
+                    retry_count=self.retry_config.max_retries
                 )
                 try:
                     await self.session_manager.event_bus.emit(failed_event)
