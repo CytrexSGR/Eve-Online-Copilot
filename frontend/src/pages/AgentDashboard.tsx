@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAgentWebSocket } from '../hooks/useAgentWebSocket';
+import { useSessionPersistence } from '../hooks/useSessionPersistence';
 import { EventStreamDisplay } from '../components/agent/EventStreamDisplay';
 import { PlanApprovalCard } from '../components/agent/PlanApprovalCard';
 import { CharacterSelector, type Character } from '../components/agent/CharacterSelector';
@@ -20,13 +21,21 @@ const availableCharacters: Character[] = [
 ];
 
 export default function AgentDashboard() {
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  // Use session persistence hook
+  const {
+    sessionId: persistedSessionId,
+    autonomyLevel: persistedAutonomyLevel,
+    saveSession,
+    clearSession: clearPersistedSession,
+  } = useSessionPersistence();
+
+  const [sessionId, setSessionId] = useState<string | null>(persistedSessionId);
   const [pendingPlan, setPendingPlan] = useState<{
     planId: string;
     event: AgentEvent;
   } | null>(null);
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(526379435); // Default to Artallus
-  const [autonomyLevel, setAutonomyLevel] = useState<string>('RECOMMENDATIONS');
+  const [autonomyLevel, setAutonomyLevel] = useState<string>(persistedAutonomyLevel || 'RECOMMENDATIONS');
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [eventFilters, setEventFilters] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -60,6 +69,7 @@ export default function AgentDashboard() {
         autonomy_level: autonomyLevel as any,
       });
       setSessionId(response.session_id);
+      saveSession(response.session_id, autonomyLevel); // Save to localStorage
       clearEvents();
       setPendingPlan(null);
     } catch (error) {
@@ -100,12 +110,14 @@ export default function AgentDashboard() {
     try {
       await agentClient.deleteSession(sessionId);
       setSessionId(null);
+      clearPersistedSession(); // Clear from localStorage
       clearEvents();
       setPendingPlan(null);
     } catch (error) {
       console.error('Failed to end session:', error);
       // Even if delete fails, reset local state
       setSessionId(null);
+      clearPersistedSession(); // Clear from localStorage
       clearEvents();
       setPendingPlan(null);
     }
