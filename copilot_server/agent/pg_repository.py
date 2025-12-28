@@ -71,6 +71,7 @@ class PostgresSessionRepository:
                     status = EXCLUDED.status,
                     updated_at = EXCLUDED.updated_at,
                     last_activity = EXCLUDED.last_activity,
+                    archived = EXCLUDED.archived,
                     context = EXCLUDED.context
             """,
                 session.id,
