@@ -19,8 +19,10 @@ from .events import (
     ToolCallCompletedEvent,
     ToolCallFailedEvent,
     AnswerReadyEvent,
-    WaitingForApprovalEvent
+    WaitingForApprovalEvent,
+    AuthorizationDeniedEvent
 )
+from .authorization import AuthorizationChecker
 from ..llm.anthropic_client import AnthropicClient
 from ..mcp.orchestrator import ToolOrchestrator
 
@@ -38,7 +40,8 @@ class AgentRuntime:
         self,
         session_manager: AgentSessionManager,
         llm_client: AnthropicClient,
-        orchestrator: ToolOrchestrator
+        orchestrator: ToolOrchestrator,
+        auth_checker: AuthorizationChecker = None
     ):
         """
         Initialize runtime.
@@ -47,6 +50,7 @@ class AgentRuntime:
             session_manager: Session manager
             llm_client: LLM client
             orchestrator: Tool orchestrator
+            auth_checker: Authorization checker (optional)
         """
         # Issue 3: Add null-safety checks
         assert session_manager.event_bus is not None, "EventBus is required in SessionManager"
@@ -56,6 +60,7 @@ class AgentRuntime:
         self.llm_client = llm_client
         self.orchestrator = orchestrator
         self.plan_detector = PlanDetector(orchestrator.mcp)
+        self.auth_checker = auth_checker or AuthorizationChecker()
 
     async def execute(self, session: AgentSession, max_iterations: int = 5) -> None:
         """
@@ -288,7 +293,7 @@ class AgentRuntime:
 
     async def _execute_plan(self, session: AgentSession, plan: Plan) -> None:
         """
-        Execute multi-tool plan with event emission.
+        Execute multi-tool plan with authorization checks and event emission.
 
         Args:
             session: Agent session
@@ -300,6 +305,7 @@ class AgentRuntime:
         await self.session_manager.plan_repo.save_plan(plan)
 
         results = []
+        failed_steps = []
 
         for step_index, step in enumerate(plan.steps):
             # Emit tool_call_started event
@@ -316,6 +322,36 @@ class AgentRuntime:
                 await self.session_manager.event_repo.save(started_event)
             except Exception as e:
                 logger.error(f"Failed to emit/save tool_call_started event: {e}", exc_info=True)
+
+            # CHECK AUTHORIZATION BEFORE EXECUTION
+            allowed, denial_reason = self.auth_checker.check_authorization(
+                character_id=session.character_id,
+                tool_name=step.tool,
+                arguments=step.arguments
+            )
+
+            if not allowed:
+                # Emit authorization_denied event
+                auth_denied_event = AuthorizationDeniedEvent(
+                    session_id=session.id,
+                    plan_id=plan.id,
+                    tool=step.tool,
+                    reason=denial_reason
+                )
+                try:
+                    await self.session_manager.event_bus.emit(auth_denied_event)
+                    await self.session_manager.event_repo.save(auth_denied_event)
+                except Exception as e:
+                    logger.error(f"Failed to emit/save authorization_denied event: {e}", exc_info=True)
+
+                # Mark step as failed
+                failed_steps.append({
+                    "tool": step.tool,
+                    "error": f"Authorization denied: {denial_reason}"
+                })
+
+                logger.warning(f"Authorization denied for {step.tool}: {denial_reason}")
+                continue
 
             try:
                 tool_start = time.time()
@@ -365,21 +401,30 @@ class AgentRuntime:
                 except Exception as event_error:
                     logger.error(f"Failed to emit/save tool_call_failed event: {event_error}", exc_info=True)
 
-                plan.status = PlanStatus.FAILED
-                await self.session_manager.plan_repo.save_plan(plan)
-                session.status = SessionStatus.COMPLETED_WITH_ERRORS
-                await self.session_manager.save_session(session)
-                return
+                failed_steps.append({
+                    "tool": step.tool,
+                    "error": str(e)
+                })
 
-        # Mark plan completed
+        # Mark plan completed (with or without errors)
         duration_ms = int((time.time() - start_time) * 1000)
-        plan.status = PlanStatus.COMPLETED
+
+        if failed_steps:
+            plan.status = PlanStatus.FAILED
+            session.status = SessionStatus.COMPLETED_WITH_ERRORS
+        else:
+            plan.status = PlanStatus.COMPLETED
+            session.status = SessionStatus.COMPLETED
+
         plan.completed_at = datetime.now()
         plan.duration_ms = duration_ms
         await self.session_manager.plan_repo.save_plan(plan)
 
         # Add summary to session
-        tool_summary = f"Executed {len(results)} tools from plan: {plan.purpose}"
-        session.add_message("assistant", tool_summary)
-        session.status = SessionStatus.COMPLETED
+        if failed_steps:
+            summary = f"Executed {len(results)}/{len(plan.steps)} tools. {len(failed_steps)} failed."
+        else:
+            summary = f"Executed {len(results)} tools from plan: {plan.purpose}"
+
+        session.add_message("assistant", summary)
         await self.session_manager.save_session(session)
