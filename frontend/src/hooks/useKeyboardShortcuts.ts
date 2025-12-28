@@ -1,6 +1,51 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+type ShortcutHandler = () => void;
+type ShortcutMap = Record<string, ShortcutHandler>;
+
+/**
+ * New Task 9 API: Simple keyboard shortcuts hook with string-based shortcut map
+ * Usage: useKeyboardShortcuts({ 'ctrl+k': () => {...}, 'escape': () => {...} })
+ */
+export function useKeyboardShortcuts(shortcuts: ShortcutMap) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in input fields
+      const target = event.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      // Build shortcut string from event
+      const parts: string[] = [];
+      if (event.ctrlKey || event.metaKey) parts.push('ctrl');
+      if (event.shiftKey) parts.push('shift');
+      if (event.altKey) parts.push('alt');
+      parts.push(event.key.toLowerCase());
+
+      const shortcut = parts.join('+');
+
+      // Check if shortcut matches any registered shortcuts
+      if (shortcuts[shortcut]) {
+        event.preventDefault();
+        shortcuts[shortcut]();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [shortcuts]);
+}
+
+// ============================================================================
+// Legacy API (for backward compatibility with existing App.tsx and ShortcutsHelp)
+// ============================================================================
+
 interface ShortcutConfig {
   key: string;
   ctrlKey?: boolean;
@@ -10,7 +55,7 @@ interface ShortcutConfig {
   description: string;
 }
 
-export function useKeyboardShortcuts(shortcuts: ShortcutConfig[]) {
+function useLegacyKeyboardShortcuts(shortcuts: ShortcutConfig[]) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       for (const shortcut of shortcuts) {
@@ -40,7 +85,7 @@ export function useKeyboardShortcuts(shortcuts: ShortcutConfig[]) {
 export function useGlobalShortcuts() {
   const navigate = useNavigate();
 
-  useKeyboardShortcuts([
+  useLegacyKeyboardShortcuts([
     {
       key: 'h',
       altKey: true,

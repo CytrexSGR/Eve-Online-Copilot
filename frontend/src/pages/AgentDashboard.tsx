@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAgentWebSocket } from '../hooks/useAgentWebSocket';
 import { useSessionPersistence } from '../hooks/useSessionPersistence';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { EventStreamDisplay } from '../components/agent/EventStreamDisplay';
 import { PlanApprovalCard } from '../components/agent/PlanApprovalCard';
 import { CharacterSelector, type Character } from '../components/agent/CharacterSelector';
@@ -139,6 +140,34 @@ export default function AgentDashboard() {
     }
 
     return true;
+  });
+
+  // Setup keyboard shortcuts
+  useKeyboardShortcuts({
+    'ctrl+k': () => {
+      // Focus search input
+      const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
+      searchInput?.focus();
+    },
+    'ctrl+/': () => {
+      // Show keyboard shortcuts help
+      alert(
+        'Keyboard Shortcuts:\n\n' +
+        'Ctrl+K: Focus search\n' +
+        'Ctrl+/: Show shortcuts\n' +
+        'Ctrl+L: Clear events\n' +
+        'Esc: Close modals'
+      );
+    },
+    'ctrl+l': () => {
+      // Clear events
+      clearEvents();
+    },
+    'escape': () => {
+      // Clear search and filters
+      setSearchQuery('');
+      setEventFilters([]);
+    },
   });
 
   return (
