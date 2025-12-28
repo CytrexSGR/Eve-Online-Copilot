@@ -1,5 +1,6 @@
 import type { AgentEvent } from '../../types/agent-events';
 import { AgentEventType } from '../../types/agent-events';
+import { RetryIndicator } from './RetryIndicator';
 
 interface EventItemProps {
   event: AgentEvent;
@@ -83,6 +84,16 @@ export function EventItem({ event }: EventItemProps) {
         );
 
       case AgentEventType.TOOL_CALL_FAILED:
+        if (event.payload.retry_count > 0) {
+          return (
+            <RetryIndicator
+              retryCount={event.payload.retry_count}
+              maxRetries={3}
+              tool={event.payload.tool}
+              error={event.payload.error}
+            />
+          );
+        }
         return (
           <div className="text-sm text-red-400">
             <div>Tool: {event.payload.tool}</div>

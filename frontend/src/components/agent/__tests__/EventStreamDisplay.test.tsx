@@ -100,7 +100,7 @@ describe('EventStreamDisplay', () => {
     expect(screen.getByText(/150ms/i)).toBeInTheDocument();
   });
 
-  it('should handle tool call failed events', () => {
+  it('should handle tool call failed events with retry indicator', () => {
     const events: AgentEvent[] = [
       {
         type: AgentEventType.TOOL_CALL_FAILED,
@@ -118,7 +118,32 @@ describe('EventStreamDisplay', () => {
     render(<EventStreamDisplay events={events} />);
     expect(screen.getByText(/tool call failed/i)).toBeInTheDocument();
     expect(screen.getByText(/connection timeout/i)).toBeInTheDocument();
-    expect(screen.getByText(/retries: 2/i)).toBeInTheDocument();
+    // With retry_count > 0, should show RetryIndicator with attempt count
+    expect(screen.getByText(/attempt 3 of 4/i)).toBeInTheDocument();
+    expect(screen.getByText(/retrying: get_market_stats/i)).toBeInTheDocument();
+  });
+
+  it('should handle tool call failed events without retry indicator', () => {
+    const events: AgentEvent[] = [
+      {
+        type: AgentEventType.TOOL_CALL_FAILED,
+        session_id: 'sess-test',
+        payload: {
+          step_index: 0,
+          tool: 'calculate_profit',
+          error: 'Invalid input',
+          retry_count: 0,
+        },
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    render(<EventStreamDisplay events={events} />);
+    expect(screen.getByText(/tool call failed/i)).toBeInTheDocument();
+    expect(screen.getByText(/calculate_profit/i)).toBeInTheDocument();
+    expect(screen.getByText(/invalid input/i)).toBeInTheDocument();
+    // With retry_count === 0, should show simple error display
+    expect(screen.getByText(/retries: 0/i)).toBeInTheDocument();
   });
 
   it('should handle authorization denied events', () => {
