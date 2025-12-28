@@ -8,10 +8,12 @@ from .tool_classification import (
     classify_all_tools,
     TOOL_RISK_LEVELS
 )
+from .authorization import AuthorizationChecker
 
 __all__ = [
     "RiskLevel",
     "get_tool_risk_level",
     "classify_all_tools",
-    "TOOL_RISK_LEVELS"
+    "TOOL_RISK_LEVELS",
+    "AuthorizationChecker"
 ]
