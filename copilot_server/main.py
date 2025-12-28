@@ -141,6 +141,7 @@ async def startup():
         logger.info("Database pool initialized for agent routes")
     except Exception as e:
         logger.error(f"Failed to initialize database pool: {e}")
+        logger.warning("Agent routes will not have database access. Endpoints may return 500 errors.")
 
     logger.info(f"Server ready on http://{COPILOT_HOST}:{COPILOT_PORT}")
 
@@ -159,6 +160,14 @@ async def shutdown():
             logger.info("Agent Runtime shutdown complete")
         except Exception as e:
             logger.error(f"Error shutting down Agent Runtime: {e}")
+
+    # Close database pool
+    if agent_routes.db_pool:
+        try:
+            await agent_routes.db_pool.close()
+            logger.info("Database pool closed")
+        except Exception as e:
+            logger.error(f"Error closing database pool: {e}")
 
     logger.info("Server stopped")
 
