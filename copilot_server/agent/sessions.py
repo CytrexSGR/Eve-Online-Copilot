@@ -10,6 +10,7 @@ from datetime import datetime
 from .models import AgentSession, SessionStatus
 from .redis_store import RedisSessionStore
 from .pg_repository import PostgresSessionRepository
+from .plan_repository import PlanRepository
 from ..models.user_settings import AutonomyLevel
 
 logger = logging.getLogger(__name__)
@@ -48,17 +49,28 @@ class AgentSessionManager:
             password=pg_password,
             host=pg_host
         )
+        self.plan_repo: Optional[PlanRepository] = None
 
     async def startup(self) -> None:
         """Connect to storage backends."""
         await self.redis.connect()
         await self.postgres.connect()
+
+        # Initialize plan repository
+        database_url = f"postgresql://{self.postgres.user}:{self.postgres.password}@{self.postgres.host}/{self.postgres.database}"
+        self.plan_repo = PlanRepository(database_url)
+        await self.plan_repo.connect()
+
         logger.info("AgentSessionManager started")
 
     async def shutdown(self) -> None:
         """Disconnect from storage backends."""
         await self.redis.disconnect()
         await self.postgres.disconnect()
+
+        if self.plan_repo:
+            await self.plan_repo.disconnect()
+
         logger.info("AgentSessionManager stopped")
 
     async def create_session(

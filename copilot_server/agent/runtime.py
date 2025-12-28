@@ -5,10 +5,14 @@ Executes agent workflows with LLM and tool orchestration.
 
 import asyncio
 import logging
+import time
 from typing import List, Dict, Any
+from datetime import datetime
 
-from .models import AgentSession, SessionStatus
+from .models import AgentSession, SessionStatus, Plan, PlanStatus
 from .sessions import AgentSessionManager
+from .plan_detector import PlanDetector
+from .auto_execute import should_auto_execute
 from ..llm.anthropic_client import AnthropicClient
 from ..mcp.orchestrator import ToolOrchestrator
 
@@ -19,8 +23,7 @@ class AgentRuntime:
     """
     Agent execution runtime.
 
-    Phase 1: Basic execution loop with single-tool support.
-    No multi-tool plan detection yet.
+    Phase 2: Multi-tool plan detection with approval workflow.
     """
 
     def __init__(
@@ -40,12 +43,13 @@ class AgentRuntime:
         self.session_manager = session_manager
         self.llm_client = llm_client
         self.orchestrator = orchestrator
+        self.plan_detector = PlanDetector(orchestrator.mcp)
 
     async def execute(self, session: AgentSession, max_iterations: int = 5) -> None:
         """
-        Execute agent workflow.
+        Execute agent workflow with plan detection.
 
-        Phase 1: Simple execution loop without plan detection.
+        Phase 2: Detects multi-tool plans and applies auto-execute decision.
 
         Args:
             session: AgentSession to execute
@@ -73,7 +77,33 @@ class AgentRuntime:
                 tools=claude_tools
             )
 
-            # Check if LLM wants to use tools
+            # Check if response is a multi-tool plan
+            if self.plan_detector.is_plan(response):
+                plan = self.plan_detector.extract_plan(response, session.id)
+
+                # Decide auto-execute
+                auto_exec = should_auto_execute(plan, session.autonomy_level)
+                plan.auto_executing = auto_exec
+
+                # Save plan
+                await self.session_manager.plan_repo.save_plan(plan)
+
+                if auto_exec:
+                    # Execute immediately
+                    session.status = SessionStatus.EXECUTING
+                    session.context["current_plan_id"] = plan.id
+                    await self.session_manager.save_session(session)
+
+                    await self._execute_plan(session, plan)
+                    return
+                else:
+                    # Wait for approval
+                    session.status = SessionStatus.WAITING_APPROVAL
+                    session.context["pending_plan_id"] = plan.id
+                    await self.session_manager.save_session(session)
+                    return
+
+            # Single/dual tool execution (existing logic)
             if self._has_tool_calls(response):
                 session.status = SessionStatus.EXECUTING
                 await self.session_manager.save_session(session)
@@ -191,3 +221,47 @@ class AgentRuntime:
             session.add_message("assistant", tool_summary)
 
         return results
+
+    async def _execute_plan(self, session: AgentSession, plan: Plan) -> None:
+        """
+        Execute multi-tool plan.
+
+        Args:
+            session: Agent session
+            plan: Plan to execute
+        """
+        start_time = time.time()
+        plan.status = PlanStatus.EXECUTING
+        plan.executed_at = datetime.now()
+        await self.session_manager.plan_repo.save_plan(plan)
+
+        results = []
+
+        for step in plan.steps:
+            try:
+                result = await asyncio.to_thread(
+                    self.orchestrator.mcp.call_tool,
+                    step.tool,
+                    step.arguments
+                )
+                results.append(result)
+            except Exception as e:
+                logger.error(f"Tool execution failed: {step.tool}, error: {e}")
+                plan.status = PlanStatus.FAILED
+                await self.session_manager.plan_repo.save_plan(plan)
+                session.status = SessionStatus.COMPLETED_WITH_ERRORS
+                await self.session_manager.save_session(session)
+                return
+
+        # Mark plan completed
+        duration_ms = int((time.time() - start_time) * 1000)
+        plan.status = PlanStatus.COMPLETED
+        plan.completed_at = datetime.now()
+        plan.duration_ms = duration_ms
+        await self.session_manager.plan_repo.save_plan(plan)
+
+        # Add summary to session
+        tool_summary = f"Executed {len(results)} tools from plan: {plan.purpose}"
+        session.add_message("assistant", tool_summary)
+        session.status = SessionStatus.COMPLETED
+        await self.session_manager.save_session(session)
