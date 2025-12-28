@@ -41,32 +41,33 @@ class MessageRepository:
 
     async def save(self, message: AgentMessage) -> None:
         """Save message to database."""
-        await self.conn.execute("""
-            INSERT INTO agent_messages
-            (id, session_id, role, content, content_blocks, created_at, token_usage)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (id) DO UPDATE SET
-                content = EXCLUDED.content,
-                content_blocks = EXCLUDED.content_blocks,
-                token_usage = EXCLUDED.token_usage
-        """,
-            message.id,
-            message.session_id,
-            message.role,
-            message.content,
-            json.dumps(message.content_blocks),
-            message.created_at,
-            json.dumps(message.token_usage) if message.token_usage else None
-        )
-
-        # Update message count
-        await self.conn.execute("""
-            UPDATE agent_sessions
-            SET message_count = (
-                SELECT COUNT(*) FROM agent_messages WHERE session_id = $1
+        async with self.conn.transaction():
+            await self.conn.execute("""
+                INSERT INTO agent_messages
+                (id, session_id, role, content, content_blocks, created_at, token_usage)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (id) DO UPDATE SET
+                    content = EXCLUDED.content,
+                    content_blocks = EXCLUDED.content_blocks,
+                    token_usage = EXCLUDED.token_usage
+            """,
+                message.id,
+                message.session_id,
+                message.role,
+                message.content,
+                json.dumps(message.content_blocks),
+                message.created_at,
+                json.dumps(message.token_usage) if message.token_usage else None
             )
-            WHERE id = $1
-        """, message.session_id)
+
+            # Update message count
+            await self.conn.execute("""
+                UPDATE agent_sessions
+                SET message_count = (
+                    SELECT COUNT(*) FROM agent_messages WHERE session_id = $1
+                )
+                WHERE id = $1
+            """, message.session_id)
 
     async def get_by_id(self, message_id: str) -> Optional[AgentMessage]:
         """Get message by ID."""
