@@ -135,3 +135,79 @@ async def test_runtime_emits_tool_call_events(runtime, mock_llm, mock_session_ma
     # Should have 3 started and 3 completed events
     assert len(tool_started_events) == 3
     assert len(tool_completed_events) == 3
+
+
+@pytest.mark.asyncio
+async def test_runtime_emits_tool_call_failed(runtime, mock_llm, mock_session_manager, mock_orchestrator):
+    """Test that runtime emits tool_call_failed event on error."""
+    session = AgentSession(
+        id="sess-test",
+        character_id=123,
+        autonomy_level=AutonomyLevel.ASSISTED  # Auto-execute
+    )
+    session.add_message("user", "Get market data")
+
+    # Mock LLM response: 3 READ_ONLY tools
+    mock_llm.chat.return_value = {
+        "content": [
+            {"type": "tool_use", "id": "call1", "name": "get_market_stats", "input": {}},
+            {"type": "tool_use", "id": "call2", "name": "get_war_summary", "input": {}},
+            {"type": "tool_use", "id": "call3", "name": "search_item", "input": {}}
+        ],
+        "stop_reason": "tool_use"
+    }
+
+    # Mock tool execution to fail on second tool
+    mock_orchestrator.mcp.call_tool = MagicMock(side_effect=Exception("Tool execution failed"))
+
+    await runtime.execute(session)
+
+    # Verify tool_call_failed event was emitted
+    emit_calls = mock_session_manager.event_bus.emit.call_args_list
+
+    tool_failed_events = [
+        call[0][0] for call in emit_calls
+        if call[0][0].type == AgentEventType.TOOL_CALL_FAILED
+    ]
+
+    # Should have at least 1 failed event
+    assert len(tool_failed_events) >= 1
+    # Verify error message is included
+    assert "Tool execution failed" in tool_failed_events[0].payload["error"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_emits_answer_ready(runtime, mock_llm, mock_session_manager):
+    """Test that runtime emits answer_ready for non-plan responses."""
+    session = AgentSession(
+        id="sess-test",
+        character_id=123,
+        autonomy_level=AutonomyLevel.ASSISTED
+    )
+    session.add_message("user", "What is EVE Online?")
+
+    # Mock LLM response: Direct text answer with no tools
+    mock_llm.chat.return_value = {
+        "content": [
+            {"type": "text", "text": "EVE Online is a space-based MMORPG."}
+        ],
+        "stop_reason": "end_turn"
+    }
+
+    await runtime.execute(session)
+
+    # Verify answer_ready event was emitted
+    emit_calls = mock_session_manager.event_bus.emit.call_args_list
+
+    answer_ready_events = [
+        call[0][0] for call in emit_calls
+        if call[0][0].type == AgentEventType.ANSWER_READY
+    ]
+
+    assert len(answer_ready_events) == 1
+    # Verify answer is included
+    assert "EVE Online is a space-based MMORPG." in answer_ready_events[0].payload["answer"]
+    # Verify duration is tracked (non-zero)
+    assert answer_ready_events[0].payload["duration_ms"] >= 0
+    # Verify tool_calls_count is 0 for non-plan responses
+    assert answer_ready_events[0].payload["tool_calls_count"] == 0

@@ -48,6 +48,10 @@ class AgentRuntime:
             llm_client: LLM client
             orchestrator: Tool orchestrator
         """
+        # Issue 3: Add null-safety checks
+        assert session_manager.event_bus is not None, "EventBus is required in SessionManager"
+        assert session_manager.event_repo is not None, "EventRepository is required in SessionManager"
+
         self.session_manager = session_manager
         self.llm_client = llm_client
         self.orchestrator = orchestrator
@@ -63,6 +67,9 @@ class AgentRuntime:
             session: AgentSession to execute
             max_iterations: Maximum tool iterations
         """
+        # Issue 2: Track session start time for duration tracking
+        session_start_time = time.time()
+
         session.status = SessionStatus.PLANNING
         await self.session_manager.save_session(session)
 
@@ -97,6 +104,7 @@ class AgentRuntime:
                 await self.session_manager.plan_repo.save_plan(plan)
 
                 # Emit plan_proposed event
+                # Issue 1: Add error handling for event failures
                 plan_proposed_event = PlanProposedEvent(
                     session_id=session.id,
                     plan_id=plan.id,
@@ -109,8 +117,11 @@ class AgentRuntime:
                     tool_count=len(plan.steps),
                     auto_executing=auto_exec
                 )
-                await self.session_manager.event_bus.emit(plan_proposed_event)
-                await self.session_manager.event_repo.save(plan_proposed_event)
+                try:
+                    await self.session_manager.event_bus.emit(plan_proposed_event)
+                    await self.session_manager.event_repo.save(plan_proposed_event)
+                except Exception as e:
+                    logger.error(f"Failed to emit/save plan_proposed event: {e}", exc_info=True)
 
                 if auto_exec:
                     # Execute immediately
@@ -127,13 +138,17 @@ class AgentRuntime:
                     await self.session_manager.save_session(session)
 
                     # Emit waiting_for_approval event
+                    # Issue 1: Add error handling for event failures
                     waiting_event = WaitingForApprovalEvent(
                         session_id=session.id,
                         plan_id=plan.id,
                         message="Plan requires user approval due to WRITE operations"
                     )
-                    await self.session_manager.event_bus.emit(waiting_event)
-                    await self.session_manager.event_repo.save(waiting_event)
+                    try:
+                        await self.session_manager.event_bus.emit(waiting_event)
+                        await self.session_manager.event_repo.save(waiting_event)
+                    except Exception as e:
+                        logger.error(f"Failed to emit/save waiting_for_approval event: {e}", exc_info=True)
                     return
 
             # Single/dual tool execution (existing logic)
@@ -155,14 +170,20 @@ class AgentRuntime:
                 await self.session_manager.save_session(session)
 
                 # Emit answer_ready event
+                # Issue 2: Complete duration tracking for answer_ready event
+                duration_ms = int((time.time() - session_start_time) * 1000)
                 answer_event = AnswerReadyEvent(
                     session_id=session.id,
                     answer=answer,
                     tool_calls_count=0,
-                    duration_ms=0  # TODO: Track total duration
+                    duration_ms=duration_ms
                 )
-                await self.session_manager.event_bus.emit(answer_event)
-                await self.session_manager.event_repo.save(answer_event)
+                # Issue 1: Add error handling for event failures
+                try:
+                    await self.session_manager.event_bus.emit(answer_event)
+                    await self.session_manager.event_repo.save(answer_event)
+                except Exception as e:
+                    logger.error(f"Failed to emit/save answer_ready event: {e}", exc_info=True)
 
                 logger.info(f"Session {session.id} completed")
                 return
@@ -282,6 +303,7 @@ class AgentRuntime:
 
         for step_index, step in enumerate(plan.steps):
             # Emit tool_call_started event
+            # Issue 1: Add error handling for event failures
             started_event = ToolCallStartedEvent(
                 session_id=session.id,
                 plan_id=plan.id,
@@ -289,8 +311,11 @@ class AgentRuntime:
                 tool=step.tool,
                 arguments=step.arguments
             )
-            await self.session_manager.event_bus.emit(started_event)
-            await self.session_manager.event_repo.save(started_event)
+            try:
+                await self.session_manager.event_bus.emit(started_event)
+                await self.session_manager.event_repo.save(started_event)
+            except Exception as e:
+                logger.error(f"Failed to emit/save tool_call_started event: {e}", exc_info=True)
 
             try:
                 tool_start = time.time()
@@ -305,6 +330,7 @@ class AgentRuntime:
                 results.append(result)
 
                 # Emit tool_call_completed event
+                # Issue 1: Add error handling for event failures
                 result_preview = str(result)[:100] if result else ""
                 completed_event = ToolCallCompletedEvent(
                     session_id=session.id,
@@ -314,13 +340,17 @@ class AgentRuntime:
                     duration_ms=tool_duration,
                     result_preview=result_preview
                 )
-                await self.session_manager.event_bus.emit(completed_event)
-                await self.session_manager.event_repo.save(completed_event)
+                try:
+                    await self.session_manager.event_bus.emit(completed_event)
+                    await self.session_manager.event_repo.save(completed_event)
+                except Exception as e:
+                    logger.error(f"Failed to emit/save tool_call_completed event: {e}", exc_info=True)
 
             except Exception as e:
                 logger.error(f"Tool execution failed: {step.tool}, error: {e}")
 
                 # Emit tool_call_failed event
+                # Issue 1: Add error handling for event failures
                 failed_event = ToolCallFailedEvent(
                     session_id=session.id,
                     plan_id=plan.id,
@@ -329,8 +359,11 @@ class AgentRuntime:
                     error=str(e),
                     retry_count=0
                 )
-                await self.session_manager.event_bus.emit(failed_event)
-                await self.session_manager.event_repo.save(failed_event)
+                try:
+                    await self.session_manager.event_bus.emit(failed_event)
+                    await self.session_manager.event_repo.save(failed_event)
+                except Exception as event_error:
+                    logger.error(f"Failed to emit/save tool_call_failed event: {event_error}", exc_info=True)
 
                 plan.status = PlanStatus.FAILED
                 await self.session_manager.plan_repo.save_plan(plan)
