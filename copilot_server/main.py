@@ -155,7 +155,7 @@ async def chat(request: ChatRequest):
 
         # Get user settings (default for now, will load from DB later)
         user_settings = get_default_settings(
-            character_id=request.character_id or 0
+            character_id=request.character_id or -1  # -1 = unauthenticated marker
         )
 
         # Create orchestrator with user settings
@@ -226,7 +226,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
             # Get user settings
             user_settings = get_default_settings(
-                character_id=conv.character_id or 0
+                character_id=conv.character_id or -1  # -1 = unauthenticated marker
             )
 
             # Create orchestrator with user settings
