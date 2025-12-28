@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAgentWebSocket } from '../hooks/useAgentWebSocket';
 import { EventStreamDisplay } from '../components/agent/EventStreamDisplay';
 import { PlanApprovalCard } from '../components/agent/PlanApprovalCard';
+import { CharacterSelector, type Character } from '../components/agent/CharacterSelector';
 import { agentClient } from '../api/agent-client';
 import {
   AgentEventType,
@@ -9,12 +10,20 @@ import {
   type AgentEvent,
 } from '../types/agent-events';
 
+// Add available characters constant
+const availableCharacters: Character[] = [
+  { id: 526379435, name: 'Artallus' },
+  { id: 1117367444, name: 'Cytrex' },
+  { id: 110592475, name: 'Cytricia' },
+];
+
 export default function AgentDashboard() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [pendingPlan, setPendingPlan] = useState<{
     planId: string;
     event: AgentEvent;
   } | null>(null);
+  const [selectedCharacter, setSelectedCharacter] = useState<number | null>(526379435); // Default to Artallus
   const [autonomyLevel, setAutonomyLevel] = useState<string>('RECOMMENDATIONS');
   const [isCreatingSession, setIsCreatingSession] = useState(false);
 
@@ -43,6 +52,7 @@ export default function AgentDashboard() {
     setIsCreatingSession(true);
     try {
       const response = await agentClient.createSession({
+        character_id: selectedCharacter ?? undefined,
         autonomy_level: autonomyLevel as any,
       });
       setSessionId(response.session_id);
@@ -106,6 +116,14 @@ export default function AgentDashboard() {
           <h2 className="text-xl font-semibold text-gray-100 mb-4">
             Create Agent Session
           </h2>
+
+          <div className="mb-4">
+            <CharacterSelector
+              characters={availableCharacters}
+              selectedId={selectedCharacter}
+              onChange={setSelectedCharacter}
+            />
+          </div>
 
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-300 mb-2">
