@@ -33,6 +33,8 @@ class EventRepository:
         Args:
             event: Event to save
         """
+        if not self._pool:
+            raise RuntimeError("Repository not connected. Call connect() first.")
         async with self._pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO agent_events (session_id, plan_id, event_type, payload, timestamp)
@@ -55,6 +57,8 @@ class EventRepository:
         Returns:
             List of events ordered by timestamp
         """
+        if not self._pool:
+            raise RuntimeError("Repository not connected. Call connect() first.")
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT session_id, plan_id, event_type, payload, timestamp
@@ -75,6 +79,8 @@ class EventRepository:
         Returns:
             List of events ordered by timestamp
         """
+        if not self._pool:
+            raise RuntimeError("Repository not connected. Call connect() first.")
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT session_id, plan_id, event_type, payload, timestamp
@@ -87,7 +93,7 @@ class EventRepository:
 
     def _row_to_event(self, row) -> AgentEvent:
         """Convert database row to AgentEvent."""
-        payload = row["payload"]
+        payload = row["payload"] or {}
         if isinstance(payload, str):
             payload = json.loads(payload)
 
