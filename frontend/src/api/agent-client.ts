@@ -23,16 +23,46 @@ export interface RejectPlanRequest {
   reason?: string;
 }
 
+export interface ChatRequest {
+  message: string;
+  session_id?: string;
+  character_id: number;
+}
+
+export interface ChatResponse {
+  session_id: string;
+  status: string;
+}
+
 export const agentClient = {
   /**
-   * Create new agent session
-   * Note: Backend creates sessions implicitly via /agent/chat endpoint
+   * Create new agent session by sending an initial chat message
    */
-  createSession: async (_request: CreateSessionRequest): Promise<CreateSessionResponse> => {
-    // The backend doesn't have a dedicated /agent/sessions endpoint
-    // Sessions are created via the /agent/chat endpoint with an initial message
-    // For now, we'll return a mock response until this is properly integrated
-    throw new Error('Session creation should be done via chat endpoint. Use agentClient.chat() instead.');
+  createSession: async (request: CreateSessionRequest): Promise<CreateSessionResponse> => {
+    // Create session via chat endpoint with initial message
+    const chatResponse = await api.post<ChatResponse>('/agent/chat', {
+      message: 'Hello, I need help with EVE Online.',
+      character_id: request.character_id || 526379435, // Default to Artallus
+      session_id: undefined, // Force new session
+    });
+
+    // Fetch full session details
+    const sessionDetails = await api.get(`/agent/session/${chatResponse.data.session_id}`);
+
+    return {
+      session_id: sessionDetails.data.id,
+      status: sessionDetails.data.status,
+      autonomy_level: sessionDetails.data.autonomy_level,
+      created_at: sessionDetails.data.created_at,
+    };
+  },
+
+  /**
+   * Send a chat message to an existing or new session
+   */
+  chat: async (request: ChatRequest): Promise<ChatResponse> => {
+    const response = await api.post<ChatResponse>('/agent/chat', request);
+    return response.data;
   },
 
   /**
@@ -53,7 +83,14 @@ export const agentClient = {
    * Get session details
    */
   getSession: async (sessionId: string) => {
-    const response = await api.get(`/agent/sessions/${sessionId}`);
+    const response = await api.get(`/agent/session/${sessionId}`);
     return response.data;
+  },
+
+  /**
+   * Delete a session
+   */
+  deleteSession: async (sessionId: string): Promise<void> => {
+    await api.delete(`/agent/session/${sessionId}`);
   },
 };

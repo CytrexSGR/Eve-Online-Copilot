@@ -22,7 +22,6 @@ describe('PlanApprovalCard', () => {
     render(
       <PlanApprovalCard
         planId="plan-123"
-        sessionId="sess-456"
         payload={mockPayload}
         onApprove={onApprove}
         onReject={onReject}
@@ -41,7 +40,6 @@ describe('PlanApprovalCard', () => {
     render(
       <PlanApprovalCard
         planId="plan-123"
-        sessionId="sess-456"
         payload={mockPayload}
         onApprove={onApprove}
         onReject={onReject}
@@ -63,7 +61,6 @@ describe('PlanApprovalCard', () => {
     render(
       <PlanApprovalCard
         planId="plan-123"
-        sessionId="sess-456"
         payload={mockPayload}
         onApprove={onApprove}
         onReject={onReject}
@@ -83,7 +80,6 @@ describe('PlanApprovalCard', () => {
     render(
       <PlanApprovalCard
         planId="plan-123"
-        sessionId="sess-456"
         payload={mockPayload}
         onApprove={onApprove}
         onReject={onReject}
@@ -114,7 +110,6 @@ describe('PlanApprovalCard', () => {
     render(
       <PlanApprovalCard
         planId="plan-123"
-        sessionId="sess-456"
         payload={mockPayload}
         onApprove={onApprove}
         onReject={onReject}
@@ -140,7 +135,6 @@ describe('PlanApprovalCard', () => {
     render(
       <PlanApprovalCard
         planId="plan-123"
-        sessionId="sess-456"
         payload={mockPayload}
         onApprove={onApprove}
         onReject={onReject}
@@ -158,7 +152,6 @@ describe('PlanApprovalCard', () => {
     render(
       <PlanApprovalCard
         planId="plan-123"
-        sessionId="sess-456"
         payload={mockPayload}
         onApprove={onApprove}
         onReject={onReject}
@@ -176,7 +169,6 @@ describe('PlanApprovalCard', () => {
     render(
       <PlanApprovalCard
         planId="plan-123"
-        sessionId="sess-456"
         payload={mockPayload}
         onApprove={onApprove}
         onReject={onReject}

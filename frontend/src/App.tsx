@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { TrendingUp, Search, Factory, BarChart3, Star, Package, Swords, Wand2, List } from 'lucide-react';
+import { TrendingUp, Search, Factory, BarChart3, Star, Package, Swords, Wand2, List, Bot } from 'lucide-react';
 import { useGlobalShortcuts } from './hooks/useKeyboardShortcuts';
 import { ShortcutsHelp } from './components/ShortcutsHelp';
 import './App.css';
@@ -22,6 +22,7 @@ const WarRoomTopShips = lazy(() => import('./pages/WarRoomTopShips'));
 const WarRoomCombatHotspots = lazy(() => import('./pages/WarRoomCombatHotspots'));
 const WarRoomFWHotspots = lazy(() => import('./pages/WarRoomFWHotspots'));
 const WarRoomGalaxySummary = lazy(() => import('./pages/WarRoomGalaxySummary'));
+const AgentDashboard = lazy(() => import('./pages/AgentDashboard'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -95,6 +96,12 @@ function AppContent() {
                   <span>War Room</span>
                 </NavLink>
               </li>
+              <li>
+                <NavLink to="/agent" className={({ isActive }) => isActive ? 'active' : ''}>
+                  <Bot size={20} />
+                  <span>Agent</span>
+                </NavLink>
+              </li>
             </ul>
           </nav>
           <main className="content">
@@ -120,6 +127,7 @@ function AppContent() {
               <Route path="/war-room/combat-hotspots" element={<WarRoomCombatHotspots />} />
               <Route path="/war-room/fw-hotspots" element={<WarRoomFWHotspots />} />
               <Route path="/war-room/galaxy-summary" element={<WarRoomGalaxySummary />} />
+              <Route path="/agent" element={<AgentDashboard />} />
               </Routes>
             </Suspense>
           </main>

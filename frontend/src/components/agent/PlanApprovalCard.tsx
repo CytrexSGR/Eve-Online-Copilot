@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { PlanProposedEventPayload } from '../../types/agent-events';
 
 interface PlanApprovalCardProps {
   planId: string;
-  sessionId: string;
   payload: PlanProposedEventPayload;
   onApprove: (planId: string) => Promise<void>;
   onReject: (planId: string, reason?: string) => Promise<void>;
@@ -11,7 +10,6 @@ interface PlanApprovalCardProps {
 
 export function PlanApprovalCard({
   planId,
-  sessionId,
   payload,
   onApprove,
   onReject,
