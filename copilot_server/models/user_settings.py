@@ -8,6 +8,22 @@ from typing import Optional, List
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 
+class RiskLevel(str, Enum):
+    """
+    Risk level for MCP tools.
+
+    Levels:
+        READ_ONLY: Analytics, market data, no state changes
+        WRITE_LOW_RISK: Shopping lists, bookmarks, non-critical writes
+        WRITE_HIGH_RISK: Market orders, contract creation
+        CRITICAL: Unknown tools, requires explicit approval
+    """
+    READ_ONLY = "READ_ONLY"
+    WRITE_LOW_RISK = "WRITE_LOW_RISK"
+    WRITE_HIGH_RISK = "WRITE_HIGH_RISK"
+    CRITICAL = "CRITICAL"
+
+
 class AutonomyLevel(Enum):
     """
     User's preferred autonomy level for AI agent.
