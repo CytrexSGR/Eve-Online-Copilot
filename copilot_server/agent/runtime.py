@@ -3,6 +3,7 @@ Agent Runtime
 Executes agent workflows with LLM and tool orchestration.
 """
 
+import asyncio
 import logging
 from typing import List, Dict, Any
 
@@ -161,8 +162,12 @@ class AgentRuntime:
                 logger.info(f"Executing tool: {tool_name}")
 
                 try:
-                    # Execute via orchestrator (synchronous call)
-                    result = self.orchestrator.call_tool(tool_name, tool_input)
+                    # Execute via orchestrator (async-safe call)
+                    result = await asyncio.to_thread(
+                        self.orchestrator.mcp.call_tool,
+                        tool_name,
+                        tool_input
+                    )
 
                     results.append({
                         "type": "tool_result",
@@ -180,16 +185,9 @@ class AgentRuntime:
                     })
 
         # Add tool results to session messages
-        # Format results as a tool result message
+        # Phase 1: Use simplified approach for message format
         if results:
-            # Build content for assistant message (tool use blocks)
-            assistant_content = [block for block in content if block.get("type") == "tool_use"]
-
-            # Add assistant message with tool use
-            if assistant_content:
-                session.add_message("assistant", str(assistant_content))
-
-            # Add user message with tool results
-            session.add_message("user", str(results))
+            tool_summary = f"Executed {len(results)} tools"
+            session.add_message("assistant", tool_summary)
 
         return results

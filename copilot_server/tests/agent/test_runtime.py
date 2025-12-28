@@ -30,7 +30,7 @@ def runtime(session_manager):
     # Mock the mcp client within orchestrator
     orchestrator.mcp = MagicMock()
     orchestrator.mcp.get_tools = MagicMock(return_value=[])
-    orchestrator.call_tool = MagicMock()
+    orchestrator.mcp.call_tool = MagicMock()
 
     runtime = AgentRuntime(
         session_manager=session_manager,
@@ -113,14 +113,14 @@ async def test_execute_single_tool_call(runtime, session_manager):
     runtime.llm_client.chat.side_effect = [first_response, second_response]
 
     # Mock tool execution
-    runtime.orchestrator.call_tool.return_value = {
+    runtime.orchestrator.mcp.call_tool.return_value = {
         "content": [{"text": '{"lowest_sell": 5.50, "highest_buy": 5.45}'}]
     }
 
     await runtime.execute(session)
 
     # Verify tool was called
-    runtime.orchestrator.call_tool.assert_called_once()
+    runtime.orchestrator.mcp.call_tool.assert_called_once()
 
     # Verify session completed
     assert session.status == SessionStatus.COMPLETED
