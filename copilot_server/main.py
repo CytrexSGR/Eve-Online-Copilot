@@ -21,6 +21,9 @@ from .mcp import MCPClient, ToolOrchestrator
 from .websocket import ConnectionManager, SessionManager
 from .audio import AudioTranscriber, TextToSpeech
 from .models.user_settings import get_default_settings
+from .api import agent_routes
+from .agent.sessions import AgentSessionManager
+from .agent.runtime import AgentRuntime
 
 # Configure logging
 logging.basicConfig(
@@ -55,6 +58,10 @@ session_manager = SessionManager()
 audio_transcriber = AudioTranscriber()
 tts = TextToSpeech()
 
+# Agent Runtime components (initialized on startup)
+agent_session_manager: Optional[AgentSessionManager] = None
+agent_runtime: Optional[AgentRuntime] = None
+
 
 # Request/Response Models
 class ChatRequest(BaseModel):
@@ -82,6 +89,8 @@ class SessionCreate(BaseModel):
 @app.on_event("startup")
 async def startup():
     """Application startup."""
+    global agent_session_manager, agent_runtime
+
     logger.info("Starting EVE Co-Pilot AI Server...")
 
     # Validate configuration
@@ -93,13 +102,52 @@ async def startup():
     tools = mcp_client.get_tools()
     logger.info(f"Loaded {len(tools)} MCP tools")
 
+    # Initialize Agent Runtime
+    try:
+        agent_session_manager = AgentSessionManager()
+        await agent_session_manager.startup()
+
+        # Get user settings for orchestrator (use default for now)
+        user_settings = get_default_settings(character_id=-1)
+
+        # Create orchestrator for agent runtime
+        orchestrator = ToolOrchestrator(mcp_client, llm_client, user_settings)
+
+        # Create agent runtime
+        agent_runtime = AgentRuntime(
+            session_manager=agent_session_manager,
+            llm_client=llm_client,
+            orchestrator=orchestrator
+        )
+
+        # Set globals for routes
+        agent_routes.session_manager = agent_session_manager
+        agent_routes.runtime = agent_runtime
+
+        logger.info("Agent Runtime initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize Agent Runtime: {e}")
+        logger.warning("Agent Runtime endpoints will not be available")
+
     logger.info(f"Server ready on http://{COPILOT_HOST}:{COPILOT_PORT}")
 
 
 @app.on_event("shutdown")
 async def shutdown():
     """Application shutdown."""
+    global agent_session_manager
+
     logger.info("Shutting down EVE Co-Pilot AI Server...")
+
+    # Shutdown Agent Runtime
+    if agent_session_manager:
+        try:
+            await agent_session_manager.shutdown()
+            logger.info("Agent Runtime shutdown complete")
+        except Exception as e:
+            logger.error(f"Error shutting down Agent Runtime: {e}")
+
+    logger.info("Server stopped")
 
 
 # Root endpoint
@@ -389,6 +437,10 @@ async def get_tool(tool_name: str):
     if not tool:
         raise HTTPException(status_code=404, detail="Tool not found")
     return tool
+
+
+# Include agent routes
+app.include_router(agent_routes.router)
 
 
 # Health check
