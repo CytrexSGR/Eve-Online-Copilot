@@ -3,14 +3,16 @@ Agent API Routes
 REST endpoints for agent runtime.
 """
 
+import asyncio
 import logging
+from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
 from ..agent.sessions import AgentSessionManager
 from ..agent.runtime import AgentRuntime
-from ..agent.models import SessionStatus
+from ..agent.models import SessionStatus, PlanStatus
 from ..models.user_settings import get_default_settings
 
 logger = logging.getLogger(__name__)
@@ -33,6 +35,18 @@ class ChatResponse(BaseModel):
     """Chat response."""
     session_id: str
     status: str
+
+
+class ExecuteRequest(BaseModel):
+    """Request to execute pending plan."""
+    session_id: str
+    plan_id: str
+
+
+class RejectRequest(BaseModel):
+    """Request to reject pending plan."""
+    session_id: str
+    plan_id: str
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -120,3 +134,96 @@ async def delete_session(session_id: str):
     await session_manager.delete_session(session_id)
 
     return {"message": "Session deleted", "session_id": session_id}
+
+
+@router.post("/execute")
+async def execute_plan(request: ExecuteRequest):
+    """
+    Approve and execute pending plan.
+
+    Args:
+        request: Execute request with session and plan IDs
+
+    Returns:
+        Execution status
+    """
+    if not session_manager or not runtime:
+        raise HTTPException(status_code=500, detail="Agent runtime not initialized")
+
+    # Load session
+    session = await session_manager.load_session(request.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Load plan
+    plan = await session_manager.plan_repo.load_plan(request.plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    # Verify plan belongs to session
+    if plan.session_id != session.id:
+        raise HTTPException(status_code=400, detail="Plan does not belong to session")
+
+    # Mark plan as approved
+    plan.status = PlanStatus.APPROVED
+    plan.approved_at = datetime.now()
+    await session_manager.plan_repo.save_plan(plan)
+
+    # Update session status
+    session.status = SessionStatus.EXECUTING
+    session.context["current_plan_id"] = plan.id
+    if "pending_plan_id" in session.context:
+        del session.context["pending_plan_id"]
+    await session_manager.save_session(session)
+
+    # Execute plan (async, don't wait)
+    asyncio.create_task(runtime._execute_plan(session, plan))
+
+    return {
+        "status": "executing",
+        "session_id": session.id,
+        "plan_id": plan.id,
+        "message": "Plan approved and executing"
+    }
+
+
+@router.post("/reject")
+async def reject_plan(request: RejectRequest):
+    """
+    Reject pending plan.
+
+    Args:
+        request: Reject request with session and plan IDs
+
+    Returns:
+        Rejection status
+    """
+    if not session_manager:
+        raise HTTPException(status_code=500, detail="Session manager not initialized")
+
+    # Load session
+    session = await session_manager.load_session(request.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Load plan
+    plan = await session_manager.plan_repo.load_plan(request.plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    # Mark plan as rejected
+    plan.status = PlanStatus.REJECTED
+    await session_manager.plan_repo.save_plan(plan)
+
+    # Return session to idle
+    session.status = SessionStatus.IDLE
+    if "pending_plan_id" in session.context:
+        del session.context["pending_plan_id"]
+    await session_manager.save_session(session)
+
+    return {
+        "status": "idle",
+        "session_id": session.id,
+        "plan_id": plan.id,
+        "message": "Plan rejected"
+    }
