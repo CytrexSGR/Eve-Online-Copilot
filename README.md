@@ -93,10 +93,21 @@ See [Phase 1 Completion Report](docs/agent/phase1-completion.md) for details.
 
 See [Phase 2 Completion Report](docs/agent/phase2-completion.md) for details.
 
-#### Phase 3: Real-time Events & Authorization (Coming Next ⏳)
-- ⏳ **WebSocket Events** - Real-time plan_proposed, tool_call_started, tool_call_completed
-- ⏳ **Authorization Integration** - Per-tool authorization checks
-- ⏳ **Frontend Integration** - Plan approval UI component
+#### Phase 3: Real-time Events & Authorization (Complete ✅)
+- ✅ **Event System** - 19 event types across session, planning, execution, and control
+- ✅ **EventBus** - In-memory real-time event distribution with session isolation
+- ✅ **Event Repository** - PostgreSQL audit trail with full timeline reconstruction
+- ✅ **WebSocket Streaming** - `WS /agent/stream/{session_id}` for real-time updates
+- ✅ **Authorization Integration** - Per-tool blacklist + dangerous pattern detection
+- ✅ **Retry Logic** - Exponential backoff with configurable retry policies
+- ✅ **Full Test Coverage** - 31 tests (100% passing)
+
+See [Phase 3 Completion Report](docs/agent/phase3-completion.md) for details.
+
+#### Phase 4: Frontend Integration (Coming Next ⏳)
+- ⏳ **React Components** - Chat interface, plan approval dialog, progress indicators
+- ⏳ **WebSocket Integration** - React hooks for real-time event streaming
+- ⏳ **Authorization UI** - Tool blacklist management interface
 
 **What it does:**
 - Create conversational sessions with AI agent
