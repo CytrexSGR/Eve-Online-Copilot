@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react';
 import type { MessageHistoryProps, ChatMessage } from '../../types/chat-messages';
+import { MarkdownContent } from './MarkdownContent';
 
 export function MessageHistory({
   messages,
@@ -64,8 +65,8 @@ function MessageItem({ message }: { message: ChatMessage }) {
             <span className="text-xs text-yellow-400 animate-pulse">●</span>
           )}
         </div>
-        <div className="text-gray-100 whitespace-pre-wrap break-words">
-          {message.content}
+        <div className="text-gray-100">
+          <MarkdownContent content={message.content} />
         </div>
       </div>
     </article>

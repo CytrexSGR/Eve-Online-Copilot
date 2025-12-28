@@ -66,3 +66,32 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Markdown content custom styles */
+.markdown-content {
+  @apply text-gray-100;
+}
+
+.markdown-content h1 {
+  @apply text-2xl font-bold mb-3 text-gray-100;
+}
+
+.markdown-content h2 {
+  @apply text-xl font-bold mb-2 text-gray-100;
+}
+
+.markdown-content h3 {
+  @apply text-lg font-bold mb-2 text-gray-100;
+}
+
+.markdown-content p {
+  @apply mb-2;
+}
+
+.markdown-content code {
+  @apply font-mono text-sm;
+}
+
+.markdown-content hr {
+  @apply my-4 border-gray-700;
+}
