@@ -3,6 +3,7 @@ import { useAgentWebSocket } from '../hooks/useAgentWebSocket';
 import { EventStreamDisplay } from '../components/agent/EventStreamDisplay';
 import { PlanApprovalCard } from '../components/agent/PlanApprovalCard';
 import { CharacterSelector, type Character } from '../components/agent/CharacterSelector';
+import { EventFilter } from '../components/agent/EventFilter';
 import { agentClient } from '../api/agent-client';
 import {
   AgentEventType,
@@ -26,6 +27,7 @@ export default function AgentDashboard() {
   const [selectedCharacter, setSelectedCharacter] = useState<number | null>(526379435); // Default to Artallus
   const [autonomyLevel, setAutonomyLevel] = useState<string>('RECOMMENDATIONS');
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [eventFilters, setEventFilters] = useState<string[]>([]);
 
   const { events, isConnected, error, clearEvents } = useAgentWebSocket({
     sessionId: sessionId || '',
@@ -106,6 +108,11 @@ export default function AgentDashboard() {
       setPendingPlan(null);
     }
   };
+
+  // Filter events based on selected types
+  const filteredEvents = eventFilters.length > 0
+    ? events.filter((event) => eventFilters.includes(event.type))
+    : events;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -208,14 +215,20 @@ export default function AgentDashboard() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-100">Event Stream</h2>
-              <button
-                onClick={clearEvents}
-                className="text-sm text-gray-400 hover:text-gray-300"
-              >
-                Clear Events
-              </button>
+              <div className="flex gap-2">
+                <EventFilter
+                  selectedTypes={eventFilters}
+                  onChange={setEventFilters}
+                />
+                <button
+                  onClick={clearEvents}
+                  className="text-sm text-gray-400 hover:text-gray-300"
+                >
+                  Clear Events
+                </button>
+              </div>
             </div>
-            <EventStreamDisplay events={events} />
+            <EventStreamDisplay events={filteredEvents} />
           </div>
         </div>
       )}
