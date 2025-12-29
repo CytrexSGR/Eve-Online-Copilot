@@ -5,6 +5,8 @@ Character and corporation data access via EVE SSO.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
+from character import character_api
+from auth import eve_auth
 
 
 # Tool Definitions
@@ -159,74 +161,152 @@ TOOLS: List[Dict[str, Any]] = [
 # Tool Handlers
 def handle_get_authenticated_characters(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get authenticated characters."""
-    return api_proxy.get("/api/auth/characters")
+    try:
+        # Call auth module directly instead of HTTP request
+        characters = eve_auth.get_authenticated_characters()
+        return {"content": [{"type": "text", "text": str(characters)}]}
+    except Exception as e:
+        return {"error": f"Failed to get authenticated characters: {str(e)}", "isError": True}
 
 
 def handle_get_character_wallet(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get character wallet."""
-    character_id = args.get("character_id")
-    return api_proxy.get(f"/api/character/{character_id}/wallet")
+    try:
+        character_id = args.get("character_id")
+        # Call character_api directly instead of HTTP request
+        result = character_api.get_wallet_balance(character_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get wallet: {str(e)}", "isError": True}
 
 
 def handle_get_character_assets(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get character assets."""
-    character_id = args.get("character_id")
-    return api_proxy.get(f"/api/character/{character_id}/assets")
+    try:
+        character_id = args.get("character_id")
+        # Call character_api directly instead of HTTP request
+        result = character_api.get_assets(character_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get assets: {str(e)}", "isError": True}
 
 
 def handle_get_character_skills(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get character skills."""
-    character_id = args.get("character_id")
-    return api_proxy.get(f"/api/character/{character_id}/skills")
+    try:
+        character_id = args.get("character_id")
+        # Call character_api directly instead of HTTP request
+        result = character_api.get_skills(character_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get skills: {str(e)}", "isError": True}
 
 
 def handle_get_character_skillqueue(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get skill queue."""
-    character_id = args.get("character_id")
-    return api_proxy.get(f"/api/character/{character_id}/skillqueue")
+    try:
+        character_id = args.get("character_id")
+        # Call character_api directly instead of HTTP request
+        result = character_api.get_skill_queue(character_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get skill queue: {str(e)}", "isError": True}
 
 
 def handle_get_character_orders(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get market orders."""
-    character_id = args.get("character_id")
-    return api_proxy.get(f"/api/character/{character_id}/orders")
+    try:
+        character_id = args.get("character_id")
+        # Call character_api directly instead of HTTP request
+        result = character_api.get_market_orders(character_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get market orders: {str(e)}", "isError": True}
 
 
 def handle_get_character_industry(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get industry jobs."""
-    character_id = args.get("character_id")
-    return api_proxy.get(f"/api/character/{character_id}/industry")
+    try:
+        character_id = args.get("character_id")
+        # Call character_api directly instead of HTTP request
+        result = character_api.get_industry_jobs(character_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get industry jobs: {str(e)}", "isError": True}
 
 
 def handle_get_character_blueprints(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get blueprints."""
-    character_id = args.get("character_id")
-    return api_proxy.get(f"/api/character/{character_id}/blueprints")
+    try:
+        character_id = args.get("character_id")
+        # Call character_api directly instead of HTTP request
+        result = character_api.get_blueprints(character_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get blueprints: {str(e)}", "isError": True}
 
 
 def handle_get_character_info(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get character info."""
-    character_id = args.get("character_id")
-    return api_proxy.get(f"/api/character/{character_id}/info")
+    try:
+        character_id = args.get("character_id")
+        # Call character_api directly instead of HTTP request
+        result = character_api.get_character_info(character_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get character info: {str(e)}", "isError": True}
 
 
 def handle_get_character_portrait(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get character portrait."""
-    character_id = args.get("character_id")
-    return api_proxy.get(f"/api/character/{character_id}/portrait")
+    try:
+        character_id = args.get("character_id")
+        # Return EVE image server URL directly
+        portrait_url = f"https://images.evetech.net/characters/{character_id}/portrait?size=256"
+        result = {
+            "character_id": character_id,
+            "portrait_url": portrait_url,
+            "sizes_available": [32, 64, 128, 256, 512, 1024]
+        }
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get character portrait: {str(e)}", "isError": True}
 
 
 def handle_get_corporation_wallet(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get corp wallet."""
-    character_id = args.get("character_id")
-    division = args.get("division", 1)
-    return api_proxy.get(f"/api/character/{character_id}/corporation/wallet", params={"division": division})
+    try:
+        character_id = args.get("character_id")
+        division = args.get("division", 1)
+        # Call character_api directly instead of HTTP request
+        result = character_api.get_corporation_wallets(character_id)
+
+        # Filter to specific division if requested
+        if isinstance(result, dict) and "wallets" in result:
+            wallets = result.get("wallets", [])
+            division_wallet = next((w for w in wallets if w.get("division") == division), None)
+            if division_wallet:
+                result = division_wallet
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get corporation wallet: {str(e)}", "isError": True}
 
 
 def handle_get_corporation_info(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get corp info."""
-    character_id = args.get("character_id")
-    return api_proxy.get(f"/api/character/{character_id}/corporation/info")
+    try:
+        character_id = args.get("character_id")
+        # Get corporation ID from character first
+        corp_id = character_api.get_corporation_id(character_id)
+        if not corp_id:
+            return {"error": "Failed to get corporation ID", "isError": True}
+
+        # Call character_api directly instead of HTTP request
+        result = character_api.get_corporation_info(corp_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get corporation info: {str(e)}", "isError": True}
 
 
 # Handler mapping

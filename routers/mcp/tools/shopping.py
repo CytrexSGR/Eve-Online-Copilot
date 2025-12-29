@@ -5,6 +5,7 @@ Shopping list management, regional comparison, cargo calculation, and wizard.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
+from shopping_service import shopping_service
 
 
 # Tool Definitions

@@ -7,6 +7,7 @@ from typing import Dict, Any, List
 from ..handlers import api_proxy
 from esi_client import esi_client
 from database import get_item_info
+from config import REGIONS
 
 
 # Tool Definitions
@@ -351,8 +352,11 @@ def handle_search_item_groups(args: Dict[str, Any]) -> Dict[str, Any]:
 
 def handle_get_all_regions(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get all regions."""
-    include_wh = args.get("include_wh", False)
-    return api_proxy.get("/api/regions", params={"include_wh": include_wh})
+    try:
+        # Return REGIONS constant directly instead of HTTP request
+        return {"content": [{"type": "text", "text": str(REGIONS)}]}
+    except Exception as e:
+        return {"error": f"Failed to get regions: {str(e)}", "isError": True}
 
 
 # Handler mapping

@@ -5,6 +5,15 @@ Production planning, cost calculation, chains, economics, and workflow managemen
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
+from production_simulator import production_simulator
+from services.production.chain_service import ProductionChainService
+from services.production.economics_service import ProductionEconomicsService
+from services.production.workflow_service import ProductionWorkflowService
+
+# Create service instances
+chain_service = ProductionChainService()
+economics_service = ProductionEconomicsService()
+workflow_service = ProductionWorkflowService()
 
 
 # Tool Definitions
@@ -312,128 +321,253 @@ TOOLS: List[Dict[str, Any]] = [
 # Tool Handlers
 def handle_get_production_cost(args: Dict[str, Any]) -> Dict[str, Any]:
     """Calculate production cost."""
-    type_id = args.get("type_id")
-    params = {
-        "me": args.get("me", 10),
-        "te": args.get("te", 0),
-        "runs": args.get("runs", 1)
-    }
-    return api_proxy.get(f"/api/production/cost/{type_id}", params=params)
+    try:
+        type_id = args.get("type_id")
+        me = args.get("me", 10)
+        te = args.get("te", 0)
+        runs = args.get("runs", 1)
+
+        # Call production_simulator directly instead of HTTP request
+        result = production_simulator.calculate_financials(
+            product_type_id=type_id,
+            runs=runs,
+            me=me,
+            te=te
+        )
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to calculate production cost: {str(e)}", "isError": True}
 
 
 def handle_simulate_build(args: Dict[str, Any]) -> Dict[str, Any]:
     """Simulate production build."""
-    data = {
-        "type_id": args.get("type_id"),
-        "quantity": args.get("quantity", 1),
-        "me": args.get("me", 10)
-    }
-    # Try GET first (if endpoint exists), otherwise POST
-    type_id = args.get("type_id")
-    return api_proxy.get(f"/api/simulation/build/{type_id}", params={"quantity": data["quantity"], "me": data["me"]})
+    try:
+        type_id = args.get("type_id")
+        quantity = args.get("quantity", 1)
+        me = args.get("me", 10)
+
+        # Call production_simulator directly instead of HTTP request
+        result = production_simulator.simulate_build(
+            type_id=type_id,
+            quantity=quantity,
+            me=me
+        )
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to simulate build: {str(e)}", "isError": True}
 
 
 def handle_get_blueprint_info(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get blueprint information."""
-    type_id = args.get("type_id")
-    # This would need a dedicated endpoint or use production cost endpoint
-    return api_proxy.get(f"/api/production/cost/{type_id}")
+    try:
+        type_id = args.get("type_id")
+
+        # Call production_simulator directly instead of HTTP request
+        bom = production_simulator.get_bom_with_names(type_id, runs=1, me=0)
+
+        result = {
+            "type_id": type_id,
+            "materials": bom,
+            "total_materials": len(bom)
+        }
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get blueprint info: {str(e)}", "isError": True}
 
 
 def handle_get_production_chains(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get production chain tree."""
-    type_id = args.get("type_id")
-    params = {
-        "quantity": args.get("quantity", 1),
-        "me": args.get("me", 10)
-    }
-    return api_proxy.get(f"/api/production/chains/{type_id}", params=params)
+    try:
+        type_id = args.get("type_id")
+        quantity = args.get("quantity", 1)
+        me = args.get("me", 10)
+
+        # Call chain_service directly instead of HTTP request
+        result = chain_service.get_chain_tree(type_id, format='tree')
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get production chains: {str(e)}", "isError": True}
 
 
 def handle_get_chain_materials(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get all chain materials."""
-    type_id = args.get("type_id")
-    params = {"quantity": args.get("quantity", 1)}
-    return api_proxy.get(f"/api/production/chains/{type_id}/materials", params=params)
+    try:
+        type_id = args.get("type_id")
+        quantity = args.get("quantity", 1)
+
+        # Call chain_service directly instead of HTTP request
+        result = chain_service.get_materials_list(type_id=type_id, quantity=quantity)
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get chain materials: {str(e)}", "isError": True}
 
 
 def handle_get_direct_materials(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get direct materials only."""
-    type_id = args.get("type_id")
-    return api_proxy.get(f"/api/production/chains/{type_id}/direct")
+    try:
+        type_id = args.get("type_id")
+
+        # Call chain_service directly instead of HTTP request
+        result = chain_service.get_direct_dependencies(type_id)
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get direct materials: {str(e)}", "isError": True}
 
 
 def handle_get_economics_opportunities(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get economic opportunities."""
-    params = {
-        "min_profit": args.get("min_profit", 1000000)
-    }
-    if args.get("category"):
-        params["category"] = args.get("category")
-    return api_proxy.get("/api/production/economics/opportunities", params=params)
+    try:
+        min_profit = args.get("min_profit", 1000000)
+        category = args.get("category")
+
+        # Call economics_service directly instead of HTTP request
+        result = economics_service.find_opportunities(
+            min_profit=min_profit,
+            category=category
+        )
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get economic opportunities: {str(e)}", "isError": True}
 
 
 def handle_get_economics_analysis(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get economics analysis for item."""
-    type_id = args.get("type_id")
-    region_id = args.get("region_id", 10000002)
-    return api_proxy.get(f"/api/production/economics/{type_id}", params={"region_id": region_id})
+    try:
+        type_id = args.get("type_id")
+        region_id = args.get("region_id", 10000002)
+
+        # Call economics_service directly instead of HTTP request
+        result = economics_service.get_economics(
+            type_id=type_id,
+            region_id=region_id
+        )
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get economics analysis: {str(e)}", "isError": True}
 
 
 def handle_get_economics_regions(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get regional economics comparison."""
-    type_id = args.get("type_id")
-    regions = args.get("regions", "10000002,10000043,10000030,10000032")
-    return api_proxy.get(f"/api/production/economics/{type_id}/regions", params={"regions": regions})
+    try:
+        type_id = args.get("type_id")
+        regions = args.get("regions", "10000002,10000043,10000030,10000032")
+
+        # Call economics_service directly instead of HTTP request
+        result = economics_service.compare_regions(type_id)
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get regional economics: {str(e)}", "isError": True}
 
 
 def handle_create_workflow_job(args: Dict[str, Any]) -> Dict[str, Any]:
     """Create workflow job."""
-    data = {
-        "type_id": args.get("type_id"),
-        "quantity": args.get("quantity"),
-        "character_id": args.get("character_id"),
-        "notes": args.get("notes", "")
-    }
-    return api_proxy.post("/api/production/workflow/jobs", data=data)
+    try:
+        type_id = args.get("type_id")
+        quantity = args.get("quantity")
+        character_id = args.get("character_id")
+        notes = args.get("notes", "")
+
+        # Call workflow_service directly instead of HTTP request
+        result = workflow_service.create_job(
+            type_id=type_id,
+            quantity=quantity,
+            character_id=character_id,
+            notes=notes
+        )
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to create workflow job: {str(e)}", "isError": True}
 
 
 def handle_list_workflow_jobs(args: Dict[str, Any]) -> Dict[str, Any]:
     """List workflow jobs."""
-    params = {}
-    if args.get("character_id"):
-        params["character_id"] = args.get("character_id")
-    if args.get("status"):
-        params["status"] = args.get("status")
-    return api_proxy.get("/api/production/workflow/jobs", params=params if params else None)
+    try:
+        character_id = args.get("character_id")
+        status = args.get("status")
+
+        # Call workflow_service directly instead of HTTP request
+        result = workflow_service.get_jobs(
+            character_id=character_id,
+            status=status
+        )
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to list workflow jobs: {str(e)}", "isError": True}
 
 
 def handle_update_workflow_job(args: Dict[str, Any]) -> Dict[str, Any]:
     """Update workflow job."""
-    job_id = args.get("job_id")
-    data = {}
-    if args.get("status"):
-        data["status"] = args.get("status")
-    if args.get("notes"):
-        data["notes"] = args.get("notes")
-    return api_proxy.patch(f"/api/production/workflow/jobs/{job_id}", data=data)
+    try:
+        job_id = args.get("job_id")
+        status = args.get("status")
+        notes = args.get("notes")
+
+        # Call workflow_service directly instead of HTTP request
+        result = workflow_service.update_job(
+            job_id=job_id,
+            status=status,
+            notes=notes
+        )
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to update workflow job: {str(e)}", "isError": True}
 
 
 def handle_get_production_optimize(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get optimized production plan."""
-    type_id = args.get("type_id")
-    me = args.get("me", 10)
-    return api_proxy.get(f"/api/production/optimize/{type_id}", params={"me": me})
+    try:
+        type_id = args.get("type_id")
+        me = args.get("me", 10)
+
+        # Call production_simulator directly instead of HTTP request
+        result = production_simulator.quick_profit_check(
+            type_id=type_id,
+            runs=1,
+            me=me
+        )
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to optimize production: {str(e)}", "isError": True}
 
 
 def handle_batch_production_cost(args: Dict[str, Any]) -> Dict[str, Any]:
     """Batch production cost calculation."""
-    type_ids = args.get("type_ids").split(",")
-    data = {
-        "type_ids": [int(tid.strip()) for tid in type_ids],
-        "me": args.get("me", 10)
-    }
-    return api_proxy.post("/api/production/cost", data=data)
+    try:
+        type_ids_str = args.get("type_ids")
+        me = args.get("me", 10)
+
+        # Parse type IDs
+        type_ids = [int(tid.strip()) for tid in type_ids_str.split(",")]
+
+        # Call production_simulator for each type_id
+        results = []
+        for type_id in type_ids:
+            try:
+                cost = production_simulator.calculate_financials(
+                    product_type_id=type_id,
+                    runs=1,
+                    me=me
+                )
+                results.append(cost)
+            except Exception as e:
+                results.append({"type_id": type_id, "error": str(e)})
+
+        return {"content": [{"type": "text", "text": str(results)}]}
+    except Exception as e:
+        return {"error": f"Failed to batch calculate costs: {str(e)}", "isError": True}
 
 
 # Handler mapping
