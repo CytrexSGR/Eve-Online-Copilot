@@ -108,10 +108,10 @@ class OpenAIClient:
             raise ValueError("OpenAI client not initialized - missing API key")
 
         try:
-            stream = await self.client.chat.completions.create(
-                **params,
-                stream=True
-            )
+            # Ensure stream=True is set (don't duplicate if already in params)
+            stream_params = {**params, "stream": True}
+
+            stream = await self.client.chat.completions.create(**stream_params)
 
             async for chunk in stream:
                 delta = chunk.choices[0].delta
