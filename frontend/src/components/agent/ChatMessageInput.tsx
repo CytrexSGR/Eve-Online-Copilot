@@ -28,23 +28,59 @@ export function ChatMessageInput({
   };
 
   return (
-    <div className="flex gap-2 p-4 bg-gray-800 border-t border-gray-700">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '1rem', backgroundColor: 'var(--bg-darker)', borderTop: '1px solid var(--border)' }}>
       <textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         disabled={disabled}
-        className="flex-1 bg-gray-700 text-gray-100 rounded px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-        rows={3}
+        style={{
+          width: '100%',
+          minHeight: '120px',
+          padding: '0.75rem',
+          backgroundColor: 'var(--bg-dark)',
+          color: 'var(--text-primary)',
+          border: '1px solid var(--border)',
+          borderRadius: '6px',
+          resize: 'vertical',
+          fontFamily: 'inherit',
+          fontSize: '14px',
+          lineHeight: '1.5'
+        }}
+        className="focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
       />
-      <button
-        onClick={handleSend}
-        disabled={disabled || !message.trim()}
-        className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold rounded transition self-end"
-      >
-        Send
-      </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+          Ctrl+Enter to send
+        </span>
+        <button
+          onClick={handleSend}
+          disabled={disabled || !message.trim()}
+          style={{
+            padding: '0.75rem 2rem',
+            backgroundColor: disabled || !message.trim() ? 'var(--bg-dark)' : '#3b82f6',
+            color: 'white',
+            fontWeight: '600',
+            borderRadius: '6px',
+            border: 'none',
+            cursor: disabled || !message.trim() ? 'not-allowed' : 'pointer',
+            transition: 'background-color 0.2s'
+          }}
+          onMouseEnter={(e) => {
+            if (!disabled && message.trim()) {
+              e.currentTarget.style.backgroundColor = '#2563eb';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!disabled && message.trim()) {
+              e.currentTarget.style.backgroundColor = '#3b82f6';
+            }
+          }}
+        >
+          Send Message
+        </button>
+      </div>
     </div>
   );
 }

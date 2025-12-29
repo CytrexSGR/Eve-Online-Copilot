@@ -403,33 +403,33 @@ export default function AgentDashboard() {
           {/* 2-Column Layout: Chat (Left) + Events (Right) */}
           <div className="agent-grid-layout">
             {/* Chat Interface - Left Column */}
-            <div className="bg-gray-800 rounded-lg border border-gray-700 p-4" style={{ minHeight: '600px', display: 'flex', flexDirection: 'column' }}>
-              <h3 className="text-lg font-semibold text-gray-100 mb-4">Chat</h3>
+            <div className="bg-gray-800 rounded-lg border border-gray-700" style={{ minHeight: '750px', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '1rem', borderBottom: '1px solid var(--border)' }}>
+                <h3 className="text-lg font-semibold text-gray-100">Chat</h3>
+              </div>
 
-              <div style={{ flex: 1, overflow: 'hidden' }}>
+              <div style={{ flex: 1, overflow: 'hidden', padding: '1rem' }}>
                 <MessageHistory
                   messages={chatMessages}
                   autoScroll={true}
-                  maxHeight="500px"
+                  maxHeight="100%"
                 />
               </div>
 
-              <div className="mt-4">
-                <ChatMessageInput
-                  onSend={handleSendMessage}
-                  disabled={!sessionId || isSending}
-                  placeholder={
-                    sessionId
-                      ? 'Type your message... (Ctrl+Enter to send)'
-                      : 'Create a session first'
-                  }
-                />
-              </div>
+              <ChatMessageInput
+                onSend={handleSendMessage}
+                disabled={!sessionId || isSending}
+                placeholder={
+                  sessionId
+                    ? 'Type your message...'
+                    : 'Create a session first'
+                }
+              />
             </div>
 
             {/* Event Stream - Right Column */}
-            <div className="bg-gray-800 rounded-lg border border-gray-700 p-4" style={{ minHeight: '600px', display: 'flex', flexDirection: 'column' }}>
-              <div className="flex items-center justify-between mb-4">
+            <div className="bg-gray-800 rounded-lg border border-gray-700" style={{ minHeight: '750px', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '1rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <h3 className="text-lg font-semibold text-gray-100">Event Stream</h3>
                 <div className="flex gap-2">
                   <EventSearch value={searchQuery} onChange={setSearchQuery} />
@@ -445,7 +445,7 @@ export default function AgentDashboard() {
                   </button>
                 </div>
               </div>
-              <div style={{ flex: 1, overflow: 'auto' }}>
+              <div style={{ flex: 1, overflow: 'auto', padding: '1rem' }}>
                 <EventStreamDisplay events={filteredEvents} />
               </div>
             </div>
