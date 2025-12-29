@@ -18,6 +18,7 @@ from ..agent.models import SessionStatus, PlanStatus
 from ..agent.events import AgentEvent
 from ..agent.messages import AgentMessage, MessageRepository
 from ..agent.streaming import SSEFormatter, stream_llm_response
+from ..agent.agentic_loop import AgenticStreamingLoop
 from ..models.user_settings import get_default_settings
 from .middleware import verify_session_access, validate_message_content
 from ..config import SYSTEM_PROMPT
@@ -268,10 +269,10 @@ async def stream_chat_response(
     authorization: Optional[str] = Header(None)
 ):
     """
-    Stream chat response via SSE with authorization.
+    Stream chat response via SSE with tool execution.
 
-    Sends Server-Sent Events for real-time streaming.
-    Client should use EventSource to consume.
+    Executes agentic loop: LLM → Tools → LLM until final answer.
+    Streams intermediate results and tool calls.
     """
     # Validate message content
     await validate_message_content(request.message)
@@ -283,7 +284,7 @@ async def stream_chat_response(
         authorization
     )
 
-    if not session_manager or not runtime or not db_pool or not llm_client:
+    if not session_manager or not llm_client or not db_pool or not mcp_client:
         raise HTTPException(status_code=500, detail="Services not initialized")
 
     # Load session
@@ -305,33 +306,83 @@ async def stream_chat_response(
     session.add_message("user", request.message)
     await session_manager.save_session(session)
 
-    # Stream response
+    # Stream response with agentic loop
     async def event_generator():
         formatter = SSEFormatter()
         full_response = ""
+        tool_calls_executed = []
 
         try:
             # Get conversation history
             messages = session.get_messages_for_api()
 
-            # Get user settings and tools
+            # Get user settings
             user_settings = get_default_settings(character_id=request.character_id or -1)
-            tools = mcp_client.get_tools() if mcp_client else []
 
-            # Stream LLM response with system prompt
-            async for chunk in stream_llm_response(
-                llm_client,
-                messages,
-                tools,
-                system=SYSTEM_PROMPT
+            # Create agentic loop
+            loop = AgenticStreamingLoop(
+                llm_client=llm_client,
+                mcp_client=mcp_client,
+                user_settings=user_settings,
+                max_iterations=5
+            )
+
+            # Execute agentic loop
+            async for event in loop.execute(
+                messages=messages,
+                system=SYSTEM_PROMPT,
+                session_id=session.id
             ):
-                if chunk.get("type") == "text":
-                    text = chunk.get("text", "")
+                event_type = event.get("type")
+
+                if event_type == "text":
+                    # Text chunk from LLM
+                    text = event.get("text", "")
                     full_response += text
                     yield formatter.format_text_chunk(text)
-                elif chunk.get("type") == "error":
-                    yield formatter.format_error(chunk.get("error", "Unknown error"))
+
+                elif event_type == "thinking":
+                    # Thinking indicator
+                    yield formatter.format({
+                        "type": "thinking",
+                        "iteration": event.get("iteration")
+                    })
+
+                elif event_type == "tool_call_started":
+                    # Tool execution started
+                    yield formatter.format({
+                        "type": "tool_call_started",
+                        "tool": event.get("tool"),
+                        "arguments": event.get("arguments")
+                    })
+
+                elif event_type == "tool_call_completed":
+                    # Tool execution completed
+                    tool_calls_executed.append({
+                        "tool": event.get("tool"),
+                        "result": event.get("result")
+                    })
+                    yield formatter.format({
+                        "type": "tool_call_completed",
+                        "tool": event.get("tool")
+                    })
+
+                elif event_type == "authorization_denied":
+                    # Tool blocked by authorization
+                    yield formatter.format({
+                        "type": "authorization_denied",
+                        "tool": event.get("tool"),
+                        "reason": event.get("reason")
+                    })
+
+                elif event_type == "error":
+                    # Error occurred
+                    yield formatter.format_error(event.get("error", "Unknown error"))
                     return
+
+                elif event_type == "done":
+                    # Final answer reached
+                    break
 
             # Save assistant response
             async with db_pool.acquire() as conn:
@@ -339,15 +390,18 @@ async def stream_chat_response(
                 assistant_message = AgentMessage.create(
                     session_id=session.id,
                     role="assistant",
-                    content=full_response
+                    content=full_response,
+                    metadata={
+                        "tool_calls": tool_calls_executed
+                    }
                 )
-                await repo.save(assistant_message)
+                message_id = await repo.save(assistant_message)
 
-            # Send completion
-            yield formatter.format_done(assistant_message.id)
+            # Send done event with message ID
+            yield formatter.format_done(message_id)
 
         except Exception as e:
-            logger.error(f"Stream error: {e}")
+            logger.error(f"Chat streaming error: {e}", exc_info=True)
             yield formatter.format_error(str(e))
 
     return StreamingResponse(

@@ -388,3 +388,105 @@ async def test_chat_history_requires_valid_session():
         # Reset globals
         agent_routes.session_manager = None
         agent_routes.db_pool = None
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_with_tool_execution():
+    """Test chat streaming endpoint executes tools."""
+    import json
+    from unittest.mock import Mock
+    from copilot_server.api import agent_routes
+    from copilot_server.models.user_settings import AutonomyLevel
+
+    # Create session manager and database pool
+    session_manager = AgentSessionManager()
+    await session_manager.startup()
+
+    db_pool = await asyncpg.create_pool(
+        DATABASE_URL,
+        min_size=1,
+        max_size=2
+    )
+
+    # Create mock LLM client
+    mock_llm_client = Mock()
+    mock_llm_client.model = "claude-3-5-sonnet-20241022"
+    mock_llm_client.build_tool_schema = Mock(return_value=[])
+
+    # Track how many times we stream (need 2 iterations: tool call, then final answer)
+    call_count = [0]
+
+    # Mock LLM to request tool call on first iteration, then final answer
+    async def mock_stream(*args, **kwargs):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            # First iteration: request tool call
+            yield {"type": "content_block_start", "index": 0, "content_block": {"type": "text"}}
+            yield {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Let me check"}}
+            yield {"type": "content_block_stop", "index": 0}
+            yield {"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "t1", "name": "get_market_prices"}}
+            yield {"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": '{}'}}
+            yield {"type": "content_block_stop", "index": 1}
+            yield {"type": "message_stop"}
+        else:
+            # Second iteration: final answer (no tools)
+            yield {"type": "content_block_start", "index": 0, "content_block": {"type": "text"}}
+            yield {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": " the price is 5.50 ISK"}}
+            yield {"type": "content_block_stop", "index": 0}
+            yield {"type": "message_stop"}
+
+    mock_llm_client._stream_response = mock_stream
+
+    # Create mock MCP client
+    mock_mcp_client = Mock()
+    mock_mcp_client.get_tools = Mock(return_value=[])
+    mock_mcp_client.call_tool = Mock(return_value={"content": [{"type": "text", "text": "5.50 ISK"}]})
+
+    # Set globals for agent_routes
+    agent_routes.session_manager = session_manager
+    agent_routes.db_pool = db_pool
+    agent_routes.llm_client = mock_llm_client
+    agent_routes.mcp_client = mock_mcp_client
+
+    try:
+        # Create session
+        session = await session_manager.create_session(
+            character_id=123,
+            autonomy_level=AutonomyLevel.RECOMMENDATIONS
+        )
+        session_id = session.id
+
+        # Stream chat
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/agent/chat/stream",
+                headers={"Content-Type": "application/json"},
+                json={
+                    "session_id": session_id,
+                    "message": "What is price of Tritanium?",
+                    "character_id": 123
+                }
+            )
+
+            # Verify SSE stream contains tool events
+            lines = response.text.strip().split('\n\n')
+            events = [json.loads(line.replace('data: ', '')) for line in lines if line.startswith('data:')]
+
+            assert any(e["type"] == "text" for e in events), "Should have text events"
+            assert any(e["type"] == "tool_call_started" for e in events), "Should have tool_call_started events"
+            assert any(e["type"] == "tool_call_completed" for e in events), "Should have tool_call_completed events"
+
+        # Cleanup
+        conn = await asyncpg.connect(DATABASE_URL)
+        await conn.execute("DELETE FROM agent_messages WHERE session_id = $1", session_id)
+        await conn.execute("DELETE FROM agent_sessions WHERE id = $1", session_id)
+        await conn.close()
+
+    finally:
+        # Clean up
+        await db_pool.close()
+        await session_manager.shutdown()
+        # Reset globals
+        agent_routes.session_manager = None
+        agent_routes.db_pool = None
+        agent_routes.llm_client = None
+        agent_routes.mcp_client = None
