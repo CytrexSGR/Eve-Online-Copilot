@@ -147,11 +147,16 @@ class PostgresSessionRepository:
         if not self._pool:
             raise RuntimeError("PostgreSQL not connected. Call connect() first.")
 
+        # Generate id for message if it doesn't have one
+        import uuid
+        message_id = f"msg-{uuid.uuid4().hex[:12]}"
+
         async with self._pool.acquire() as conn:
             await conn.execute("""
-                INSERT INTO agent_messages (session_id, role, content, timestamp)
-                VALUES ($1, $2, $3, $4)
+                INSERT INTO agent_messages (id, session_id, role, content, created_at)
+                VALUES ($1, $2, $3, $4, $5)
             """,
+                message_id,
                 message.session_id,
                 message.role,
                 message.content,
@@ -177,7 +182,7 @@ class PostgresSessionRepository:
             rows = await conn.fetch("""
                 SELECT * FROM agent_messages
                 WHERE session_id = $1
-                ORDER BY timestamp ASC
+                ORDER BY created_at ASC
             """, session_id)
 
         messages = [
@@ -185,7 +190,7 @@ class PostgresSessionRepository:
                 session_id=row['session_id'],
                 role=row['role'],
                 content=row['content'],
-                timestamp=row['timestamp']
+                timestamp=row['created_at']
             )
             for row in rows
         ]
