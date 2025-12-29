@@ -37,24 +37,27 @@ export interface ChatResponse {
 
 export const agentClient = {
   /**
-   * Create new agent session by sending an initial chat message
+   * Create new agent session
    */
   createSession: async (request: CreateSessionRequest): Promise<CreateSessionResponse> => {
-    // Create session via chat endpoint with initial message
-    const chatResponse = await api.post<ChatResponse>('/agent/chat', {
-      message: 'Hello, I need help with EVE Online.',
-      character_id: request.character_id || 526379435, // Default to Artallus
-      session_id: undefined, // Force new session
+    // Map autonomy level from string to number
+    const autonomyLevelMap: Record<string, number> = {
+      'READ_ONLY': 0,
+      'RECOMMENDATIONS': 1,
+      'ASSISTED': 2,
+      'SUPERVISED': 3,
+    };
+
+    const response = await api.post('/agent/session', {
+      character_id: request.character_id,
+      autonomy_level: autonomyLevelMap[request.autonomy_level] || 1,
     });
 
-    // Fetch full session details
-    const sessionDetails = await api.get(`/agent/session/${chatResponse.data.session_id}`);
-
     return {
-      session_id: sessionDetails.data.id,
-      status: sessionDetails.data.status,
-      autonomy_level: sessionDetails.data.autonomy_level,
-      created_at: sessionDetails.data.created_at,
+      session_id: response.data.session_id,
+      status: response.data.status,
+      autonomy_level: response.data.autonomy_level.toString(),
+      created_at: new Date().toISOString(),
     };
   },
 
