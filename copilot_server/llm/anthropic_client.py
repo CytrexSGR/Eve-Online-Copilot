@@ -6,6 +6,13 @@ Handles LLM interactions with Claude API.
 import anthropic
 from typing import List, Dict, Any, Optional, AsyncIterator
 import logging
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log
+)
 
 from ..config import (
     ANTHROPIC_API_KEY,
@@ -34,6 +41,37 @@ class AnthropicClient:
 
         if not self.api_key:
             logger.warning("No Anthropic API key provided - client will not work")
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((
+            anthropic.APIError,
+            anthropic.RateLimitError,
+            anthropic.APIConnectionError,
+            anthropic.APITimeoutError
+        )),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True
+    )
+    async def _chat_with_retry(
+        self,
+        params: Dict[str, Any]
+    ) -> anthropic.types.Message:
+        """
+        Internal method to make API call with retry logic.
+
+        Args:
+            params: Request parameters
+
+        Returns:
+            Raw API response
+
+        Raises:
+            APIError: If API request fails after retries
+            RateLimitError: If rate limited after retries
+        """
+        return self.client.messages.create(**params)
 
     async def chat(
         self,
@@ -78,11 +116,29 @@ class AnthropicClient:
             if stream:
                 return self._stream_response(params)
             else:
-                response = self.client.messages.create(**params)
+                response = await self._chat_with_retry(params)
                 return self._parse_response(response)
 
+        except anthropic.RateLimitError as e:
+            logger.error(f"Anthropic rate limit error after retries: {e}")
+            return {
+                "error": f"Rate Limit Error: {str(e)}",
+                "type": "rate_limit_error"
+            }
+        except anthropic.APIConnectionError as e:
+            logger.error(f"Anthropic API connection error after retries: {e}")
+            return {
+                "error": f"API Connection Error: {str(e)}",
+                "type": "connection_error"
+            }
+        except anthropic.APITimeoutError as e:
+            logger.error(f"Anthropic API timeout error after retries: {e}")
+            return {
+                "error": f"API Timeout Error: {str(e)}",
+                "type": "timeout_error"
+            }
         except anthropic.APIError as e:
-            logger.error(f"Anthropic API error: {e}")
+            logger.error(f"Anthropic API error after retries: {e}")
             return {
                 "error": f"API Error: {str(e)}",
                 "type": "api_error"
