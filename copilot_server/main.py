@@ -15,10 +15,15 @@ from .config import (
     COPILOT_HOST,
     COPILOT_PORT,
     DATABASE_URL,
-    validate_config
+    validate_config,
+    get_llm_provider,
+    OPENAI_API_KEY,
+    OPENAI_MODEL,
+    OPENAI_MAX_TOKENS
 )
 import asyncpg
 from .llm import AnthropicClient, ConversationManager
+from .llm.openai_client import OpenAIClient
 from .mcp import MCPClient, ToolOrchestrator
 from .websocket import ConnectionManager, SessionManager
 from .audio import AudioTranscriber, TextToSpeech
@@ -51,7 +56,8 @@ app.add_middleware(
 )
 
 # Initialize components
-llm_client = AnthropicClient()
+# LLM client will be set in startup() based on available API keys
+llm_client = None
 mcp_client = MCPClient()
 # Note: orchestrator now requires user_settings, created per-request
 conv_manager = ConversationManager()
@@ -91,7 +97,7 @@ class SessionCreate(BaseModel):
 @app.on_event("startup")
 async def startup():
     """Application startup."""
-    global agent_session_manager, agent_runtime
+    global agent_session_manager, agent_runtime, llm_client
 
     logger.info("Starting EVE Co-Pilot AI Server...")
 
@@ -99,6 +105,22 @@ async def startup():
     warnings = validate_config()
     for warning in warnings:
         logger.warning(warning)
+
+    # Initialize LLM client based on available API keys
+    try:
+        provider = get_llm_provider()
+        if provider == "anthropic":
+            llm_client = AnthropicClient()
+            logger.info("Using Anthropic Claude as LLM provider")
+        elif provider == "openai":
+            llm_client = OpenAIClient(
+                api_key=OPENAI_API_KEY,
+                model=OPENAI_MODEL
+            )
+            logger.info(f"Using OpenAI {OPENAI_MODEL} as LLM provider")
+    except ValueError as e:
+        logger.error(f"No LLM provider available: {e}")
+        logger.warning("LLM features will not work - set ANTHROPIC_API_KEY or OPENAI_API_KEY")
 
     # Load MCP tools
     tools = mcp_client.get_tools()
