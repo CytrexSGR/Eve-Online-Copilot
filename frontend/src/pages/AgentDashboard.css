@@ -1,0 +1,38 @@
+/* Agent Dashboard - Full Width Layout Override */
+
+/* Force all parent containers to full width */
+.agent-dashboard-container {
+  position: absolute !important;
+  top: 0 !important;
+  left: 240px !important; /* Account for sidebar */
+  right: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 2rem !important;
+  min-height: 100vh !important;
+}
+
+.agent-dashboard-inner {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.agent-grid-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+  gap: 1rem;
+  width: 100%;
+}
+
+/* Responsive: Stack on narrow screens */
+@media (max-width: 1100px) {
+  .agent-grid-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-dashboard-container {
+    left: 60px !important; /* Collapsed sidebar */
+  }
+}

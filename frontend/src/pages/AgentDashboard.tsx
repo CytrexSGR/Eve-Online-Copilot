@@ -12,6 +12,7 @@ import { MessageHistory } from '../components/agent/MessageHistory';
 import { useStreamingMessage } from '../hooks/useStreamingMessage';
 import { agentClient } from '../api/agent-client';
 import type { ChatMessage } from '../types/chat-messages';
+import './AgentDashboard.css';
 import {
   AgentEventType,
   isPlanProposedEvent,
@@ -302,8 +303,9 @@ export default function AgentDashboard() {
   });
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-100 mb-8">Agent Dashboard</h1>
+    <div className="agent-dashboard-container">
+      <div className="agent-dashboard-inner">
+        <h1 className="text-3xl font-bold text-gray-100 mb-8">Agent Dashboard</h1>
 
       {!sessionId ? (
         <div className="bg-gray-800 p-6 rounded border border-gray-700 max-w-2xl">
@@ -348,7 +350,7 @@ export default function AgentDashboard() {
           </button>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
           {/* Session Info */}
           <div className="bg-gray-800 p-4 rounded border border-gray-700">
             <div className="flex items-center justify-between">
@@ -399,7 +401,7 @@ export default function AgentDashboard() {
           )}
 
           {/* 2-Column Layout: Chat (Left) + Events (Right) */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '1rem' }}>
+          <div className="agent-grid-layout">
             {/* Chat Interface - Left Column */}
             <div className="bg-gray-800 rounded-lg border border-gray-700 p-4" style={{ minHeight: '600px', display: 'flex', flexDirection: 'column' }}>
               <h3 className="text-lg font-semibold text-gray-100 mb-4">Chat</h3>
@@ -450,6 +452,7 @@ export default function AgentDashboard() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
