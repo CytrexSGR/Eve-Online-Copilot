@@ -109,6 +109,10 @@ class ToolCallExtractor:
         if "function_call" in delta:
             func_call = delta["function_call"]
 
+            # Skip if function_call is None or empty
+            if not func_call:
+                return
+
             # Initialize function call on first chunk
             if self.openai_function_call is None:
                 self.openai_function_call = {
