@@ -74,6 +74,7 @@ export interface ToolCallFailedEventPayload {
   tool: string;
   error: string;
   retry_count: number;
+  retries_exhausted?: boolean;
 }
 
 export interface AnswerReadyEventPayload {
