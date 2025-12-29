@@ -437,189 +437,306 @@ TOOLS: List[Dict[str, Any]] = [
 # Tool Handlers
 def handle_list_shopping_lists(args: Dict[str, Any]) -> Dict[str, Any]:
     """List all shopping lists."""
-    return api_proxy.get("/api/shopping/lists")
+    try:
+        result = shopping_service.get_lists()
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to list shopping lists: {str(e)}", "isError": True}
 
 
 def handle_create_shopping_list(args: Dict[str, Any]) -> Dict[str, Any]:
     """Create shopping list."""
-    data = {
-        "name": args.get("name"),
-        "description": args.get("description", "")
-    }
-    return api_proxy.post("/api/shopping/lists", data=data)
+    try:
+        name = args.get("name")
+        description = args.get("description", "")
+        result = shopping_service.create_list(name=name, description=description)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to create shopping list: {str(e)}", "isError": True}
 
 
 def handle_get_shopping_list(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get shopping list details."""
-    list_id = args.get("list_id")
-    return api_proxy.get(f"/api/shopping/lists/{list_id}")
+    try:
+        list_id = args.get("list_id")
+        result = shopping_service.get_list_with_items(list_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get shopping list: {str(e)}", "isError": True}
 
 
 def handle_update_shopping_list(args: Dict[str, Any]) -> Dict[str, Any]:
     """Update shopping list."""
-    list_id = args.get("list_id")
-    data = {}
-    if args.get("name"):
-        data["name"] = args.get("name")
-    if args.get("description"):
-        data["description"] = args.get("description")
-    return api_proxy.patch(f"/api/shopping/lists/{list_id}", data=data)
+    try:
+        list_id = args.get("list_id")
+        name = args.get("name")
+        description = args.get("description")
+        result = shopping_service.update_list(list_id=list_id, name=name, description=description)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to update shopping list: {str(e)}", "isError": True}
 
 
 def handle_delete_shopping_list(args: Dict[str, Any]) -> Dict[str, Any]:
     """Delete shopping list."""
-    list_id = args.get("list_id")
-    return api_proxy.delete(f"/api/shopping/lists/{list_id}")
+    try:
+        list_id = args.get("list_id")
+        success = shopping_service.delete_list(list_id)
+        return {"content": [{"type": "text", "text": str({"deleted": success, "list_id": list_id})}]}
+    except Exception as e:
+        return {"error": f"Failed to delete shopping list: {str(e)}", "isError": True}
 
 
 def handle_add_shopping_item(args: Dict[str, Any]) -> Dict[str, Any]:
     """Add item to shopping list."""
-    list_id = args.get("list_id")
-    data = {
-        "type_id": args.get("type_id"),
-        "quantity": args.get("quantity"),
-        "notes": args.get("notes", "")
-    }
-    return api_proxy.post(f"/api/shopping/lists/{list_id}/items", data=data)
+    try:
+        list_id = args.get("list_id")
+        type_id = args.get("type_id")
+        quantity = args.get("quantity")
+        notes = args.get("notes", "")
+        result = shopping_service.add_item(list_id=list_id, type_id=type_id, quantity=quantity, notes=notes)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to add shopping item: {str(e)}", "isError": True}
 
 
 def handle_update_shopping_item(args: Dict[str, Any]) -> Dict[str, Any]:
     """Update shopping item."""
-    item_id = args.get("item_id")
-    data = {}
-    if args.get("quantity"):
-        data["quantity"] = args.get("quantity")
-    if args.get("notes"):
-        data["notes"] = args.get("notes")
-    return api_proxy.patch(f"/api/shopping/items/{item_id}", data=data)
+    try:
+        item_id = args.get("item_id")
+        quantity = args.get("quantity")
+        notes = args.get("notes")
+        result = shopping_service.update_item(item_id=item_id, quantity=quantity, notes=notes)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to update shopping item: {str(e)}", "isError": True}
 
 
 def handle_delete_shopping_item(args: Dict[str, Any]) -> Dict[str, Any]:
     """Delete shopping item."""
-    item_id = args.get("item_id")
-    return api_proxy.delete(f"/api/shopping/items/{item_id}")
+    try:
+        item_id = args.get("item_id")
+        success = shopping_service.remove_item(item_id)
+        return {"content": [{"type": "text", "text": str({"deleted": success, "item_id": item_id})}]}
+    except Exception as e:
+        return {"error": f"Failed to delete shopping item: {str(e)}", "isError": True}
 
 
 def handle_mark_item_purchased(args: Dict[str, Any]) -> Dict[str, Any]:
     """Mark item as purchased."""
-    item_id = args.get("item_id")
-    return api_proxy.post(f"/api/shopping/items/{item_id}/purchased")
+    try:
+        item_id = args.get("item_id")
+        result = shopping_service.mark_purchased(item_id=item_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to mark item purchased: {str(e)}", "isError": True}
 
 
 def handle_unmark_item_purchased(args: Dict[str, Any]) -> Dict[str, Any]:
     """Unmark item as purchased."""
-    item_id = args.get("item_id")
-    return api_proxy.delete(f"/api/shopping/items/{item_id}/purchased")
+    try:
+        item_id = args.get("item_id")
+        result = shopping_service.unmark_purchased(item_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to unmark item purchased: {str(e)}", "isError": True}
 
 
 def handle_set_purchase_region(args: Dict[str, Any]) -> Dict[str, Any]:
     """Set purchase region."""
-    item_id = args.get("item_id")
-    data = {"region_id": args.get("region_id")}
-    return api_proxy.patch(f"/api/shopping/items/{item_id}/region", data=data)
+    try:
+        item_id = args.get("item_id")
+        region_id = args.get("region_id")
+        result = shopping_service.update_item(item_id=item_id, region_id=region_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to set purchase region: {str(e)}", "isError": True}
 
 
 def handle_update_item_runs(args: Dict[str, Any]) -> Dict[str, Any]:
     """Update item runs."""
-    item_id = args.get("item_id")
-    data = {"runs": args.get("runs")}
-    return api_proxy.patch(f"/api/shopping/items/{item_id}/runs", data=data)
+    try:
+        item_id = args.get("item_id")
+        runs = args.get("runs")
+        result = shopping_service.update_item_runs(item_id=item_id, runs=runs)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to update item runs: {str(e)}", "isError": True}
 
 
 def handle_set_build_decision(args: Dict[str, Any]) -> Dict[str, Any]:
     """Set build decision."""
-    item_id = args.get("item_id")
-    data = {"build": args.get("build")}
-    return api_proxy.patch(f"/api/shopping/items/{item_id}/build-decision", data=data)
+    try:
+        item_id = args.get("item_id")
+        build = args.get("build")
+        result = shopping_service.update_build_decision(item_id=item_id, build_instead_of_buy=build)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to set build decision: {str(e)}", "isError": True}
 
 
 def handle_calculate_item_materials(args: Dict[str, Any]) -> Dict[str, Any]:
     """Calculate materials for item."""
-    item_id = args.get("item_id")
-    return api_proxy.post(f"/api/shopping/items/{item_id}/calculate-materials")
+    try:
+        item_id = args.get("item_id")
+        result = shopping_service.calculate_materials(item_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to calculate materials: {str(e)}", "isError": True}
 
 
 def handle_apply_materials_to_list(args: Dict[str, Any]) -> Dict[str, Any]:
     """Apply materials to list."""
-    item_id = args.get("item_id")
-    return api_proxy.post(f"/api/shopping/items/{item_id}/apply-materials")
+    try:
+        item_id = args.get("item_id")
+        result = shopping_service.apply_materials(item_id=item_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to apply materials: {str(e)}", "isError": True}
 
 
 def handle_get_item_with_materials(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get item with materials."""
-    item_id = args.get("item_id")
-    return api_proxy.get(f"/api/shopping/items/{item_id}/with-materials")
+    try:
+        item_id = args.get("item_id")
+        result = shopping_service.get_product_with_materials(item_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get item with materials: {str(e)}", "isError": True}
 
 
 def handle_add_production_to_list(args: Dict[str, Any]) -> Dict[str, Any]:
     """Add production to list."""
-    list_id = args.get("list_id")
-    type_id = args.get("type_id")
-    params = {
-        "runs": args.get("runs", 1),
-        "me": args.get("me", 10)
-    }
-    return api_proxy.post(f"/api/shopping/lists/{list_id}/add-production/{type_id}", params=params)
+    try:
+        list_id = args.get("list_id")
+        type_id = args.get("type_id")
+        runs = args.get("runs", 1)
+        me = args.get("me", 10)
+        result = shopping_service.add_materials_from_production(list_id=list_id, type_id=type_id, runs=runs, me_level=me)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to add production to list: {str(e)}", "isError": True}
 
 
 def handle_export_shopping_list(args: Dict[str, Any]) -> Dict[str, Any]:
     """Export shopping list."""
-    list_id = args.get("list_id")
-    return api_proxy.get(f"/api/shopping/lists/{list_id}/export")
+    try:
+        list_id = args.get("list_id")
+        result = shopping_service.export_multibuy(list_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to export shopping list: {str(e)}", "isError": True}
 
 
 def handle_get_list_by_region(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get list grouped by region."""
-    list_id = args.get("list_id")
-    return api_proxy.get(f"/api/shopping/lists/{list_id}/by-region")
+    try:
+        list_id = args.get("list_id")
+        result = shopping_service.get_by_region(list_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get list by region: {str(e)}", "isError": True}
 
 
 def handle_get_regional_comparison(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get regional price comparison."""
-    list_id = args.get("list_id")
-    regions = args.get("regions", "10000002,10000043,10000030,10000032")
-    return api_proxy.get(f"/api/shopping/lists/{list_id}/regional-comparison", params={"regions": regions})
+    try:
+        list_id = args.get("list_id")
+        regions = args.get("regions", "10000002,10000043,10000030,10000032")
+        result = shopping_service.compare_regions(list_id=list_id, regions=regions)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get regional comparison: {str(e)}", "isError": True}
 
 
 def handle_get_cargo_summary(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get cargo summary."""
-    list_id = args.get("list_id")
-    return api_proxy.get(f"/api/shopping/lists/{list_id}/cargo-summary")
+    try:
+        list_id = args.get("list_id")
+        result = shopping_service.get_cargo_summary(list_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get cargo summary: {str(e)}", "isError": True}
 
 
 def handle_get_transport_options(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get transport options."""
-    list_id = args.get("list_id")
-    security = args.get("security", "highsec")
-    return api_proxy.get(f"/api/shopping/lists/{list_id}/transport-options", params={"security": security})
+    try:
+        list_id = args.get("list_id")
+        security = args.get("security", "highsec")
+
+        # Get cargo summary first
+        cargo = shopping_service.get_cargo_summary(list_id)
+        volume = cargo.get("total_volume", 0)
+
+        # Calculate transport options based on volume and security
+        from cargo_service import cargo_service
+        result = cargo_service.get_transport_options(volume=volume, security=security)
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get transport options: {str(e)}", "isError": True}
 
 
 def handle_calculate_shopping_route(args: Dict[str, Any]) -> Dict[str, Any]:
     """Calculate shopping route."""
-    list_id = args.get("list_id")
-    start_system = args.get("start_system")
-    return api_proxy.get("/api/shopping/route", params={"list_id": list_id, "start_system": start_system})
+    try:
+        list_id = args.get("list_id")
+        start_system = args.get("start_system")
+
+        # Get shopping list regions
+        items_by_region = shopping_service.get_by_region(list_id)
+
+        # Calculate optimal route through regions
+        from route_service import route_service
+        result = route_service.calculate_shopping_route(
+            start_system=start_system,
+            items_by_region=items_by_region
+        )
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to calculate shopping route: {str(e)}", "isError": True}
 
 
 def handle_wizard_calculate_materials(args: Dict[str, Any]) -> Dict[str, Any]:
     """Wizard: calculate materials."""
-    data = {
-        "type_id": args.get("type_id"),
-        "quantity": args.get("quantity", 1),
-        "me": args.get("me", 10)
-    }
-    return api_proxy.post("/api/shopping/wizard/calculate-materials", data=data)
+    try:
+        type_id = args.get("type_id")
+        quantity = args.get("quantity", 1)
+        me = args.get("me", 10)
+
+        # Calculate materials for production
+        result = shopping_service.get_product_with_materials(
+            type_id=type_id,
+            quantity=quantity,
+            me_level=me
+        )
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to calculate materials: {str(e)}", "isError": True}
 
 
 def handle_wizard_compare_regions(args: Dict[str, Any]) -> Dict[str, Any]:
     """Wizard: compare regions."""
-    materials = args.get("materials").split(",")
-    regions = args.get("regions", "10000002,10000043,10000030,10000032")
-    data = {
-        "materials": [int(m.strip()) for m in materials],
-        "regions": [int(r.strip()) for r in regions.split(",")]
-    }
-    return api_proxy.post("/api/shopping/wizard/compare-regions", data=data)
+    try:
+        materials_str = args.get("materials")
+        regions = args.get("regions", "10000002,10000043,10000030,10000032")
+
+        # Parse material type IDs
+        material_ids = [int(m.strip()) for m in materials_str.split(",")]
+
+        # Use market service for multi-region comparison
+        from market_service import market_service
+        result = market_service.compare_regions_for_materials(
+            material_type_ids=material_ids,
+            regions=regions
+        )
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to compare regions: {str(e)}", "isError": True}
 
 
 # Handler mapping
