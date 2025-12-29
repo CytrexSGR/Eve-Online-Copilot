@@ -63,6 +63,12 @@ class AgenticStreamingLoop:
         tools = self.mcp.get_tools()
         claude_tools = self.llm.build_tool_schema(tools) if tools else []
 
+        # Detect LLM provider
+        provider = "anthropic"
+        if hasattr(self.llm, "client") and "openai" in str(type(self.llm.client)).lower():
+            provider = "openai"
+        logger.info(f"Detected LLM provider: {provider}")
+
         while iteration < self.max_iterations:
             iteration += 1
             logger.info(f"Agentic loop iteration {iteration}/{self.max_iterations}")
@@ -85,8 +91,8 @@ class AgenticStreamingLoop:
                 "tools": claude_tools,
                 "stream": True
             }):
-                # Process chunk for tool extraction
-                extractor.process_chunk(chunk)
+                # Process chunk for tool extraction with provider info
+                extractor.process_chunk(chunk, provider=provider)
 
                 # Yield text chunks to client
                 if chunk.get("type") == "content_block_delta":

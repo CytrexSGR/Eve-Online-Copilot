@@ -46,3 +46,25 @@ def test_extract_mixed_text_and_tool_calls():
     assert len(tool_calls) == 1
     assert len(text_chunks) == 1
     assert text_chunks[0] == "Let me check"
+
+def test_extract_tool_call_from_openai_stream():
+    """Test extracting function calls from OpenAI streaming chunks."""
+    extractor = ToolCallExtractor()
+
+    # OpenAI uses function_call in delta
+    chunks = [
+        {"choices": [{"delta": {"function_call": {"name": "get_market_price", "arguments": ""}}}]},
+        {"choices": [{"delta": {"function_call": {"arguments": '{"type'}}}]},
+        {"choices": [{"delta": {"function_call": {"arguments": '_id": 34'}}}]},
+        {"choices": [{"delta": {"function_call": {"arguments": '}'}}}]},
+        {"choices": [{"finish_reason": "function_call"}]}
+    ]
+
+    for chunk in chunks:
+        extractor.process_chunk(chunk, provider="openai")
+
+    tool_calls = extractor.get_tool_calls()
+
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["name"] == "get_market_price"
+    assert tool_calls[0]["input"] == {"type_id": 34}

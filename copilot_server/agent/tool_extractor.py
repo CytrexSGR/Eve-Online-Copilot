@@ -11,20 +11,31 @@ logger = logging.getLogger(__name__)
 
 
 class ToolCallExtractor:
-    """Extracts tool calls from streaming LLM responses."""
+    """Extracts tool calls from streaming LLM responses (Anthropic & OpenAI)."""
 
     def __init__(self):
         self.current_blocks: Dict[int, Dict[str, Any]] = {}
         self.completed_tool_calls: List[Dict[str, Any]] = []
         self.text_chunks: List[str] = []
 
-    def process_chunk(self, chunk: Dict[str, Any]) -> None:
+        # OpenAI-specific state
+        self.openai_function_call: Optional[Dict[str, Any]] = None
+
+    def process_chunk(self, chunk: Dict[str, Any], provider: str = "anthropic") -> None:
         """
         Process a single streaming chunk.
 
         Args:
             chunk: Streaming event from LLM
+            provider: "anthropic" or "openai"
         """
+        if provider == "openai":
+            self._process_openai_chunk(chunk)
+        else:
+            self._process_anthropic_chunk(chunk)
+
+    def _process_anthropic_chunk(self, chunk: Dict[str, Any]) -> None:
+        """Process Anthropic streaming chunk (existing logic)."""
         chunk_type = chunk.get("type")
 
         if chunk_type == "content_block_start":
@@ -82,6 +93,55 @@ class ToolCallExtractor:
                 # Remove from current blocks
                 del self.current_blocks[index]
 
+    def _process_openai_chunk(self, chunk: Dict[str, Any]) -> None:
+        """Process OpenAI streaming chunk."""
+        if "choices" not in chunk or not chunk["choices"]:
+            return
+
+        choice = chunk["choices"][0]
+        delta = choice.get("delta", {})
+
+        # Handle text content
+        if "content" in delta and delta["content"]:
+            self.text_chunks.append(delta["content"])
+
+        # Handle function call
+        if "function_call" in delta:
+            func_call = delta["function_call"]
+
+            # Initialize function call on first chunk
+            if self.openai_function_call is None:
+                self.openai_function_call = {
+                    "name": func_call.get("name", ""),
+                    "arguments": ""
+                }
+
+            # Accumulate name
+            if "name" in func_call:
+                self.openai_function_call["name"] = func_call["name"]
+
+            # Accumulate arguments
+            if "arguments" in func_call:
+                self.openai_function_call["arguments"] += func_call["arguments"]
+
+        # Finish reason indicates completion
+        if choice.get("finish_reason") == "function_call":
+            if self.openai_function_call:
+                try:
+                    args = json.loads(self.openai_function_call["arguments"])
+
+                    self.completed_tool_calls.append({
+                        "id": f"call_{len(self.completed_tool_calls)}",
+                        "name": self.openai_function_call["name"],
+                        "input": args
+                    })
+
+                    self.openai_function_call = None
+
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse OpenAI function arguments: {e}")
+                    logger.error(f"Arguments: {self.openai_function_call['arguments']}")
+
     def get_tool_calls(self) -> List[Dict[str, Any]]:
         """Get all completed tool calls."""
         return self.completed_tool_calls
@@ -99,3 +159,4 @@ class ToolCallExtractor:
         self.current_blocks.clear()
         self.completed_tool_calls.clear()
         self.text_chunks.clear()
+        self.openai_function_call = None
