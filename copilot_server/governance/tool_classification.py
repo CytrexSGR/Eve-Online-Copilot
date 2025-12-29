@@ -157,6 +157,12 @@ TOOL_RISK_LEVELS: Dict[str, RiskLevel] = {
     "get_market_tree": RiskLevel.READ_ONLY,
     "scan_opportunities": RiskLevel.READ_ONLY,
     "get_cached_opportunities": RiskLevel.READ_ONLY,
+
+    # PUPPETEER / BROWSER AUTOMATION (3 tools) - WRITE_LOW_RISK
+    # Browser automation for testing/automation (no EVE data changes)
+    "puppeteer_navigate": RiskLevel.WRITE_LOW_RISK,
+    "puppeteer_screenshot": RiskLevel.WRITE_LOW_RISK,
+    "puppeteer_click": RiskLevel.WRITE_LOW_RISK,
 }
 
 
