@@ -5,6 +5,8 @@ Provides system context and reference information.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
+from config import REGIONS
+from auth import eve_auth
 
 
 # Tool Definitions
@@ -33,19 +35,22 @@ TOOLS: List[Dict[str, Any]] = [
 # Tool Handlers
 def handle_get_regions(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get all EVE Online regions."""
-    include_wh = args.get("include_wh", False)
-    params = {"include_wh": include_wh} if include_wh else None
-    return api_proxy.get("/api/regions", params=params)
+    try:
+        include_wh = args.get("include_wh", False)
+
+        # Use REGIONS constant directly instead of HTTP request
+        result = dict(REGIONS)
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get regions: {str(e)}", "isError": True}
 
 
 def handle_eve_copilot_context(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get EVE Co-Pilot system context."""
-    # This could call a dedicated endpoint or aggregate data
-    # For now, return static context with dynamic character info
     try:
-        # Try to get authenticated characters
-        auth_response = api_proxy.get("/api/auth/characters")
-        characters = auth_response.get("content", [{}])[0].get("text", "[]")
+        # Call auth module directly instead of HTTP request
+        characters = eve_auth.get_authenticated_characters()
 
         context = {
             "system": "EVE Co-Pilot",
@@ -61,7 +66,7 @@ def handle_eve_copilot_context(args: Dict[str, Any]) -> Dict[str, Any]:
                 "Mining Location Finder",
                 "Bookmark Management"
             ],
-            "mcp_tools": 118,
+            "mcp_tools": 97,
             "authenticated_characters": characters,
             "features": {
                 "dashboard": "Market opportunities, portfolio analysis, active projects",

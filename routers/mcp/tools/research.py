@@ -5,6 +5,10 @@ Skill requirements and recommendations.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
+from services.research_service import ResearchService
+
+# Create service instance
+research_service = ResearchService()
 
 
 # Tool Definitions
@@ -46,16 +50,29 @@ TOOLS: List[Dict[str, Any]] = [
 # Tool Handlers
 def handle_get_skills_for_item(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get skills for item."""
-    type_id = args.get("type_id")
-    return api_proxy.get(f"/api/research/skills-for-item/{type_id}")
+    try:
+        type_id = args.get("type_id")
+
+        # Call research_service directly instead of HTTP request
+        result = research_service.get_required_skills(type_id)
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get skills for item: {str(e)}", "isError": True}
 
 
 def handle_get_skill_recommendations(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get skill recommendations."""
-    character_id = args.get("character_id")
-    focus = args.get("focus")
-    params = {"focus": focus} if focus else None
-    return api_proxy.get(f"/api/research/recommendations/{character_id}", params=params)
+    try:
+        character_id = args.get("character_id")
+        focus = args.get("focus")
+
+        # Call research_service directly instead of HTTP request
+        result = research_service.get_recommendations(character_id, focus=focus)
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get skill recommendations: {str(e)}", "isError": True}
 
 
 # Handler mapping
