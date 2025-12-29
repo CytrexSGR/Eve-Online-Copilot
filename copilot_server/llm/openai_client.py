@@ -108,6 +108,19 @@ class OpenAIClient:
             raise ValueError("OpenAI client not initialized - missing API key")
 
         try:
+            # Extract system prompt if provided (OpenAI doesn't accept it as separate param)
+            system_prompt = params.pop("system", None)
+            messages = params.get("messages", [])
+
+            # Add system message as first message if provided
+            if system_prompt:
+                messages = [{"role": "system", "content": system_prompt}] + messages
+                params["messages"] = messages
+
+            # Convert tools from Anthropic format to OpenAI format if provided
+            if "tools" in params and params["tools"]:
+                params["tools"] = self._convert_tools(params["tools"])
+
             # Ensure stream=True is set (don't duplicate if already in params)
             stream_params = {**params, "stream": True}
 
