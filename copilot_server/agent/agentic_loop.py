@@ -83,26 +83,47 @@ class AgenticStreamingLoop:
             extractor = ToolCallExtractor()
             assistant_content_blocks = []
 
-            async for chunk in self.llm._stream_response({
+            # Prepare streaming parameters
+            base_params = {
                 "model": self.llm.model,
                 "messages": current_messages,
                 "system": system or "",
                 "max_tokens": 4096,
                 "tools": claude_tools,
                 "stream": True
-            }):
+            }
+
+            # For OpenAI, request raw chunks for tool extraction
+            # For Anthropic, use default (converted) format
+            if provider == "openai":
+                stream_generator = self.llm._stream_response(base_params, convert_format=False)
+            else:
+                stream_generator = self.llm._stream_response(base_params)
+
+            async for chunk in stream_generator:
                 # Process chunk for tool extraction with provider info
                 extractor.process_chunk(chunk, provider=provider)
 
-                # Yield text chunks to client
-                if chunk.get("type") == "content_block_delta":
-                    delta = chunk.get("delta", {})
-                    if delta.get("type") == "text_delta":
-                        text = delta.get("text", "")
-                        yield {
-                            "type": "text",
-                            "text": text
-                        }
+                # Yield text chunks to client (handle both formats)
+                if provider == "openai":
+                    # Raw OpenAI format
+                    if "choices" in chunk and chunk["choices"]:
+                        delta = chunk["choices"][0].get("delta", {})
+                        if "content" in delta and delta["content"]:
+                            yield {
+                                "type": "text",
+                                "text": delta["content"]
+                            }
+                else:
+                    # Anthropic format
+                    if chunk.get("type") == "content_block_delta":
+                        delta = chunk.get("delta", {})
+                        if delta.get("type") == "text_delta":
+                            text = delta.get("text", "")
+                            yield {
+                                "type": "text",
+                                "text": text
+                            }
 
                 # Build assistant content blocks for next turn
                 if chunk.get("type") == "content_block_start":

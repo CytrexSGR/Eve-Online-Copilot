@@ -93,16 +93,18 @@ class OpenAIClient:
 
     async def _stream_response(
         self,
-        params: Dict[str, Any]
+        params: Dict[str, Any],
+        convert_format: bool = True
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Stream chat response from OpenAI.
 
         Args:
             params: Request parameters
+            convert_format: If True, convert to Anthropic format. If False, yield raw OpenAI chunks.
 
         Yields:
-            Event dicts compatible with Anthropic format
+            Event dicts (Anthropic format if convert_format=True, raw OpenAI if False)
         """
         if not self.client:
             raise ValueError("OpenAI client not initialized - missing API key")
@@ -127,22 +129,34 @@ class OpenAIClient:
             stream = await self.client.chat.completions.create(**stream_params)
 
             async for chunk in stream:
-                delta = chunk.choices[0].delta
+                if convert_format:
+                    # Convert to Anthropic format for backward compatibility
+                    delta = chunk.choices[0].delta
 
-                # Yield text delta events (Anthropic-compatible format)
-                if delta.content:
-                    yield {
-                        "type": "content_block_delta",
-                        "delta": {
-                            "type": "text_delta",
-                            "text": delta.content
+                    # Yield text delta events (Anthropic-compatible format)
+                    if delta.content:
+                        yield {
+                            "type": "content_block_delta",
+                            "delta": {
+                                "type": "text_delta",
+                                "text": delta.content
+                            }
                         }
-                    }
 
-                # Yield done event when finished
-                if chunk.choices[0].finish_reason:
+                    # Yield done event when finished
+                    if chunk.choices[0].finish_reason:
+                        yield {
+                            "type": "message_stop"
+                        }
+                else:
+                    # Yield raw OpenAI chunk for tool extraction
                     yield {
-                        "type": "message_stop"
+                        "choices": [
+                            {
+                                "delta": chunk.choices[0].delta.model_dump(),
+                                "finish_reason": chunk.choices[0].finish_reason
+                            }
+                        ]
                     }
 
         except Exception as e:
