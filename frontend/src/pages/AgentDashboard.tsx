@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAgentWebSocket } from '../hooks/useAgentWebSocket';
 import { useSessionPersistence } from '../hooks/useSessionPersistence';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -55,25 +55,28 @@ export default function AgentDashboard() {
     reset: resetStreaming,
   } = useStreamingMessage();
 
+  // Memoize onEvent callback to prevent WebSocket reconnects
+  const handleAgentEvent = useCallback((event: AgentEvent) => {
+    // Check for plan approval required
+    if (isPlanProposedEvent(event) && !event.payload.auto_executing && event.plan_id) {
+      setPendingPlan({
+        planId: event.plan_id,
+        event,
+      });
+    }
+
+    // Clear pending plan when approved/rejected
+    if (
+      event.type === AgentEventType.PLAN_APPROVED ||
+      event.type === AgentEventType.PLAN_REJECTED
+    ) {
+      setPendingPlan(null);
+    }
+  }, []); // No dependencies - uses setState with updater functions
+
   const { events, isConnected, error, clearEvents } = useAgentWebSocket({
     sessionId: sessionId || '',
-    onEvent: (event) => {
-      // Check for plan approval required
-      if (isPlanProposedEvent(event) && !event.payload.auto_executing && event.plan_id) {
-        setPendingPlan({
-          planId: event.plan_id,
-          event,
-        });
-      }
-
-      // Clear pending plan when approved/rejected
-      if (
-        event.type === AgentEventType.PLAN_APPROVED ||
-        event.type === AgentEventType.PLAN_REJECTED
-      ) {
-        setPendingPlan(null);
-      }
-    },
+    onEvent: handleAgentEvent,
   });
 
   // Load chat history when session is created

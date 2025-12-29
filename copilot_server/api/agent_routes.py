@@ -552,6 +552,13 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
                     logger.debug(f"WebSocket ping/pong for session: {session_id}")
 
             except WebSocketDisconnect:
+                logger.info(f"WebSocket client disconnected normally for session: {session_id}")
+                break
+            except Exception as e:
+                logger.error(
+                    f"Error in WebSocket receive loop for session {session_id}: {type(e).__name__}: {e}",
+                    exc_info=True
+                )
                 break
 
     finally:
