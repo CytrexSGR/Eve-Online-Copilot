@@ -11,9 +11,11 @@ from ..llm.anthropic_client import AnthropicClient
 from ..mcp.client import MCPClient
 from ..models.user_settings import UserSettings
 from ..governance.authorization import AuthorizationChecker
+from ..governance.tool_classification import get_tool_risk_level
 from .tool_extractor import ToolCallExtractor
-from .events import ToolCallStartedEvent, ToolCallCompletedEvent
+from .events import ToolCallStartedEvent, ToolCallCompletedEvent, PlanProposedEvent, WaitingForApprovalEvent
 from .sessions import EventBus
+from .approval_manager import ApprovalManager
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,7 @@ class AgenticStreamingLoop:
         self.settings = user_settings
         self.max_iterations = max_iterations
         self.auth_checker = AuthorizationChecker(user_settings)
+        self.approval_manager = ApprovalManager(user_settings.autonomy_level)
         self.event_bus = event_bus  # Optional EventBus for broadcasting
 
     async def execute(
@@ -158,8 +161,101 @@ class AgenticStreamingLoop:
                 yield {"type": "done"}
                 return
 
+            # Enrich tool calls with risk levels
+            for tool_call in tool_calls:
+                try:
+                    risk_level = get_tool_risk_level(tool_call["name"])
+                    tool_call["risk_level"] = risk_level
+                except ValueError:
+                    # Unknown tool - default to CRITICAL
+                    from ..models.user_settings import RiskLevel
+                    tool_call["risk_level"] = RiskLevel.CRITICAL
+                    logger.warning(f"Unknown tool '{tool_call['name']}' - defaulting to CRITICAL risk")
+
+            # Check if any tools require approval
+            requires_approval = any(
+                self.approval_manager.requires_approval(
+                    tc["name"],
+                    tc["input"],
+                    tc["risk_level"]
+                )
+                for tc in tool_calls
+            )
+
+            if requires_approval and session_id:
+                # Create plan and wait for approval
+                logger.info(f"Tool calls require approval at autonomy level {self.settings.autonomy_level}")
+
+                # Build assistant message for conversation
+                assistant_message_content = self._build_assistant_content(assistant_content_blocks)
+                current_messages.append({
+                    "role": "assistant",
+                    "content": assistant_message_content
+                })
+
+                # Create approval plan
+                plan = self.approval_manager.create_approval_plan(
+                    session_id=session_id,
+                    tool_calls=tool_calls,
+                    purpose=f"Execute {len(tool_calls)} tool(s)"
+                )
+
+                # Yield plan_proposed event
+                yield {
+                    "type": "plan_proposed",
+                    "plan_id": plan.id,
+                    "purpose": plan.purpose,
+                    "steps": [
+                        {
+                            "tool": step.tool,
+                            "arguments": step.arguments,
+                            "risk_level": step.risk_level.value
+                        }
+                        for step in plan.steps
+                    ],
+                    "max_risk_level": plan.max_risk_level.value,
+                    "tool_count": len(plan.steps),
+                    "auto_executing": False
+                }
+
+                # Publish PLAN_PROPOSED event to EventBus
+                if self.event_bus:
+                    event = PlanProposedEvent(
+                        session_id=session_id,
+                        plan_id=plan.id,
+                        purpose=plan.purpose,
+                        steps=[
+                            {"tool": step.tool, "arguments": step.arguments}
+                            for step in plan.steps
+                        ],
+                        max_risk_level=plan.max_risk_level.value,
+                        tool_count=len(plan.steps),
+                        auto_executing=False
+                    )
+                    self.event_bus.publish(session_id, event)
+
+                # Yield waiting_for_approval event
+                yield {
+                    "type": "waiting_for_approval",
+                    "plan_id": plan.id,
+                    "message": f"Plan requires approval due to {plan.max_risk_level.value} risk operations"
+                }
+
+                # Publish WAITING_FOR_APPROVAL event to EventBus
+                if self.event_bus:
+                    waiting_event = WaitingForApprovalEvent(
+                        session_id=session_id,
+                        plan_id=plan.id,
+                        message=f"Plan requires approval due to {plan.max_risk_level.value} risk operations"
+                    )
+                    self.event_bus.publish(session_id, waiting_event)
+
+                # Stop execution - wait for user to approve/reject
+                logger.info(f"Waiting for approval of plan {plan.id}")
+                return
+
             # Execute tool calls
-            logger.info(f"Executing {len(tool_calls)} tool calls")
+            logger.info(f"Executing {len(tool_calls)} tool calls (auto-approved)")
 
             # Build assistant message for conversation
             assistant_message_content = self._build_assistant_content(assistant_content_blocks)
