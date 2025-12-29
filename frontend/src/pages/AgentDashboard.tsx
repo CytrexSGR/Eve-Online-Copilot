@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAgentWebSocket } from '../hooks/useAgentWebSocket';
 import { useSessionPersistence } from '../hooks/useSessionPersistence';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -48,6 +48,7 @@ export default function AgentDashboard() {
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const cleanupRef = useRef<(() => void) | null>(null);
   const {
     appendChunk,
     complete: completeStreaming,
@@ -84,6 +85,16 @@ export default function AgentDashboard() {
         .catch((err) => console.error('Failed to load chat history:', err));
     }
   }, [sessionId]);
+
+  // Cleanup streaming on unmount
+  useEffect(() => {
+    return () => {
+      if (cleanupRef.current) {
+        cleanupRef.current();
+        cleanupRef.current = null;
+      }
+    };
+  }, []);
 
   const handleCreateSession = async () => {
     setIsCreatingSession(true);
@@ -176,8 +187,8 @@ export default function AgentDashboard() {
     };
     setChatMessages((prev) => [...prev, assistantMessage]);
 
-    // Stream response
-    agentClient.streamChatResponse(
+    // Stream response and store cleanup function
+    const cleanup = agentClient.streamChatResponse(
       sessionId,
       message,
       selectedCharacter,
@@ -185,36 +196,43 @@ export default function AgentDashboard() {
         // Append chunk to streaming message
         appendChunk(text);
 
-        // Update assistant message with streamed content
+        // Update assistant message with streamed content (immutable)
         setChatMessages((prev) => {
-          const updated = [...prev];
-          const lastMsg = updated[updated.length - 1];
+          const lastIndex = prev.length - 1;
+          const lastMsg = prev[lastIndex];
           if (lastMsg.role === 'assistant') {
-            lastMsg.content += text;
+            return [
+              ...prev.slice(0, lastIndex),
+              { ...lastMsg, content: lastMsg.content + text }
+            ];
           }
-          return updated;
+          return prev;
         });
       },
       (messageId) => {
         // Complete streaming
         completeStreaming();
         setIsSending(false);
+        cleanupRef.current = null;
 
-        // Update message ID
+        // Update message ID (immutable)
         setChatMessages((prev) => {
-          const updated = [...prev];
-          const lastMsg = updated[updated.length - 1];
+          const lastIndex = prev.length - 1;
+          const lastMsg = prev[lastIndex];
           if (lastMsg.role === 'assistant') {
-            lastMsg.id = messageId;
-            lastMsg.isStreaming = false;
+            return [
+              ...prev.slice(0, lastIndex),
+              { ...lastMsg, id: messageId, isStreaming: false }
+            ];
           }
-          return updated;
+          return prev;
         });
       },
       (error) => {
         console.error('Streaming error:', error);
         setIsSending(false);
         completeStreaming();
+        cleanupRef.current = null;
 
         // Show error message
         setChatMessages((prev) => [
@@ -229,6 +247,9 @@ export default function AgentDashboard() {
         ]);
       }
     );
+
+    // Store cleanup function in ref
+    cleanupRef.current = cleanup;
   };
 
   // Filter events based on selected types and search query
