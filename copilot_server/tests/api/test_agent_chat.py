@@ -136,3 +136,55 @@ async def test_get_chat_history():
         # Reset globals
         agent_routes.session_manager = None
         agent_routes.db_pool = None
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_endpoint_should_fail_before_implementation():
+    """
+    Test that /agent/chat/stream endpoint does not exist yet.
+
+    This test should FAIL before implementation and PASS after.
+    Expected to return 404 or 405 before implementation.
+
+    Note: Full SSE streaming testing requires manual testing with curl/browser
+    as AsyncClient doesn't handle streaming well.
+    """
+    # Create session manager for session creation
+    session_manager = AgentSessionManager()
+    await session_manager.startup()
+
+    try:
+        # Create session
+        session = await session_manager.create_session(
+            character_id=526379435,
+            autonomy_level=AutonomyLevel.RECOMMENDATIONS
+        )
+        session_id = session.id
+
+        # Test that endpoint does not exist yet
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/agent/chat/stream",
+                json={
+                    "message": "Test streaming message",
+                    "session_id": session_id,
+                    "character_id": 526379435
+                },
+                timeout=5.0
+            )
+
+            # Before implementation: expect 404 (not found) or 405 (method not allowed)
+            # After implementation: expect 200 (success) or 500 (server error if not initialized)
+            # This assertion should FAIL before implementation
+            assert response.status_code in [200, 500], \
+                f"Expected endpoint to exist and return 200 or 500, got {response.status_code}"
+
+        # Cleanup
+        conn = await asyncpg.connect(DATABASE_URL)
+        await conn.execute("DELETE FROM agent_messages WHERE session_id = $1", session_id)
+        await conn.execute("DELETE FROM agent_sessions WHERE id = $1", session_id)
+        await conn.close()
+
+    finally:
+        # Clean up
+        await session_manager.shutdown()

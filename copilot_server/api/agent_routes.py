@@ -7,6 +7,7 @@ import asyncio
 import logging
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import asyncpg
@@ -16,6 +17,7 @@ from ..agent.runtime import AgentRuntime
 from ..agent.models import SessionStatus, PlanStatus
 from ..agent.events import AgentEvent
 from ..agent.messages import AgentMessage, MessageRepository
+from ..agent.streaming import SSEFormatter, stream_llm_response
 from ..models.user_settings import get_default_settings
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,8 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 session_manager: Optional[AgentSessionManager] = None
 runtime: Optional[AgentRuntime] = None
 db_pool: Optional[asyncpg.Pool] = None
+llm_client: Optional[Any] = None  # AnthropicClient
+mcp_client: Optional[Any] = None  # MCPClient
 
 
 class ChatRequest(BaseModel):
@@ -58,6 +62,13 @@ class ChatHistoryResponse(BaseModel):
     session_id: str
     messages: List[Dict[str, Any]]
     message_count: int
+
+
+class ChatStreamRequest(BaseModel):
+    """Request to stream chat response."""
+    message: str
+    session_id: str
+    character_id: int
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -182,6 +193,92 @@ async def get_chat_history(session_id: str, limit: int = 100):
         session_id=session_id,
         messages=message_dicts,
         message_count=len(message_dicts)
+    )
+
+
+@router.post("/chat/stream")
+async def stream_chat_response(request: ChatStreamRequest):
+    """
+    Stream chat response via SSE.
+
+    Sends Server-Sent Events for real-time streaming.
+    Client should use EventSource to consume.
+    """
+    if not session_manager or not runtime or not db_pool or not llm_client:
+        raise HTTPException(status_code=500, detail="Services not initialized")
+
+    # Load session
+    session = await session_manager.load_session(request.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Save user message
+    async with db_pool.acquire() as conn:
+        repo = MessageRepository(conn)
+        user_message = AgentMessage.create(
+            session_id=session.id,
+            role="user",
+            content=request.message
+        )
+        await repo.save(user_message)
+
+    # Add to session
+    session.add_message("user", request.message)
+    await session_manager.save_session(session)
+
+    # Stream response
+    async def event_generator():
+        formatter = SSEFormatter()
+        full_response = ""
+
+        try:
+            # Get conversation history
+            messages = session.get_messages_for_api()
+
+            # Get user settings and tools
+            user_settings = get_default_settings(character_id=request.character_id or -1)
+            tools = mcp_client.get_tools() if mcp_client else []
+
+            # Stream LLM response
+            async for chunk in stream_llm_response(
+                llm_client,
+                messages,
+                tools,
+                system=None
+            ):
+                if chunk.get("type") == "text":
+                    text = chunk.get("text", "")
+                    full_response += text
+                    yield formatter.format_text_chunk(text)
+                elif chunk.get("type") == "error":
+                    yield formatter.format_error(chunk.get("error", "Unknown error"))
+                    return
+
+            # Save assistant response
+            async with db_pool.acquire() as conn:
+                repo = MessageRepository(conn)
+                assistant_message = AgentMessage.create(
+                    session_id=session.id,
+                    role="assistant",
+                    content=full_response
+                )
+                await repo.save(assistant_message)
+
+            # Send completion
+            yield formatter.format_done(assistant_message.id)
+
+        except Exception as e:
+            logger.error(f"Stream error: {e}")
+            yield formatter.format_error(str(e))
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
     )
 
 

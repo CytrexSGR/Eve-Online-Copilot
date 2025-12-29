@@ -125,8 +125,12 @@ async def startup():
         # Set globals for routes
         agent_routes.session_manager = agent_session_manager
         agent_routes.runtime = agent_runtime
+        agent_routes.llm_client = llm_client
+        agent_routes.mcp_client = mcp_client
 
         logger.info("Agent Runtime initialized")
+        logger.info("LLM client initialized for agent routes")
+        logger.info("MCP client initialized for agent routes")
     except Exception as e:
         logger.error(f"Failed to initialize Agent Runtime: {e}")
         logger.warning("Agent Runtime endpoints will not be available")
@@ -168,6 +172,13 @@ async def shutdown():
             logger.info("Database pool closed")
         except Exception as e:
             logger.error(f"Error closing database pool: {e}")
+
+    # Reset agent_routes globals
+    agent_routes.session_manager = None
+    agent_routes.runtime = None
+    agent_routes.db_pool = None
+    agent_routes.llm_client = None
+    agent_routes.mcp_client = None
 
     logger.info("Server stopped")
 
