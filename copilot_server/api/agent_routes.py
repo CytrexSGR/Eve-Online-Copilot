@@ -72,6 +72,48 @@ class ChatStreamRequest(BaseModel):
     character_id: int
 
 
+class SessionCreateRequest(BaseModel):
+    """Request to create new session."""
+    character_id: Optional[int] = None
+    autonomy_level: int = 1
+
+
+class SessionCreateResponse(BaseModel):
+    """Session creation response."""
+    session_id: str
+    character_id: Optional[int]
+    autonomy_level: int
+    status: str
+
+
+@router.post("/session", response_model=SessionCreateResponse)
+async def create_session(request: SessionCreateRequest):
+    """
+    Create new agent session.
+
+    Args:
+        request: Session creation request
+
+    Returns:
+        Session details
+    """
+    if not session_manager:
+        raise HTTPException(status_code=500, detail="Session manager not initialized")
+
+    # Create new session
+    session = await session_manager.create_session(
+        character_id=request.character_id or -1,
+        autonomy_level=request.autonomy_level
+    )
+
+    return SessionCreateResponse(
+        session_id=session.id,
+        character_id=session.character_id,
+        autonomy_level=session.autonomy_level.value,
+        status=session.status.value
+    )
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def agent_chat(
     request: ChatRequest,
