@@ -300,131 +300,204 @@ TOOLS: List[Dict[str, Any]] = [
 # Tool Handlers
 def handle_get_war_losses(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get war losses for region."""
-    region_id = args.get("region_id")
-    params = {
-        "days": args.get("days", 7),
-        "type": args.get("type", "all")
-    }
-    return api_proxy.get(f"/api/war/losses/{region_id}", params=params)
+    try:
+        region_id = args.get("region_id")
+        days = args.get("days", 7)
+        loss_type = args.get("type", "all")
+
+        result = killmail_service.get_losses(
+            region_id=region_id,
+            days=days,
+            loss_type=loss_type
+        )
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get war losses: {str(e)}", "isError": True}
 
 
 def handle_get_war_demand(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get war demand analysis."""
-    region_id = args.get("region_id")
-    params = {
-        "days": args.get("days", 7),
-        "min_gap": args.get("min_gap", 10)
-    }
-    return api_proxy.get(f"/api/war/demand/{region_id}", params=params)
+    try:
+        region_id = args.get("region_id")
+        days = args.get("days", 7)
+        min_gap = args.get("min_gap", 10)
+
+        result = war_analyzer.get_demand(
+            region_id=region_id,
+            days=days,
+            min_gap=min_gap
+        )
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get war demand: {str(e)}", "isError": True}
 
 
 def handle_get_war_heatmap(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get combat heatmap."""
-    params = {
-        "days": args.get("days", 7),
-        "min_kills": args.get("min_kills", 5)
-    }
-    return api_proxy.get("/api/war/heatmap", params=params)
+    try:
+        days = args.get("days", 7)
+        min_kills = args.get("min_kills", 5)
+
+        result = killmail_service.get_heatmap(days=days, min_kills=min_kills)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get combat heatmap: {str(e)}", "isError": True}
 
 
 def handle_get_war_campaigns(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get sov campaigns."""
-    region_id = args.get("region_id")
-    params = {"region_id": region_id} if region_id else None
-    return api_proxy.get("/api/war/campaigns", params=params)
+    try:
+        region_id = args.get("region_id")
+
+        result = sovereignty_service.get_campaigns(region_id=region_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get sov campaigns: {str(e)}", "isError": True}
 
 
 def handle_update_war_campaigns(args: Dict[str, Any]) -> Dict[str, Any]:
     """Update sov campaigns."""
-    return api_proxy.get("/api/war/campaigns/update")
+    try:
+        result = sovereignty_service.update_campaigns()
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to update sov campaigns: {str(e)}", "isError": True}
 
 
 def handle_get_war_fw_hotspots(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get FW hotspots."""
-    faction = args.get("faction")
-    params = {"faction": faction} if faction else None
-    return api_proxy.get("/api/war/fw/hotspots", params=params)
+    try:
+        faction = args.get("faction")
+
+        result = fw_service.get_hotspots(faction=faction)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get FW hotspots: {str(e)}", "isError": True}
 
 
 def handle_get_war_fw_vulnerable(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get vulnerable FW systems."""
-    min_contested = args.get("min_contested", 50)
-    return api_proxy.get("/api/war/fw/vulnerable", params={"min_contested": min_contested})
+    try:
+        min_contested = args.get("min_contested", 50)
+
+        result = fw_service.get_vulnerable(min_contested=min_contested)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get vulnerable FW systems: {str(e)}", "isError": True}
 
 
 def handle_update_war_fw(args: Dict[str, Any]) -> Dict[str, Any]:
     """Update FW status."""
-    return api_proxy.get("/api/war/fw/update")
+    try:
+        result = fw_service.update_status()
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to update FW status: {str(e)}", "isError": True}
 
 
 def handle_get_war_doctrines(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get doctrine detection."""
-    region_id = args.get("region_id")
-    params = {
-        "days": args.get("days", 7),
-        "min_fleet_size": args.get("min_fleet_size", 10)
-    }
-    return api_proxy.get(f"/api/war/doctrines/{region_id}", params=params)
+    try:
+        region_id = args.get("region_id")
+        days = args.get("days", 7)
+        min_fleet_size = args.get("min_fleet_size", 10)
+
+        result = war_analyzer.get_doctrines(
+            region_id=region_id,
+            days=days,
+            min_fleet_size=min_fleet_size
+        )
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get war doctrines: {str(e)}", "isError": True}
 
 
 def handle_get_war_conflicts(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get alliance conflicts."""
-    alliance_id = args.get("alliance_id")
-    params = {"alliance_id": alliance_id} if alliance_id else None
-    return api_proxy.get("/api/war/conflicts", params=params)
+    try:
+        alliance_id = args.get("alliance_id")
+
+        result = war_analyzer.get_conflicts(alliance_id=alliance_id)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get war conflicts: {str(e)}", "isError": True}
 
 
 def handle_get_system_danger(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get system danger score."""
-    system_id = args.get("system_id")
-    hours = args.get("hours", 24)
-    return api_proxy.get(f"/api/war/system/{system_id}/danger", params={"hours": hours})
+    try:
+        system_id = args.get("system_id")
+        hours = args.get("hours", 24)
+
+        result = killmail_service.get_system_danger(system_id=system_id, hours=hours)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get system danger: {str(e)}", "isError": True}
 
 
 def handle_get_war_summary(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get regional combat summary."""
-    region_id = args.get("region_id")
-    days = args.get("days", 7)
-    return api_proxy.get("/api/war/summary", params={"region_id": region_id, "days": days})
+    try:
+        region_id = args.get("region_id")
+        days = args.get("days", 7)
+
+        result = killmail_service.get_summary(region_id=region_id, days=days)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get war summary: {str(e)}", "isError": True}
 
 
 def handle_get_war_top_ships(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get top destroyed ships."""
-    params = {
-        "days": args.get("days", 7),
-        "limit": args.get("limit", 50)
-    }
-    return api_proxy.get("/api/war/top-ships", params=params)
+    try:
+        days = args.get("days", 7)
+        limit = args.get("limit", 50)
+
+        result = killmail_service.get_top_ships(days=days, limit=limit)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get top ships: {str(e)}", "isError": True}
 
 
 def handle_get_safe_route(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get safe route with danger scores."""
-    from_system = args.get("from_system")
-    to_system = args.get("to_system")
-    avoid_dangerous = args.get("avoid_dangerous", False)
-    return api_proxy.get(
-        f"/api/war/route/safe/{from_system}/{to_system}",
-        params={"avoid_dangerous": avoid_dangerous}
-    )
+    try:
+        from_system = args.get("from_system")
+        to_system = args.get("to_system")
+        avoid_dangerous = args.get("avoid_dangerous", False)
+
+        result = route_service.get_safe_route(
+            from_system=from_system,
+            to_system=to_system,
+            avoid_dangerous=avoid_dangerous
+        )
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get safe route: {str(e)}", "isError": True}
 
 
 def handle_get_item_combat_stats(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get item combat statistics."""
-    type_id = args.get("type_id")
-    days = args.get("days", 30)
-    return api_proxy.get(f"/api/war/item/{type_id}/stats", params={"days": days})
+    try:
+        type_id = args.get("type_id")
+        days = args.get("days", 30)
+
+        result = killmail_service.get_item_stats(type_id=type_id, days=days)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get item combat stats: {str(e)}", "isError": True}
 
 
 def handle_get_war_alerts(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get war room alerts."""
-    params = {}
-    if args.get("region_id"):
-        params["region_id"] = args.get("region_id")
-    if args.get("hours"):
-        params["hours"] = args.get("hours")
-    else:
-        params["hours"] = 6
-    return api_proxy.get("/api/war/alerts", params=params if params else None)
+    try:
+        region_id = args.get("region_id")
+        hours = args.get("hours", 6)
+
+        result = war_analyzer.get_alerts(region_id=region_id, hours=hours)
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get war alerts: {str(e)}", "isError": True}
 
 
 # Handler mapping
