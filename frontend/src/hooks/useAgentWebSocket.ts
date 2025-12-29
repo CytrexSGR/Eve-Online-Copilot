@@ -38,9 +38,17 @@ export function useAgentWebSocket({
   const reconnectTimeoutRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const pingIntervalRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 5; // Stop after 5 failed attempts
 
   const connect = useCallback(() => {
     if (!mountedRef.current) return;
+
+    // Don't connect if session ID is empty
+    if (!sessionId || sessionId.trim() === '') {
+      console.log('[AgentWS] Skipping connection - no session ID');
+      return;
+    }
 
     try {
       const ws = new WebSocket(`${WS_URL}/agent/stream/${sessionId}`);
@@ -51,6 +59,7 @@ export function useAgentWebSocket({
         console.log(`[AgentWS] Connected to session ${sessionId}`);
         setIsConnected(true);
         setError(null);
+        reconnectAttemptsRef.current = 0; // Reset counter on successful connection
         onConnect?.();
 
         // Clear any existing ping interval before creating new one
@@ -111,10 +120,17 @@ export function useAgentWebSocket({
 
         // Auto-reconnect if enabled and not a normal closure
         if (autoReconnect && event.code !== 1000) {
-          console.log(`[AgentWS] Reconnecting in ${reconnectInterval}ms...`);
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connect();
-          }, reconnectInterval);
+          reconnectAttemptsRef.current++;
+
+          if (reconnectAttemptsRef.current <= maxReconnectAttempts) {
+            console.log(`[AgentWS] Reconnecting in ${reconnectInterval}ms... (Attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
+            reconnectTimeoutRef.current = setTimeout(() => {
+              connect();
+            }, reconnectInterval);
+          } else {
+            console.log(`[AgentWS] Max reconnect attempts (${maxReconnectAttempts}) reached. Stopping.`);
+            setError('WebSocket connection failed after multiple attempts');
+          }
         }
       };
     } catch (err) {
@@ -123,16 +139,24 @@ export function useAgentWebSocket({
 
       // Attempt reconnect if enabled
       if (autoReconnect && mountedRef.current) {
-        console.log(`[AgentWS] Reconnecting in ${reconnectInterval}ms...`);
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, reconnectInterval);
+        reconnectAttemptsRef.current++;
+
+        if (reconnectAttemptsRef.current <= maxReconnectAttempts) {
+          console.log(`[AgentWS] Reconnecting in ${reconnectInterval}ms... (Attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, reconnectInterval);
+        } else {
+          console.log(`[AgentWS] Max reconnect attempts (${maxReconnectAttempts}) reached. Stopping.`);
+          setError('WebSocket connection failed after multiple attempts');
+        }
       }
     }
   }, [sessionId, onEvent, onConnect, onDisconnect, onError, autoReconnect, reconnectInterval]);
 
   useEffect(() => {
     mountedRef.current = true;
+    reconnectAttemptsRef.current = 0; // Reset counter on session change
     connect();
 
     return () => {
