@@ -113,19 +113,50 @@ def handle_get_trade_hubs(args: Dict[str, Any]) -> Dict[str, Any]:
 
 def handle_get_hub_distances(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get hub distances."""
-    from_system = args.get("from_system")
-    return api_proxy.get(f"/api/route/distances/{from_system}")
+    try:
+        from_system = args.get("from_system")
+        # Call route_service directly instead of HTTP request
+        distances = route_service.get_hub_distances(from_system)
+        return {"content": [{"type": "text", "text": str(distances)}]}
+    except Exception as e:
+        return {"error": f"Failed to get hub distances: {str(e)}", "isError": True}
 
 
 def handle_calculate_system_route(args: Dict[str, Any]) -> Dict[str, Any]:
     """Calculate route."""
-    from_system = args.get("from_system")
-    to_system = args.get("to_system")
-    avoid_lowsec = args.get("avoid_lowsec", False)
-    return api_proxy.get(
-        f"/api/route/{from_system}/{to_system}",
-        params={"avoid_lowsec": avoid_lowsec}
-    )
+    try:
+        from_system = args.get("from_system")
+        to_system = args.get("to_system")
+        avoid_lowsec = args.get("avoid_lowsec", False)
+
+        # Call route_service directly instead of HTTP request
+        from_sys = route_service.get_system_by_name(from_system)
+        to_sys = route_service.get_system_by_name(to_system)
+
+        if not from_sys:
+            return {"error": f"System not found: {from_system}", "isError": True}
+        if not to_sys:
+            return {"error": f"System not found: {to_system}", "isError": True}
+
+        route = route_service.find_route(
+            from_sys['system_id'], to_sys['system_id'],
+            avoid_lowsec=avoid_lowsec, avoid_nullsec=True
+        )
+
+        if not route:
+            return {"error": "No route found", "isError": True}
+
+        travel_time = route_service.calculate_travel_time(route)
+        result = {
+            "from": from_sys, "to": to_sys,
+            "route": route, "travel_time": travel_time,
+            "highsec_only": avoid_lowsec,
+            "waypoints": [r['system_name'] for r in route]
+        }
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to calculate route: {str(e)}", "isError": True}
 
 
 def handle_calculate_route_with_danger(args: Dict[str, Any]) -> Dict[str, Any]:

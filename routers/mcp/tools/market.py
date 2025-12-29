@@ -265,9 +265,35 @@ def handle_get_market_stats(args: Dict[str, Any]) -> Dict[str, Any]:
 
 def handle_compare_region_prices(args: Dict[str, Any]) -> Dict[str, Any]:
     """Compare prices across regions."""
-    type_id = args.get("type_id")
-    regions = args.get("regions", "10000002,10000043,10000030,10000032")
-    return api_proxy.get(f"/api/market/compare/{type_id}", params={"regions": regions})
+    try:
+        type_id = args.get("type_id")
+
+        # Call esi_client directly instead of HTTP request
+        prices = esi_client.get_all_region_prices(type_id)
+        item = get_item_info(type_id)
+        item_name = item["typeName"] if item else f"Type {type_id}"
+
+        best_buy = {"region": None, "price": float('inf')}
+        best_sell = {"region": None, "price": 0}
+
+        for region, data in prices.items():
+            if data.get("lowest_sell") and data["lowest_sell"] < best_buy["price"]:
+                best_buy = {"region": region, "price": data["lowest_sell"]}
+            if data.get("highest_buy") and data["highest_buy"] > best_sell["price"]:
+                best_sell = {"region": region, "price": data["highest_buy"]}
+
+        result = {
+            "type_id": type_id, "item_name": item_name,
+            "prices_by_region": prices,
+            "best_buy_region": best_buy["region"],
+            "best_buy_price": best_buy["price"] if best_buy["price"] != float('inf') else None,
+            "best_sell_region": best_sell["region"],
+            "best_sell_price": best_sell["price"] if best_sell["price"] > 0 else None,
+        }
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to compare region prices: {str(e)}", "isError": True}
 
 
 def handle_find_arbitrage(args: Dict[str, Any]) -> Dict[str, Any]:
