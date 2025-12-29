@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAgentWebSocket } from '../hooks/useAgentWebSocket';
 import { useSessionPersistence } from '../hooks/useSessionPersistence';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -7,7 +7,11 @@ import { PlanApprovalCard } from '../components/agent/PlanApprovalCard';
 import { CharacterSelector, type Character } from '../components/agent/CharacterSelector';
 import { EventFilter } from '../components/agent/EventFilter';
 import { EventSearch } from '../components/agent/EventSearch';
+import { ChatMessageInput } from '../components/agent/ChatMessageInput';
+import { MessageHistory } from '../components/agent/MessageHistory';
+import { useStreamingMessage } from '../hooks/useStreamingMessage';
 import { agentClient } from '../api/agent-client';
+import type { ChatMessage } from '../types/chat-messages';
 import {
   AgentEventType,
   isPlanProposedEvent,
@@ -41,6 +45,15 @@ export default function AgentDashboard() {
   const [eventFilters, setEventFilters] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isSending, setIsSending] = useState(false);
+  const {
+    appendChunk,
+    complete: completeStreaming,
+    reset: resetStreaming,
+  } = useStreamingMessage();
+
   const { events, isConnected, error, clearEvents } = useAgentWebSocket({
     sessionId: sessionId || '',
     onEvent: (event) => {
@@ -61,6 +74,16 @@ export default function AgentDashboard() {
       }
     },
   });
+
+  // Load chat history when session is created
+  useEffect(() => {
+    if (sessionId) {
+      agentClient
+        .getChatHistory(sessionId)
+        .then((messages) => setChatMessages(messages))
+        .catch((err) => console.error('Failed to load chat history:', err));
+    }
+  }, [sessionId]);
 
   const handleCreateSession = async () => {
     setIsCreatingSession(true);
@@ -114,6 +137,7 @@ export default function AgentDashboard() {
       clearPersistedSession(); // Clear from localStorage
       clearEvents();
       setPendingPlan(null);
+      setChatMessages([]); // Clear chat messages
     } catch (error) {
       console.error('Failed to end session:', error);
       // Even if delete fails, reset local state
@@ -121,7 +145,90 @@ export default function AgentDashboard() {
       clearPersistedSession(); // Clear from localStorage
       clearEvents();
       setPendingPlan(null);
+      setChatMessages([]); // Clear chat messages
     }
+  };
+
+  // Handle send message
+  const handleSendMessage = async (message: string) => {
+    if (!sessionId || !selectedCharacter) return;
+
+    setIsSending(true);
+    resetStreaming();
+
+    // Add user message immediately
+    const userMessage: ChatMessage = {
+      id: `temp-${Date.now()}`,
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString(),
+      isStreaming: false,
+    };
+    setChatMessages((prev) => [...prev, userMessage]);
+
+    // Create assistant message placeholder
+    const assistantMessage: ChatMessage = {
+      id: `temp-assistant-${Date.now()}`,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toISOString(),
+      isStreaming: true,
+    };
+    setChatMessages((prev) => [...prev, assistantMessage]);
+
+    // Stream response
+    agentClient.streamChatResponse(
+      sessionId,
+      message,
+      selectedCharacter,
+      (text) => {
+        // Append chunk to streaming message
+        appendChunk(text);
+
+        // Update assistant message with streamed content
+        setChatMessages((prev) => {
+          const updated = [...prev];
+          const lastMsg = updated[updated.length - 1];
+          if (lastMsg.role === 'assistant') {
+            lastMsg.content += text;
+          }
+          return updated;
+        });
+      },
+      (messageId) => {
+        // Complete streaming
+        completeStreaming();
+        setIsSending(false);
+
+        // Update message ID
+        setChatMessages((prev) => {
+          const updated = [...prev];
+          const lastMsg = updated[updated.length - 1];
+          if (lastMsg.role === 'assistant') {
+            lastMsg.id = messageId;
+            lastMsg.isStreaming = false;
+          }
+          return updated;
+        });
+      },
+      (error) => {
+        console.error('Streaming error:', error);
+        setIsSending(false);
+        completeStreaming();
+
+        // Show error message
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: `error-${Date.now()}`,
+            role: 'system',
+            content: `Error: ${error}. Please try again.`,
+            timestamp: new Date().toISOString(),
+            isStreaming: false,
+          },
+        ]);
+      }
+    );
   };
 
   // Filter events based on selected types and search query
@@ -266,6 +373,27 @@ export default function AgentDashboard() {
               onReject={handleRejectPlan}
             />
           )}
+
+          {/* Chat Interface */}
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+            <h3 className="text-lg font-semibold text-gray-100 mb-4">Chat</h3>
+
+            <MessageHistory
+              messages={chatMessages}
+              autoScroll={true}
+              maxHeight="400px"
+            />
+
+            <ChatMessageInput
+              onSend={handleSendMessage}
+              disabled={!sessionId || isSending}
+              placeholder={
+                sessionId
+                  ? 'Type your message... (Ctrl+Enter to send)'
+                  : 'Create a session first'
+              }
+            />
+          </div>
 
           {/* Event Stream */}
           <div>

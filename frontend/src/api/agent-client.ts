@@ -1,4 +1,5 @@
 import { api } from '../api'; // Existing axios instance
+import type { ChatMessage } from '../types/chat-messages';
 
 export interface CreateSessionRequest {
   character_id?: number;
@@ -92,5 +93,126 @@ export const agentClient = {
    */
   deleteSession: async (sessionId: string): Promise<void> => {
     await api.delete(`/agent/session/${sessionId}`);
+  },
+
+  /**
+   * Send a message (non-streaming, saves to database)
+   */
+  sendMessage: async (
+    sessionId: string,
+    message: string,
+    characterId: number
+  ): Promise<void> => {
+    await api.post('/agent/chat', {
+      message,
+      session_id: sessionId,
+      character_id: characterId,
+    });
+  },
+
+  /**
+   * Get chat history for a session
+   */
+  getChatHistory: async (sessionId: string): Promise<ChatMessage[]> => {
+    const response = await api.get(`/agent/chat/history/${sessionId}`);
+    return response.data.messages.map((msg: any) => ({
+      id: msg.id,
+      role: msg.role as 'user' | 'assistant' | 'system',
+      content: msg.content,
+      timestamp: msg.created_at,
+      isStreaming: false,
+    }));
+  },
+
+  /**
+   * Stream chat response via SSE
+   * Note: Uses fetch API since EventSource doesn't support POST with body
+   */
+  streamChatResponse: (
+    sessionId: string,
+    message: string,
+    characterId: number,
+    onChunk: (text: string) => void,
+    onDone: (messageId: string) => void,
+    onError: (error: string) => void
+  ): (() => void) => {
+    const controller = new AbortController();
+
+    // Start the streaming request
+    (async () => {
+      try {
+        const response = await fetch('/agent/chat/stream', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message,
+            session_id: sessionId,
+            character_id: characterId,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('Response body is not readable');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) break;
+
+          // Decode the chunk and add to buffer
+          buffer += decoder.decode(value, { stream: true });
+
+          // Process complete SSE messages (separated by \n\n)
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || ''; // Keep incomplete message in buffer
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+
+            // SSE format: "data: <json>"
+            const dataMatch = line.match(/^data: (.+)$/m);
+            if (dataMatch) {
+              try {
+                const data = JSON.parse(dataMatch[1]);
+
+                if (data.type === 'text') {
+                  onChunk(data.text);
+                } else if (data.type === 'done') {
+                  onDone(data.message_id);
+                  return; // Stream complete
+                } else if (data.type === 'error') {
+                  onError(data.error);
+                  return;
+                }
+              } catch (e) {
+                console.error('Failed to parse SSE event:', e);
+              }
+            }
+          }
+        }
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          console.log('Stream aborted');
+        } else {
+          console.error('Stream error:', error);
+          onError(error.message || 'Connection error');
+        }
+      }
+    })();
+
+    // Return cleanup function
+    return () => controller.abort();
   },
 };
