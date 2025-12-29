@@ -20,6 +20,7 @@ from ..agent.messages import AgentMessage, MessageRepository
 from ..agent.streaming import SSEFormatter, stream_llm_response
 from ..models.user_settings import get_default_settings
 from .middleware import verify_session_access, validate_message_content
+from ..config import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -317,12 +318,12 @@ async def stream_chat_response(
             user_settings = get_default_settings(character_id=request.character_id or -1)
             tools = mcp_client.get_tools() if mcp_client else []
 
-            # Stream LLM response
+            # Stream LLM response with system prompt
             async for chunk in stream_llm_response(
                 llm_client,
                 messages,
                 tools,
-                system=None
+                system=SYSTEM_PROMPT
             ):
                 if chunk.get("type") == "text":
                     text = chunk.get("text", "")
