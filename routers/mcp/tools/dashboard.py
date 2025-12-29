@@ -5,6 +5,12 @@ Dashboard overview and portfolio analysis.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
+from services.dashboard_service import DashboardService
+from services.portfolio_service import PortfolioService
+
+# Create service instances
+dashboard_service = DashboardService()
+portfolio_service = PortfolioService()
 
 
 # Tool Definitions
@@ -54,30 +60,100 @@ TOOLS: List[Dict[str, Any]] = [
 # Tool Handlers
 def handle_get_market_opportunities(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get market opportunities."""
-    category = args.get("category")
-    params = {"category": category} if category else None
-    return api_proxy.get("/api/dashboard/opportunities", params=params)
+    try:
+        category = args.get("category")
+
+        # Call dashboard_service directly instead of HTTP request
+        opportunities = dashboard_service.get_opportunities(limit=20)
+
+        # Filter by category if specified
+        if category:
+            opportunities = [opp for opp in opportunities if opp.get("category") == category]
+
+        return {"content": [{"type": "text", "text": str(opportunities)}]}
+    except Exception as e:
+        return {"error": f"Failed to get market opportunities: {str(e)}", "isError": True}
 
 
 def handle_get_opportunities_by_category(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get opportunities by category."""
-    category = args.get("category")
-    return api_proxy.get(f"/api/dashboard/opportunities/{category}")
+    try:
+        category = args.get("category")
+
+        # Call dashboard_service directly instead of HTTP request
+        opportunities = dashboard_service.get_opportunities(limit=50)
+        filtered = [opp for opp in opportunities if opp.get("category") == category]
+
+        return {"content": [{"type": "text", "text": str(filtered)}]}
+    except Exception as e:
+        return {"error": f"Failed to get opportunities by category: {str(e)}", "isError": True}
 
 
 def handle_get_characters_summary(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get characters summary."""
-    return api_proxy.get("/api/dashboard/characters/summary")
+    try:
+        from auth import eve_auth
+
+        # Get authenticated character IDs
+        characters = eve_auth.get_authenticated_characters()
+        character_ids = [char["character_id"] for char in characters]
+
+        # Call portfolio_service directly instead of HTTP request
+        summaries = portfolio_service.get_character_summaries(character_ids)
+
+        return {"content": [{"type": "text", "text": str(summaries)}]}
+    except Exception as e:
+        return {"error": f"Failed to get characters summary: {str(e)}", "isError": True}
 
 
 def handle_get_portfolio_analysis(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get portfolio analysis."""
-    return api_proxy.get("/api/dashboard/characters/portfolio")
+    try:
+        from auth import eve_auth
+
+        # Get authenticated character IDs
+        characters = eve_auth.get_authenticated_characters()
+        character_ids = [char["character_id"] for char in characters]
+
+        # Call portfolio_service directly instead of HTTP request
+        total_value = portfolio_service.get_total_portfolio_value(character_ids)
+        summaries = portfolio_service.get_character_summaries(character_ids)
+
+        result = {
+            "total_portfolio_value": total_value,
+            "characters": summaries
+        }
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get portfolio analysis: {str(e)}", "isError": True}
 
 
 def handle_get_active_projects(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get active projects."""
-    return api_proxy.get("/api/dashboard/projects")
+    try:
+        from auth import eve_auth
+        from character import character_api
+
+        # Get authenticated character IDs
+        characters = eve_auth.get_authenticated_characters()
+
+        # Collect active industry jobs from all characters
+        projects = []
+        for char in characters:
+            char_id = char["character_id"]
+            jobs = character_api.get_industry_jobs(char_id, include_completed=False)
+            if isinstance(jobs, dict) and "jobs" in jobs:
+                projects.extend(jobs["jobs"])
+
+        result = {
+            "total_projects": len(projects),
+            "projects": projects
+        }
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get active projects: {str(e)}", "isError": True}
 
 
 # Handler mapping

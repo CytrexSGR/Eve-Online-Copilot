@@ -5,6 +5,7 @@ Bookmark and bookmark list management.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
+from bookmark_service import bookmark_service
 
 
 # Tool Definitions
@@ -139,63 +140,128 @@ TOOLS: List[Dict[str, Any]] = [
 # Tool Handlers
 def handle_create_bookmark(args: Dict[str, Any]) -> Dict[str, Any]:
     """Create bookmark."""
-    data = {
-        "type_id": args.get("type_id"),
-        "notes": args.get("notes", "")
-    }
-    return api_proxy.post("/api/bookmarks", data=data)
+    try:
+        type_id = args.get("type_id")
+        notes = args.get("notes", "")
+
+        # Call bookmark_service directly instead of HTTP request
+        result = bookmark_service.create_bookmark(type_id=type_id, notes=notes)
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to create bookmark: {str(e)}", "isError": True}
 
 
 def handle_list_bookmarks(args: Dict[str, Any]) -> Dict[str, Any]:
     """List bookmarks."""
-    return api_proxy.get("/api/bookmarks")
+    try:
+        # Call bookmark_service directly instead of HTTP request
+        result = bookmark_service.get_all_bookmarks()
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to list bookmarks: {str(e)}", "isError": True}
 
 
 def handle_check_bookmark(args: Dict[str, Any]) -> Dict[str, Any]:
     """Check bookmark."""
-    type_id = args.get("type_id")
-    return api_proxy.get(f"/api/bookmarks/check/{type_id}")
+    try:
+        type_id = args.get("type_id")
+
+        # Call bookmark_service directly instead of HTTP request
+        is_bookmarked = bookmark_service.is_bookmarked(type_id)
+        result = {"type_id": type_id, "is_bookmarked": is_bookmarked}
+
+        if is_bookmarked:
+            bookmark = bookmark_service.get_bookmark_by_type(type_id)
+            result["bookmark"] = bookmark
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to check bookmark: {str(e)}", "isError": True}
 
 
 def handle_update_bookmark(args: Dict[str, Any]) -> Dict[str, Any]:
     """Update bookmark."""
-    bookmark_id = args.get("bookmark_id")
-    data = {"notes": args.get("notes")}
-    return api_proxy.patch(f"/api/bookmarks/{bookmark_id}", data=data)
+    try:
+        bookmark_id = args.get("bookmark_id")
+        notes = args.get("notes")
+
+        # Call bookmark_service directly instead of HTTP request
+        result = bookmark_service.update_bookmark(bookmark_id=bookmark_id, notes=notes)
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to update bookmark: {str(e)}", "isError": True}
 
 
 def handle_delete_bookmark(args: Dict[str, Any]) -> Dict[str, Any]:
     """Delete bookmark."""
-    bookmark_id = args.get("bookmark_id")
-    return api_proxy.delete(f"/api/bookmarks/{bookmark_id}")
+    try:
+        bookmark_id = args.get("bookmark_id")
+
+        # Call bookmark_service directly instead of HTTP request
+        success = bookmark_service.delete_bookmark(bookmark_id)
+        result = {"bookmark_id": bookmark_id, "deleted": success}
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to delete bookmark: {str(e)}", "isError": True}
 
 
 def handle_create_bookmark_list(args: Dict[str, Any]) -> Dict[str, Any]:
     """Create bookmark list."""
-    data = {
-        "name": args.get("name"),
-        "description": args.get("description", "")
-    }
-    return api_proxy.post("/api/bookmarks/lists", data=data)
+    try:
+        name = args.get("name")
+        description = args.get("description", "")
+
+        # Call bookmark_service directly instead of HTTP request
+        result = bookmark_service.create_bookmark_list(name=name, description=description)
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to create bookmark list: {str(e)}", "isError": True}
 
 
 def handle_list_bookmark_lists(args: Dict[str, Any]) -> Dict[str, Any]:
     """List bookmark lists."""
-    return api_proxy.get("/api/bookmarks/lists")
+    try:
+        # Call bookmark_service directly instead of HTTP request
+        result = bookmark_service.get_all_bookmark_lists()
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to list bookmark lists: {str(e)}", "isError": True}
 
 
 def handle_add_to_bookmark_list(args: Dict[str, Any]) -> Dict[str, Any]:
     """Add to bookmark list."""
-    list_id = args.get("list_id")
-    bookmark_id = args.get("bookmark_id")
-    return api_proxy.post(f"/api/bookmarks/lists/{list_id}/items/{bookmark_id}")
+    try:
+        list_id = args.get("list_id")
+        bookmark_id = args.get("bookmark_id")
+
+        # Call bookmark_service directly instead of HTTP request
+        success = bookmark_service.add_to_list(list_id=list_id, bookmark_id=bookmark_id)
+        result = {"list_id": list_id, "bookmark_id": bookmark_id, "added": success}
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to add to bookmark list: {str(e)}", "isError": True}
 
 
 def handle_remove_from_bookmark_list(args: Dict[str, Any]) -> Dict[str, Any]:
     """Remove from bookmark list."""
-    list_id = args.get("list_id")
-    bookmark_id = args.get("bookmark_id")
-    return api_proxy.delete(f"/api/bookmarks/lists/{list_id}/items/{bookmark_id}")
+    try:
+        list_id = args.get("list_id")
+        bookmark_id = args.get("bookmark_id")
+
+        # Call bookmark_service directly instead of HTTP request
+        success = bookmark_service.remove_from_list(list_id=list_id, bookmark_id=bookmark_id)
+        result = {"list_id": list_id, "bookmark_id": bookmark_id, "removed": success}
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to remove from bookmark list: {str(e)}", "isError": True}
 
 
 # Handler mapping
