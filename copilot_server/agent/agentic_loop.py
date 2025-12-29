@@ -16,6 +16,7 @@ from .tool_extractor import ToolCallExtractor
 from .events import ToolCallStartedEvent, ToolCallCompletedEvent, PlanProposedEvent, WaitingForApprovalEvent
 from .sessions import EventBus
 from .approval_manager import ApprovalManager
+from .retry_handler import RetryHandler, RetryableError
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class AgenticStreamingLoop:
         self.auth_checker = AuthorizationChecker(user_settings)
         self.approval_manager = ApprovalManager(user_settings.autonomy_level)
         self.event_bus = event_bus  # Optional EventBus for broadcasting
+        self.retry_handler = RetryHandler(max_retries=3)
 
     async def execute(
         self,
@@ -314,39 +316,93 @@ class AgenticStreamingLoop:
                     })
                     continue
 
-                # Execute tool
+                # Execute tool with retry logic
                 logger.info(f"Executing tool: {tool_name}")
                 start_time = time.time()
-                result = self.mcp.call_tool(tool_name, tool_input)
-                duration_ms = int((time.time() - start_time) * 1000)
 
-                # Yield tool_call_completed event
-                yield {
-                    "type": "tool_call_completed",
-                    "tool": tool_name,
-                    "result": result
-                }
+                try:
+                    async def execute_tool():
+                        result = self.mcp.call_tool(tool_name, tool_input)
 
-                # Publish TOOL_CALL_COMPLETED event to EventBus
-                if self.event_bus and session_id:
-                    # Create result preview (first 200 chars)
-                    result_preview = self._format_tool_result(result)[:200]
-                    event = ToolCallCompletedEvent(
-                        session_id=session_id,
-                        plan_id=None,
-                        step_index=0,
-                        tool=tool_name,
-                        duration_ms=duration_ms,
-                        result_preview=result_preview
-                    )
-                    self.event_bus.publish(session_id, event)
+                        # Check if result indicates retryable error
+                        if isinstance(result, dict) and "error" in result:
+                            if self.retry_handler.is_retryable_error(Exception(result["error"])):
+                                raise RetryableError(result["error"])
 
-                # Format for LLM
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tool_id,
-                    "content": self._format_tool_result(result)
-                })
+                        return result
+
+                    result = await self.retry_handler.execute_with_retry(execute_tool)
+                    duration_ms = int((time.time() - start_time) * 1000)
+
+                    # Yield tool_call_completed event
+                    yield {
+                        "type": "tool_call_completed",
+                        "tool": tool_name,
+                        "result": result
+                    }
+
+                    # Publish TOOL_CALL_COMPLETED event to EventBus
+                    if self.event_bus and session_id:
+                        # Create result preview (first 200 chars)
+                        result_preview = self._format_tool_result(result)[:200]
+                        event = ToolCallCompletedEvent(
+                            session_id=session_id,
+                            plan_id=None,
+                            step_index=0,
+                            tool=tool_name,
+                            duration_ms=duration_ms,
+                            result_preview=result_preview
+                        )
+                        self.event_bus.publish(session_id, event)
+
+                    # Format for LLM
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tool_id,
+                        "content": self._format_tool_result(result)
+                    })
+
+                except RetryableError as e:
+                    # All retries exhausted
+                    logger.error(f"Tool {tool_name} failed after retries: {e}")
+
+                    # Yield error event
+                    yield {
+                        "type": "tool_call_failed",
+                        "tool": tool_name,
+                        "error": str(e),
+                        "retries_exhausted": True
+                    }
+
+                    # Add error to tool results so LLM can adapt
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tool_id,
+                        "content": f"Tool execution failed after {self.retry_handler.max_retries} retries: {e}",
+                        "is_error": True
+                    })
+
+                    continue
+
+                except Exception as e:
+                    # Non-retryable error
+                    logger.error(f"Tool {tool_name} failed with non-retryable error: {e}")
+
+                    yield {
+                        "type": "tool_call_failed",
+                        "tool": tool_name,
+                        "error": str(e),
+                        "retries_exhausted": False
+                    }
+
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tool_id,
+                        "content": f"Tool execution error: {e}",
+                        "is_error": True
+                    })
+
+                    continue
 
             # Add tool results to conversation
             current_messages.append({
