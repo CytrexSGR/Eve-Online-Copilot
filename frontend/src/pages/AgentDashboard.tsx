@@ -399,7 +399,7 @@ export default function AgentDashboard() {
           )}
 
           {/* 2-Column Layout: Chat (Left) + Events (Right) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Chat Interface - Left Column */}
             <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 flex flex-col" style={{ minHeight: '600px' }}>
               <h3 className="text-lg font-semibold text-gray-100 mb-4">Chat</h3>
