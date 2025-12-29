@@ -15,12 +15,13 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8000',  // EVE Backend (MCP Tools)
         changeOrigin: true,
       },
       '/agent': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8001',  // Copilot Agent Backend
         changeOrigin: true,
+        ws: true,  // Enable WebSocket proxying
       },
     },
   },

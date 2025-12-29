@@ -388,13 +388,16 @@ async def stream_chat_response(
             # Save assistant response
             async with db_pool.acquire() as conn:
                 repo = MessageRepository(conn)
+                # Create content blocks with tool call metadata
+                content_blocks = [{"type": "text", "text": full_response}]
+                if tool_calls_executed:
+                    content_blocks.append({"type": "tool_calls", "tool_calls": tool_calls_executed})
+
                 assistant_message = AgentMessage.create(
                     session_id=session.id,
                     role="assistant",
                     content=full_response,
-                    metadata={
-                        "tool_calls": tool_calls_executed
-                    }
+                    content_blocks=content_blocks
                 )
                 message_id = await repo.save(assistant_message)
 

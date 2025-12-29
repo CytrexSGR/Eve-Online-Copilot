@@ -76,3 +76,13 @@ class EventBus:
                 await asyncio.gather(*tasks, return_exceptions=True)
             except Exception as e:
                 logger.error(f"Error emitting event to subscribers: {e}")
+
+    async def publish(self, session_id: str, event: AgentEvent):
+        """
+        Publish an event (alias for emit for backward compatibility).
+
+        Args:
+            session_id: Session ID (unused, taken from event)
+            event: Event to publish
+        """
+        await self.emit(event)

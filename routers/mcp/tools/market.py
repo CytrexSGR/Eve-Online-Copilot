@@ -5,6 +5,8 @@ Market analysis, arbitrage, and price comparison tools.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
+from esi_client import esi_client
+from database import get_item_info
 
 
 # Tool Definitions
@@ -213,21 +215,52 @@ TOOLS: List[Dict[str, Any]] = [
 # Tool Handlers
 def handle_search_item(args: Dict[str, Any]) -> Dict[str, Any]:
     """Search for items by name."""
-    query = args.get("query")
-    return api_proxy.get("/api/items/search", params={"q": query})
+    try:
+        query = args.get("query")
+
+        # Call database function directly instead of HTTP request
+        from database import search_items_by_name
+        results = search_items_by_name(query, limit=10)
+
+        return {"content": [{"type": "text", "text": str(results)}]}
+    except Exception as e:
+        return {"error": f"Failed to search items: {str(e)}", "isError": True}
 
 
 def handle_get_item_info(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get item details."""
-    type_id = args.get("type_id")
-    return api_proxy.get(f"/api/items/{type_id}")
+    try:
+        type_id = args.get("type_id")
+
+        # Call database function directly
+        item = get_item_info(type_id)
+        if not item:
+            return {"error": f"Item {type_id} not found", "isError": True}
+
+        return {"content": [{"type": "text", "text": str(item)}]}
+    except Exception as e:
+        return {"error": f"Failed to get item info: {str(e)}", "isError": True}
 
 
 def handle_get_market_stats(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get market statistics for item in region."""
-    region_id = args.get("region_id")
-    type_id = args.get("type_id")
-    return api_proxy.get(f"/api/market/stats/{region_id}/{type_id}")
+    try:
+        region_id = args.get("region_id")
+        type_id = args.get("type_id")
+
+        # Call service directly instead of HTTP request to avoid circular dependency
+        stats = esi_client.get_market_stats(region_id, type_id)
+        if not stats.get("total_orders"):
+            return {"error": "No market data found", "isError": True}
+
+        # Add item name
+        item = get_item_info(type_id)
+        if item:
+            stats["item_name"] = item["typeName"]
+
+        return {"content": [{"type": "text", "text": str(stats)}]}
+    except Exception as e:
+        return {"error": f"Failed to get market stats: {str(e)}", "isError": True}
 
 
 def handle_compare_region_prices(args: Dict[str, Any]) -> Dict[str, Any]:

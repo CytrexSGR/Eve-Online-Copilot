@@ -5,6 +5,7 @@ Route calculation and navigation assistance.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
+from route_service import route_service, TRADE_HUB_SYSTEMS
 
 
 # Tool Definitions
@@ -94,7 +95,20 @@ TOOLS: List[Dict[str, Any]] = [
 # Tool Handlers
 def handle_get_trade_hubs(args: Dict[str, Any]) -> Dict[str, Any]:
     """Get trade hubs."""
-    return api_proxy.get("/api/route/hubs")
+    try:
+        # Call route_service directly instead of HTTP request
+        result = {}
+        for name, sys_id in TRADE_HUB_SYSTEMS.items():
+            sys_info = route_service.get_system_by_name(name) or {}
+            result[name] = {
+                'system_id': sys_id,
+                'system_name': sys_info.get('system_name', name.capitalize()),
+                'security': sys_info.get('security', 0)
+            }
+
+        return {"content": [{"type": "text", "text": str(result)}]}
+    except Exception as e:
+        return {"error": f"Failed to get trade hubs: {str(e)}", "isError": True}
 
 
 def handle_get_hub_distances(args: Dict[str, Any]) -> Dict[str, Any]:

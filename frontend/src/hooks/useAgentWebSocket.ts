@@ -19,7 +19,12 @@ export interface UseAgentWebSocketReturn {
   reconnect: () => void;
 }
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+// Use relative WebSocket URL to leverage Vite proxy for correct backend routing
+const WS_URL = import.meta.env.VITE_WS_URL || (
+  typeof window !== 'undefined'
+    ? `ws://${window.location.host}`
+    : 'ws://localhost:3000'
+);
 
 export function useAgentWebSocket({
   sessionId,
