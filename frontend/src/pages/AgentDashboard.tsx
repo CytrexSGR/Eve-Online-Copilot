@@ -399,12 +399,12 @@ export default function AgentDashboard() {
           )}
 
           {/* 2-Column Layout: Chat (Left) + Events (Right) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '1rem' }}>
             {/* Chat Interface - Left Column */}
-            <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 flex flex-col" style={{ minHeight: '600px' }}>
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-4" style={{ minHeight: '600px', display: 'flex', flexDirection: 'column' }}>
               <h3 className="text-lg font-semibold text-gray-100 mb-4">Chat</h3>
 
-              <div className="flex-1 overflow-hidden">
+              <div style={{ flex: 1, overflow: 'hidden' }}>
                 <MessageHistory
                   messages={chatMessages}
                   autoScroll={true}
@@ -426,7 +426,7 @@ export default function AgentDashboard() {
             </div>
 
             {/* Event Stream - Right Column */}
-            <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 flex flex-col" style={{ minHeight: '600px' }}>
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-4" style={{ minHeight: '600px', display: 'flex', flexDirection: 'column' }}>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-100">Event Stream</h3>
                 <div className="flex gap-2">
@@ -443,7 +443,7 @@ export default function AgentDashboard() {
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-auto">
+              <div style={{ flex: 1, overflow: 'auto' }}>
                 <EventStreamDisplay events={filteredEvents} />
               </div>
             </div>
