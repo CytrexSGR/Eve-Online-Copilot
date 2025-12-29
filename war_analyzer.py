@@ -19,9 +19,36 @@ class WarAnalyzer:
         """
         Full demand analysis for a region.
         Returns ships lost, items lost, market gaps, upcoming battles, FW hotspots.
+
+        Automatically adapts to available data - if recent data is missing,
+        uses the most recent available data within a 30-day window.
         """
         with get_db_connection() as conn:
             with conn.cursor() as cur:
+                # First, find the most recent data date for this region
+                cur.execute('''
+                    SELECT MAX(date)
+                    FROM combat_ship_losses
+                    WHERE region_id = %s
+                ''', (region_id,))
+                max_date_row = cur.fetchone()
+
+                if not max_date_row or not max_date_row[0]:
+                    # No data available for this region
+                    return {
+                        'region_id': region_id,
+                        'days': days,
+                        'ships_lost': [],
+                        'items_lost': [],
+                        'market_gaps': [],
+                        'data_warning': 'No combat data available for this region'
+                    }
+
+                max_available_date = max_date_row[0]
+
+                # Use the most recent available data, looking back 'days' from max_available_date
+                # This ensures we get data even if there's a delay in killmail processing
+
                 # Top ships lost
                 cur.execute('''
                     SELECT
@@ -34,11 +61,12 @@ class WarAnalyzer:
                     LEFT JOIN market_prices mp ON mp.type_id = csl.ship_type_id
                         AND mp.region_id = %s
                     WHERE csl.region_id = %s
-                    AND csl.date >= CURRENT_DATE - %s
+                    AND csl.date >= %s - %s
+                    AND csl.date <= %s
                     GROUP BY csl.ship_type_id, it."typeName", mp.sell_volume
                     ORDER BY total DESC
                     LIMIT 20
-                ''', (region_id, region_id, days))
+                ''', (region_id, region_id, max_available_date, days, max_available_date))
 
                 ships_lost = [
                     {
@@ -63,11 +91,12 @@ class WarAnalyzer:
                     LEFT JOIN market_prices mp ON mp.type_id = cil.item_type_id
                         AND mp.region_id = %s
                     WHERE cil.region_id = %s
-                    AND cil.date >= CURRENT_DATE - %s
+                    AND cil.date >= %s - %s
+                    AND cil.date <= %s
                     GROUP BY cil.item_type_id, it."typeName", mp.sell_volume
                     ORDER BY total DESC
                     LIMIT 20
-                ''', (region_id, region_id, days))
+                ''', (region_id, region_id, max_available_date, days, max_available_date))
 
                 items_lost = [
                     {
@@ -85,12 +114,21 @@ class WarAnalyzer:
                 market_gaps.extend([i for i in items_lost if i['gap'] > 0][:10])
                 market_gaps.sort(key=lambda x: x['gap'], reverse=True)
 
+                # Calculate the actual date range used
+                from datetime import timedelta
+                start_date = max_available_date - timedelta(days=days)
+
         return {
             'region_id': region_id,
             'days': days,
             'ships_lost': ships_lost,
             'items_lost': items_lost,
-            'market_gaps': market_gaps[:15]
+            'market_gaps': market_gaps[:15],
+            'data_date_range': {
+                'start': start_date.isoformat(),
+                'end': max_available_date.isoformat(),
+                'is_current': (date.today() - max_available_date).days <= 2
+            }
         }
 
     def get_heatmap_data(self, days: int = 7, min_kills: int = None) -> List[dict]:

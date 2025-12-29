@@ -337,6 +337,9 @@ class WarRoomRepository:
         """
         Get demand analysis data (ships and items lost with market stock).
 
+        Automatically adapts to available data - if recent data is missing,
+        uses the most recent available data within the time window.
+
         Args:
             region_id: Region ID to analyze
             days: Number of days to look back
@@ -350,7 +353,24 @@ class WarRoomRepository:
         try:
             with self.db.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    # Get top ships lost
+                    # First, find the most recent data date for this region
+                    cur.execute(
+                        """
+                        SELECT MAX(date)
+                        FROM combat_ship_losses
+                        WHERE region_id = %s
+                        """,
+                        (region_id,)
+                    )
+                    max_date_row = cur.fetchone()
+
+                    if not max_date_row or not max_date_row['max']:
+                        # No data available for this region
+                        return {"ships": [], "items": []}
+
+                    max_available_date = max_date_row['max']
+
+                    # Get top ships lost - use most recent available data
                     cur.execute(
                         """
                         SELECT
@@ -363,16 +383,17 @@ class WarRoomRepository:
                         LEFT JOIN market_prices mp ON mp.type_id = csl.ship_type_id
                             AND mp.region_id = %s
                         WHERE csl.region_id = %s
-                        AND csl.date >= CURRENT_DATE - %s
+                        AND csl.date >= %s - %s
+                        AND csl.date <= %s
                         GROUP BY csl.ship_type_id, it."typeName", mp.sell_volume
                         ORDER BY quantity DESC
                         LIMIT 20
                         """,
-                        (region_id, region_id, days)
+                        (region_id, region_id, max_available_date, days, max_available_date)
                     )
                     ships = [dict(row) for row in cur.fetchall()]
 
-                    # Get top items lost
+                    # Get top items lost - use most recent available data
                     cur.execute(
                         """
                         SELECT
@@ -385,12 +406,13 @@ class WarRoomRepository:
                         LEFT JOIN market_prices mp ON mp.type_id = cil.item_type_id
                             AND mp.region_id = %s
                         WHERE cil.region_id = %s
-                        AND cil.date >= CURRENT_DATE - %s
+                        AND cil.date >= %s - %s
+                        AND cil.date <= %s
                         GROUP BY cil.item_type_id, it."typeName", mp.sell_volume
                         ORDER BY quantity DESC
                         LIMIT 20
                         """,
-                        (region_id, region_id, days)
+                        (region_id, region_id, max_available_date, days, max_available_date)
                     )
                     items = [dict(row) for row in cur.fetchall()]
 
