@@ -126,3 +126,18 @@ class AgentSession(BaseModel):
         self.last_activity = datetime.now()
         self.updated_at = datetime.now()
         return msg
+
+    def get_messages_for_api(self) -> List[Dict[str, Any]]:
+        """
+        Convert session messages to Anthropic API format.
+
+        Returns:
+            List of message dicts with role and content
+        """
+        return [
+            {
+                "role": msg.role,
+                "content": msg.content
+            }
+            for msg in self.messages
+        ]
