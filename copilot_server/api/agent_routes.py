@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import asyncpg
 
 from ..agent.sessions import AgentSessionManager
@@ -51,6 +51,13 @@ class RejectRequest(BaseModel):
     """Request to reject pending plan."""
     session_id: str
     plan_id: str
+
+
+class ChatHistoryResponse(BaseModel):
+    """Chat history response."""
+    session_id: str
+    messages: List[Dict[str, Any]]
+    message_count: int
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -130,6 +137,51 @@ async def agent_chat(request: ChatRequest):
     return ChatResponse(
         session_id=session.id,
         status=session.status.value
+    )
+
+
+@router.get("/chat/history/{session_id}", response_model=ChatHistoryResponse)
+async def get_chat_history(session_id: str, limit: int = 100):
+    """
+    Get chat history for a session.
+
+    Args:
+        session_id: Session ID
+        limit: Max messages to return (default 100)
+
+    Returns:
+        Chat history with messages
+    """
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    # Verify session exists
+    session = await session_manager.load_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Get messages from database
+    async with db_pool.acquire() as conn:
+        repo = MessageRepository(conn)
+        messages = await repo.get_by_session(session_id, limit)
+
+    # Convert to dict format
+    message_dicts = [
+        {
+            "id": msg.id,
+            "role": msg.role,
+            "content": msg.content,
+            "content_blocks": msg.content_blocks,
+            "created_at": msg.created_at.isoformat(),
+            "token_usage": msg.token_usage
+        }
+        for msg in messages
+    ]
+
+    return ChatHistoryResponse(
+        session_id=session_id,
+        messages=message_dicts,
+        message_count=len(message_dicts)
     )
 
 
