@@ -111,6 +111,7 @@ class AgenticStreamingLoop:
                 stream_generator = self.llm._stream_response(base_params)
 
             async for chunk in stream_generator:
+
                 # Process chunk for tool extraction with provider info
                 extractor.process_chunk(chunk, provider=provider)
 
@@ -259,12 +260,34 @@ class AgenticStreamingLoop:
             # Execute tool calls
             logger.info(f"Executing {len(tool_calls)} tool calls (auto-approved)")
 
-            # Build assistant message for conversation
-            assistant_message_content = self._build_assistant_content(assistant_content_blocks)
-            current_messages.append({
-                "role": "assistant",
-                "content": assistant_message_content
-            })
+            # Build assistant message for conversation (format depends on provider)
+            if provider == "openai":
+                # OpenAI format: assistant message with tool_calls field
+                assistant_message = {
+                    "role": "assistant",
+                    "content": None  # OpenAI allows null content when using tools
+                }
+
+                # Add tool_calls field with OpenAI format
+                openai_tool_calls = []
+                for tc in tool_calls:
+                    openai_tool_calls.append({
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {
+                            "name": tc["name"],
+                            "arguments": json.dumps(tc["input"])
+                        }
+                    })
+                assistant_message["tool_calls"] = openai_tool_calls
+                current_messages.append(assistant_message)
+            else:
+                # Anthropic format: content blocks
+                assistant_message_content = self._build_assistant_content(assistant_content_blocks)
+                current_messages.append({
+                    "role": "assistant",
+                    "content": assistant_message_content
+                })
 
             # Execute tools and build tool results
             tool_results = []
@@ -404,11 +427,21 @@ class AgenticStreamingLoop:
 
                     continue
 
-            # Add tool results to conversation
-            current_messages.append({
-                "role": "user",
-                "content": tool_results
-            })
+            # Add tool results to conversation (format depends on provider)
+            if provider == "openai":
+                # OpenAI format: separate message for each tool result with role="tool"
+                for tool_result in tool_results:
+                    current_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_result["tool_use_id"],
+                        "content": tool_result["content"]
+                    })
+            else:
+                # Anthropic format: single user message with tool_result blocks
+                current_messages.append({
+                    "role": "user",
+                    "content": tool_results
+                })
 
         # Max iterations reached
         logger.warning(f"Max iterations ({self.max_iterations}) reached")

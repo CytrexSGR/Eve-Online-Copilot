@@ -105,13 +105,32 @@ class ToolCallExtractor:
         if "content" in delta and delta["content"]:
             self.text_chunks.append(delta["content"])
 
-        # Handle function call
-        if "function_call" in delta:
-            func_call = delta["function_call"]
+        # Handle tool_calls (modern OpenAI format)
+        if "tool_calls" in delta and delta["tool_calls"]:
+            for tool_call_delta in delta["tool_calls"]:
+                index = tool_call_delta.get("index", 0)
 
-            # Skip if function_call is None or empty
-            if not func_call:
-                return
+                # Initialize tool call on first chunk
+                if index not in self.current_blocks:
+                    self.current_blocks[index] = {
+                        "id": tool_call_delta.get("id", f"call_{index}"),
+                        "name": "",
+                        "arguments": ""
+                    }
+
+                block = self.current_blocks[index]
+
+                # Accumulate function details
+                if "function" in tool_call_delta:
+                    func = tool_call_delta["function"]
+                    if func and "name" in func and func["name"]:
+                        block["name"] = func["name"]
+                    if func and "arguments" in func and func["arguments"]:
+                        block["arguments"] += func["arguments"]
+
+        # Handle legacy function_call format (for compatibility)
+        if "function_call" in delta and delta["function_call"]:
+            func_call = delta["function_call"]
 
             # Initialize function call on first chunk
             if self.openai_function_call is None:
@@ -129,7 +148,26 @@ class ToolCallExtractor:
                 self.openai_function_call["arguments"] += func_call["arguments"]
 
         # Finish reason indicates completion
-        if choice.get("finish_reason") == "function_call":
+        finish_reason = choice.get("finish_reason")
+
+        if finish_reason == "tool_calls":
+            # Modern OpenAI tool_calls format
+            for index, block in self.current_blocks.items():
+                try:
+                    args = json.loads(block["arguments"])
+                    self.completed_tool_calls.append({
+                        "id": block["id"],
+                        "name": block["name"],
+                        "input": args
+                    })
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse OpenAI tool arguments: {e}")
+                    logger.error(f"Arguments: {block['arguments']}")
+
+            self.current_blocks.clear()
+
+        elif finish_reason == "function_call":
+            # Legacy function_call format
             if self.openai_function_call:
                 try:
                     args = json.loads(self.openai_function_call["arguments"])

@@ -120,8 +120,10 @@ class OpenAIClient:
                 params["messages"] = messages
 
             # Convert tools from Anthropic format to OpenAI format if provided
+            # Skip conversion if tools are already in OpenAI format (have "type" field)
             if "tools" in params and params["tools"]:
-                params["tools"] = self._convert_tools(params["tools"])
+                if params["tools"] and not params["tools"][0].get("type") == "function":
+                    params["tools"] = self._convert_tools(params["tools"])
 
             # Ensure stream=True is set (don't duplicate if already in params)
             stream_params = {**params, "stream": True}
@@ -162,6 +164,18 @@ class OpenAIClient:
         except Exception as e:
             logger.error(f"Stream error: {e}")
             raise
+
+    def build_tool_schema(self, mcp_tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Convert MCP tool definitions to OpenAI function calling schema.
+
+        Args:
+            mcp_tools: MCP tool definitions (with input_schema)
+
+        Returns:
+            OpenAI-compatible function schemas
+        """
+        return self._convert_tools(mcp_tools)
 
     def _convert_tools(self, anthropic_tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
