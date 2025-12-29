@@ -235,7 +235,7 @@ class AgenticStreamingLoop:
                         tool_count=len(plan.steps),
                         auto_executing=False
                     )
-                    self.event_bus.publish(session_id, event)
+                    await self.event_bus.publish(session_id, event)
 
                 # Yield waiting_for_approval event
                 yield {
@@ -251,7 +251,7 @@ class AgenticStreamingLoop:
                         plan_id=plan.id,
                         message=f"Plan requires approval due to {plan.max_risk_level.value} risk operations"
                     )
-                    self.event_bus.publish(session_id, waiting_event)
+                    await self.event_bus.publish(session_id, waiting_event)
 
                 # Stop execution - wait for user to approve/reject
                 logger.info(f"Waiting for approval of plan {plan.id}")
@@ -313,7 +313,7 @@ class AgenticStreamingLoop:
                         tool=tool_name,
                         arguments=tool_input
                     )
-                    self.event_bus.publish(session_id, event)
+                    await self.event_bus.publish(session_id, event)
 
                 # Check authorization
                 allowed, denial_reason = self.auth_checker.check_authorization(
@@ -376,7 +376,7 @@ class AgenticStreamingLoop:
                             duration_ms=duration_ms,
                             result_preview=result_preview
                         )
-                        self.event_bus.publish(session_id, event)
+                        await self.event_bus.publish(session_id, event)
 
                     # Format for LLM
                     tool_results.append({

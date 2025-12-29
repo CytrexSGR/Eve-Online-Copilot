@@ -32,12 +32,13 @@ def mock_event_bus():
     # Track published events by session_id
     event_bus._published_events = {}
 
-    def publish_side_effect(session_id, event):
+    async def publish_side_effect(session_id, event):
+        """Async publish for event tracking."""
         if session_id not in event_bus._published_events:
             event_bus._published_events[session_id] = []
         event_bus._published_events[session_id].append(event)
 
-    event_bus.publish.side_effect = publish_side_effect
+    event_bus.publish = AsyncMock(side_effect=publish_side_effect)
     event_bus.get_published_events = lambda session_id: event_bus._published_events.get(session_id, [])
 
     return event_bus
