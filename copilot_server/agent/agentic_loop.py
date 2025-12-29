@@ -17,6 +17,7 @@ from .events import ToolCallStartedEvent, ToolCallCompletedEvent, PlanProposedEv
 from .sessions import EventBus
 from .approval_manager import ApprovalManager
 from .retry_handler import RetryHandler, RetryableError
+from .context_manager import ContextWindowManager
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,8 @@ class AgenticStreamingLoop:
         mcp_client: MCPClient,
         user_settings: UserSettings,
         max_iterations: int = 5,
-        event_bus: Optional[EventBus] = None
+        event_bus: Optional[EventBus] = None,
+        max_context_messages: int = 20
     ):
         self.llm = llm_client
         self.mcp = mcp_client
@@ -50,6 +52,7 @@ class AgenticStreamingLoop:
         self.approval_manager = ApprovalManager(user_settings.autonomy_level)
         self.event_bus = event_bus  # Optional EventBus for broadcasting
         self.retry_handler = RetryHandler(max_retries=3)
+        self.context_manager = ContextWindowManager(max_messages=max_context_messages)
 
     async def execute(
         self,
@@ -70,6 +73,15 @@ class AgenticStreamingLoop:
         """
         iteration = 0
         current_messages = messages.copy()
+
+        # Apply context window management
+        current_messages = self.context_manager.truncate(current_messages, system)
+        context_summary = self.context_manager.get_context_summary(current_messages)
+        logger.info(
+            f"Context: {context_summary['total_messages']} messages, "
+            f"~{context_summary['estimated_tokens']} tokens"
+        )
+
         tools = self.mcp.get_tools()
         claude_tools = self.llm.build_tool_schema(tools) if tools else []
 

@@ -348,7 +348,7 @@ export default function AgentDashboard() {
           </button>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Session Info */}
           <div className="bg-gray-800 p-4 rounded border border-gray-700">
             <div className="flex items-center justify-between">
@@ -398,46 +398,55 @@ export default function AgentDashboard() {
             />
           )}
 
-          {/* Chat Interface */}
-          <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
-            <h3 className="text-lg font-semibold text-gray-100 mb-4">Chat</h3>
+          {/* 2-Column Layout: Chat (Left) + Events (Right) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Chat Interface - Left Column */}
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 flex flex-col" style={{ minHeight: '600px' }}>
+              <h3 className="text-lg font-semibold text-gray-100 mb-4">Chat</h3>
 
-            <MessageHistory
-              messages={chatMessages}
-              autoScroll={true}
-              maxHeight="400px"
-            />
-
-            <ChatMessageInput
-              onSend={handleSendMessage}
-              disabled={!sessionId || isSending}
-              placeholder={
-                sessionId
-                  ? 'Type your message... (Ctrl+Enter to send)'
-                  : 'Create a session first'
-              }
-            />
-          </div>
-
-          {/* Event Stream */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-100">Event Stream</h2>
-              <div className="flex gap-2">
-                <EventSearch value={searchQuery} onChange={setSearchQuery} />
-                <EventFilter
-                  selectedTypes={eventFilters}
-                  onChange={setEventFilters}
+              <div className="flex-1 overflow-hidden">
+                <MessageHistory
+                  messages={chatMessages}
+                  autoScroll={true}
+                  maxHeight="500px"
                 />
-                <button
-                  onClick={clearEvents}
-                  className="text-sm text-gray-400 hover:text-gray-300"
-                >
-                  Clear Events
-                </button>
+              </div>
+
+              <div className="mt-4">
+                <ChatMessageInput
+                  onSend={handleSendMessage}
+                  disabled={!sessionId || isSending}
+                  placeholder={
+                    sessionId
+                      ? 'Type your message... (Ctrl+Enter to send)'
+                      : 'Create a session first'
+                  }
+                />
               </div>
             </div>
-            <EventStreamDisplay events={filteredEvents} />
+
+            {/* Event Stream - Right Column */}
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 flex flex-col" style={{ minHeight: '600px' }}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-100">Event Stream</h3>
+                <div className="flex gap-2">
+                  <EventSearch value={searchQuery} onChange={setSearchQuery} />
+                  <EventFilter
+                    selectedTypes={eventFilters}
+                    onChange={setEventFilters}
+                  />
+                  <button
+                    onClick={clearEvents}
+                    className="text-sm text-gray-400 hover:text-gray-300"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto">
+                <EventStreamDisplay events={filteredEvents} />
+              </div>
+            </div>
           </div>
         </div>
       )}

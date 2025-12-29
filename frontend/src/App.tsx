@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TrendingUp, Search, Factory, BarChart3, Star, Package, Swords, Wand2, List, Bot } from 'lucide-react';
 import { useGlobalShortcuts } from './hooks/useKeyboardShortcuts';
@@ -128,6 +128,8 @@ function AppContent() {
               <Route path="/war-room/fw-hotspots" element={<WarRoomFWHotspots />} />
               <Route path="/war-room/galaxy-summary" element={<WarRoomGalaxySummary />} />
               <Route path="/agent" element={<AgentDashboard />} />
+              {/* Catch-all: redirect unknown routes to home */}
+              <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
           </main>
