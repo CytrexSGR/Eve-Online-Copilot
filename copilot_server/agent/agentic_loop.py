@@ -5,12 +5,15 @@ Executes multi-turn tool-calling workflow with streaming.
 
 import logging
 import json
+import time
 from typing import List, Dict, Any, AsyncIterator, Optional
 from ..llm.anthropic_client import AnthropicClient
 from ..mcp.client import MCPClient
 from ..models.user_settings import UserSettings
 from ..governance.authorization import AuthorizationChecker
 from .tool_extractor import ToolCallExtractor
+from .events import ToolCallStartedEvent, ToolCallCompletedEvent
+from .sessions import EventBus
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +36,15 @@ class AgenticStreamingLoop:
         llm_client: AnthropicClient,
         mcp_client: MCPClient,
         user_settings: UserSettings,
-        max_iterations: int = 5
+        max_iterations: int = 5,
+        event_bus: Optional[EventBus] = None
     ):
         self.llm = llm_client
         self.mcp = mcp_client
         self.settings = user_settings
         self.max_iterations = max_iterations
         self.auth_checker = AuthorizationChecker(user_settings)
+        self.event_bus = event_bus  # Optional EventBus for broadcasting
 
     async def execute(
         self,
@@ -178,6 +183,17 @@ class AgenticStreamingLoop:
                     "arguments": tool_input
                 }
 
+                # Publish TOOL_CALL_STARTED event to EventBus
+                if self.event_bus and session_id:
+                    event = ToolCallStartedEvent(
+                        session_id=session_id,
+                        plan_id=None,
+                        step_index=0,
+                        tool=tool_name,
+                        arguments=tool_input
+                    )
+                    self.event_bus.publish(session_id, event)
+
                 # Check authorization
                 allowed, denial_reason = self.auth_checker.check_authorization(
                     tool_name,
@@ -204,7 +220,9 @@ class AgenticStreamingLoop:
 
                 # Execute tool
                 logger.info(f"Executing tool: {tool_name}")
+                start_time = time.time()
                 result = self.mcp.call_tool(tool_name, tool_input)
+                duration_ms = int((time.time() - start_time) * 1000)
 
                 # Yield tool_call_completed event
                 yield {
@@ -212,6 +230,20 @@ class AgenticStreamingLoop:
                     "tool": tool_name,
                     "result": result
                 }
+
+                # Publish TOOL_CALL_COMPLETED event to EventBus
+                if self.event_bus and session_id:
+                    # Create result preview (first 200 chars)
+                    result_preview = self._format_tool_result(result)[:200]
+                    event = ToolCallCompletedEvent(
+                        session_id=session_id,
+                        plan_id=None,
+                        step_index=0,
+                        tool=tool_name,
+                        duration_ms=duration_ms,
+                        result_preview=result_preview
+                    )
+                    self.event_bus.publish(session_id, event)
 
                 # Format for LLM
                 tool_results.append({

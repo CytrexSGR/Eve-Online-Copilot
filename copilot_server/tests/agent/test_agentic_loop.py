@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, Mock
 from copilot_server.agent.agentic_loop import AgenticStreamingLoop
 from copilot_server.models.user_settings import UserSettings, AutonomyLevel
+from copilot_server.agent.events import AgentEventType
 
 
 async def async_gen(items):
@@ -187,3 +188,39 @@ async def test_max_iterations_limit():
 
     # Should have error event for max iterations
     assert any(e["type"] == "error" and "Maximum iterations" in e.get("error", "") for e in events)
+
+
+@pytest.mark.asyncio
+async def test_broadcast_events_to_websocket(mock_event_bus):
+    """Test that agentic loop broadcasts events to WebSocket."""
+    llm_client = Mock()
+    llm_client.model = "claude-3-5-sonnet-20241022"
+    llm_client.build_tool_schema = Mock(return_value=[])
+
+    # Use get_market_prices which is a known READ_ONLY tool
+    async def mock_stream(*args, **kwargs):
+        for event in [
+            {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "t1", "name": "get_market_prices"}},
+            {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": '{"type_id": 34}'}},
+            {"type": "content_block_stop", "index": 0},
+            {"type": "message_stop"}
+        ]:
+            yield event
+
+    llm_client._stream_response = mock_stream
+
+    mcp_client = Mock()
+    mcp_client.call_tool = Mock(return_value={"content": [{"type": "text", "text": "5.50 ISK"}]})
+    mcp_client.get_tools = Mock(return_value=[])
+
+    user_settings = UserSettings(character_id=123, autonomy_level=AutonomyLevel.RECOMMENDATIONS)
+
+    loop = AgenticStreamingLoop(llm_client, mcp_client, user_settings, event_bus=mock_event_bus)
+
+    async for _ in loop.execute([{"role": "user", "content": "Price?"}], session_id="sess-123"):
+        pass
+
+    # Verify events were published
+    published_events = mock_event_bus.get_published_events("sess-123")
+    assert any(e.type == AgentEventType.TOOL_CALL_STARTED for e in published_events)
+    assert any(e.type == AgentEventType.TOOL_CALL_COMPLETED for e in published_events)

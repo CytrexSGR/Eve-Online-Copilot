@@ -324,7 +324,8 @@ async def stream_chat_response(
                 llm_client=llm_client,
                 mcp_client=mcp_client,
                 user_settings=user_settings,
-                max_iterations=5
+                max_iterations=5,
+                event_bus=session_manager.event_bus if session_manager else None
             )
 
             # Execute agentic loop
