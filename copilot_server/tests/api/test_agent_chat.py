@@ -188,3 +188,203 @@ async def test_stream_chat_endpoint_should_fail_before_implementation():
     finally:
         # Clean up
         await session_manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_chat_requires_valid_session():
+    """Test that chat validates session access."""
+    from copilot_server.api import agent_routes
+
+    # Create session manager and database pool
+    session_manager = AgentSessionManager()
+    await session_manager.startup()
+
+    db_pool = await asyncpg.create_pool(
+        DATABASE_URL,
+        min_size=1,
+        max_size=2
+    )
+
+    # Set globals for agent_routes
+    agent_routes.session_manager = session_manager
+    agent_routes.db_pool = db_pool
+    agent_routes.runtime = "mock_runtime"  # Just to pass initialization check
+
+    try:
+        # Try to chat with invalid session
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/agent/chat",
+                json={
+                    "message": "Test",
+                    "session_id": "invalid-session-id",
+                    "character_id": 123
+                }
+            )
+
+            # Should return 404 for session not found
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"].lower()
+
+    finally:
+        # Clean up
+        await db_pool.close()
+        await session_manager.shutdown()
+        # Reset globals
+        agent_routes.session_manager = None
+        agent_routes.db_pool = None
+        agent_routes.runtime = None
+
+
+@pytest.mark.asyncio
+async def test_chat_rejects_empty_message():
+    """Test that empty messages are rejected."""
+    from copilot_server.api import agent_routes
+
+    # Create session manager and database pool
+    session_manager = AgentSessionManager()
+    await session_manager.startup()
+
+    db_pool = await asyncpg.create_pool(
+        DATABASE_URL,
+        min_size=1,
+        max_size=2
+    )
+
+    # Set globals for agent_routes
+    agent_routes.session_manager = session_manager
+    agent_routes.db_pool = db_pool
+    agent_routes.runtime = "mock_runtime"
+
+    try:
+        # Create a valid session first
+        session = await session_manager.create_session(
+            character_id=526379435,
+            autonomy_level=AutonomyLevel.RECOMMENDATIONS
+        )
+        session_id = session.id
+
+        # Try to send empty message
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/agent/chat",
+                json={
+                    "message": "",
+                    "session_id": session_id,
+                    "character_id": 526379435
+                }
+            )
+
+            # Should return 400 for invalid message
+            assert response.status_code == 400
+            assert "empty" in response.json()["detail"].lower()
+
+        # Cleanup
+        conn = await asyncpg.connect(DATABASE_URL)
+        await conn.execute("DELETE FROM agent_sessions WHERE id = $1", session_id)
+        await conn.close()
+
+    finally:
+        # Clean up
+        await db_pool.close()
+        await session_manager.shutdown()
+        # Reset globals
+        agent_routes.session_manager = None
+        agent_routes.db_pool = None
+        agent_routes.runtime = None
+
+
+@pytest.mark.asyncio
+async def test_chat_rejects_too_long_message():
+    """Test that messages exceeding max length are rejected."""
+    from copilot_server.api import agent_routes
+
+    # Create session manager and database pool
+    session_manager = AgentSessionManager()
+    await session_manager.startup()
+
+    db_pool = await asyncpg.create_pool(
+        DATABASE_URL,
+        min_size=1,
+        max_size=2
+    )
+
+    # Set globals for agent_routes
+    agent_routes.session_manager = session_manager
+    agent_routes.db_pool = db_pool
+    agent_routes.runtime = "mock_runtime"
+
+    try:
+        # Create a valid session first
+        session = await session_manager.create_session(
+            character_id=526379435,
+            autonomy_level=AutonomyLevel.RECOMMENDATIONS
+        )
+        session_id = session.id
+
+        # Try to send message that's too long
+        long_message = "x" * 20000  # Exceeds 10000 char limit
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/agent/chat",
+                json={
+                    "message": long_message,
+                    "session_id": session_id,
+                    "character_id": 526379435
+                }
+            )
+
+            # Should return 400 for message too long
+            assert response.status_code == 400
+            assert "too long" in response.json()["detail"].lower()
+
+        # Cleanup
+        conn = await asyncpg.connect(DATABASE_URL)
+        await conn.execute("DELETE FROM agent_sessions WHERE id = $1", session_id)
+        await conn.close()
+
+    finally:
+        # Clean up
+        await db_pool.close()
+        await session_manager.shutdown()
+        # Reset globals
+        agent_routes.session_manager = None
+        agent_routes.db_pool = None
+        agent_routes.runtime = None
+
+
+@pytest.mark.asyncio
+async def test_chat_history_requires_valid_session():
+    """Test that chat history validates session exists."""
+    from copilot_server.api import agent_routes
+
+    # Create session manager and database pool
+    session_manager = AgentSessionManager()
+    await session_manager.startup()
+
+    db_pool = await asyncpg.create_pool(
+        DATABASE_URL,
+        min_size=1,
+        max_size=2
+    )
+
+    # Set globals for agent_routes
+    agent_routes.session_manager = session_manager
+    agent_routes.db_pool = db_pool
+
+    try:
+        # Try to get history for invalid session
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/agent/chat/history/invalid-session-id")
+
+            # Should return 404 for session not found
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"].lower()
+
+    finally:
+        # Clean up
+        await db_pool.close()
+        await session_manager.shutdown()
+        # Reset globals
+        agent_routes.session_manager = None
+        agent_routes.db_pool = None

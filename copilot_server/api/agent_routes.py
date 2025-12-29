@@ -6,7 +6,7 @@ REST endpoints for agent runtime.
 import asyncio
 import logging
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -19,6 +19,7 @@ from ..agent.events import AgentEvent
 from ..agent.messages import AgentMessage, MessageRepository
 from ..agent.streaming import SSEFormatter, stream_llm_response
 from ..models.user_settings import get_default_settings
+from .middleware import verify_session_access, validate_message_content
 
 logger = logging.getLogger(__name__)
 
@@ -72,15 +73,29 @@ class ChatStreamRequest(BaseModel):
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def agent_chat(request: ChatRequest):
+async def agent_chat(
+    request: ChatRequest,
+    authorization: Optional[str] = Header(None)
+):
     """
-    Send message to agent.
+    Send message to agent with authorization.
 
     Creates new session if session_id is None, otherwise continues existing.
     Persists all messages to database.
     """
+    # Validate message content
+    await validate_message_content(request.message)
+
     if not session_manager or not runtime or not db_pool:
         raise HTTPException(status_code=500, detail="Agent runtime not initialized")
+
+    # Verify session access if session_id provided
+    if request.session_id:
+        await verify_session_access(
+            request.session_id,
+            request.character_id,
+            authorization
+        )
 
     # Load or create session
     if request.session_id:
@@ -152,17 +167,25 @@ async def agent_chat(request: ChatRequest):
 
 
 @router.get("/chat/history/{session_id}", response_model=ChatHistoryResponse)
-async def get_chat_history(session_id: str, limit: int = 100):
+async def get_chat_history(
+    session_id: str,
+    limit: int = 100,
+    authorization: Optional[str] = Header(None)
+):
     """
-    Get chat history for a session.
+    Get chat history for a session with authorization.
 
     Args:
         session_id: Session ID
         limit: Max messages to return (default 100)
+        authorization: Authorization header
 
     Returns:
         Chat history with messages
     """
+    # Verify access
+    await verify_session_access(session_id, authorization=authorization)
+
     if not db_pool:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
@@ -197,13 +220,26 @@ async def get_chat_history(session_id: str, limit: int = 100):
 
 
 @router.post("/chat/stream")
-async def stream_chat_response(request: ChatStreamRequest):
+async def stream_chat_response(
+    request: ChatStreamRequest,
+    authorization: Optional[str] = Header(None)
+):
     """
-    Stream chat response via SSE.
+    Stream chat response via SSE with authorization.
 
     Sends Server-Sent Events for real-time streaming.
     Client should use EventSource to consume.
     """
+    # Validate message content
+    await validate_message_content(request.message)
+
+    # Verify session access
+    await verify_session_access(
+        request.session_id,
+        request.character_id,
+        authorization
+    )
+
     if not session_manager or not runtime or not db_pool or not llm_client:
         raise HTTPException(status_code=500, detail="Services not initialized")
 
