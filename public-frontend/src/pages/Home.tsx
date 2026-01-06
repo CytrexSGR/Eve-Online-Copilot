@@ -203,28 +203,28 @@ export function Home() {
       {/* Alliance Wars Summary */}
       <div className="card">
         <h2>🛡️ Alliance Wars</h2>
-        {allianceWars && allianceWars.wars.length > 0 && (
+        {allianceWars && allianceWars.conflicts.length > 0 && (
           <>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-              Top {allianceWars.wars.slice(0, 3).length} active conflicts
+              Top {allianceWars.conflicts.slice(0, 3).length} active conflicts
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {allianceWars.wars.slice(0, 3).map((war) => (
+              {allianceWars.conflicts.slice(0, 3).map((conflict) => (
                 <div
-                  key={`${war.alliance_a_id}-${war.alliance_b_id}`}
+                  key={`${conflict.alliance_1_id}-${conflict.alliance_2_id}`}
                   style={{
                     padding: '1rem',
                     background: 'var(--bg-elevated)',
                     borderRadius: '4px',
                     borderLeft: `4px solid ${
-                      war.winner === 'a' ? 'var(--success)' :
-                      war.winner === 'b' ? 'var(--danger)' :
+                      conflict.winner === conflict.alliance_1_name ? 'var(--success)' :
+                      conflict.winner === conflict.alliance_2_name ? 'var(--danger)' :
                       'var(--warning)'
                     }`
                   }}
                 >
                   <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-                    {war.alliance_a_name} vs {war.alliance_b_name}
+                    {conflict.alliance_1_name} vs {conflict.alliance_2_name}
                   </div>
                   <div style={{
                     display: 'flex',
@@ -232,9 +232,9 @@ export function Home() {
                     fontSize: '0.875rem',
                     color: 'var(--text-secondary)'
                   }}>
-                    <span>Kills: {war.total_kills}</span>
-                    <span>Ratio: {war.kill_ratio_a.toFixed(2)}</span>
-                    <span>Efficiency: {(war.isk_efficiency_a * 100).toFixed(1)}%</span>
+                    <span>Kills: {conflict.alliance_1_kills + conflict.alliance_2_kills}</span>
+                    <span>A1 Eff: {conflict.alliance_1_efficiency.toFixed(1)}%</span>
+                    <span>A2 Eff: {conflict.alliance_2_efficiency.toFixed(1)}%</span>
                   </div>
                 </div>
               ))}
@@ -263,32 +263,37 @@ export function Home() {
               Route danger levels (last 24h)
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {tradeRoutes.routes.slice(0, 5).map((route) => (
-                <div
-                  key={`${route.from_hub}-${route.to_hub}`}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    padding: '0.75rem',
-                    background: 'var(--bg-elevated)',
-                    borderRadius: '4px'
-                  }}
-                >
-                  <span>
-                    {route.from_hub} → {route.to_hub}
-                  </span>
-                  <span style={{
-                    fontWeight: 600,
-                    color:
-                      route.danger_level === 'SAFE' ? 'var(--success)' :
-                      route.danger_level === 'LOW' ? 'var(--accent-blue)' :
-                      route.danger_level === 'MODERATE' ? 'var(--warning)' :
-                      'var(--danger)'
-                  }}>
-                    {route.danger_level}
-                  </span>
-                </div>
-              ))}
+              {tradeRoutes.routes.slice(0, 5).map((route) => {
+                const dangerLevel = route.danger_score >= 7 ? 'HIGH' :
+                                  route.danger_score >= 4 ? 'MODERATE' :
+                                  route.danger_score >= 2 ? 'LOW' : 'SAFE';
+                return (
+                  <div
+                    key={`${route.origin_system}-${route.destination_system}`}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      padding: '0.75rem',
+                      background: 'var(--bg-elevated)',
+                      borderRadius: '4px'
+                    }}
+                  >
+                    <span>
+                      {route.origin_system} → {route.destination_system}
+                    </span>
+                    <span style={{
+                      fontWeight: 600,
+                      color:
+                        dangerLevel === 'SAFE' ? 'var(--success)' :
+                        dangerLevel === 'LOW' ? 'var(--accent-blue)' :
+                        dangerLevel === 'MODERATE' ? 'var(--warning)' :
+                        'var(--danger)'
+                    }}>
+                      {dangerLevel} ({route.danger_score.toFixed(1)})
+                    </span>
+                  </div>
+                );
+              })}
             </div>
             <Link
               to="/trade-routes"
