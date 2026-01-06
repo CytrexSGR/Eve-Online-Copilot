@@ -9,14 +9,16 @@ import type { BattleReport, HotZone, HighValueKill, DangerZone } from '../types/
  *
  * Features:
  * - Real-time battle report data from /api/reports/battle-24h
- * - Multi-layer filtering: Hot Zones, Capital Kills, Danger Zones, High-Value Kills
+ * - Live hotspots from Telegram combat alerts (real-time, 10s polling)
+ * - Multi-layer filtering: Live Hotspots, Hot Zones, Capital Kills, Danger Zones, High-Value Kills
  * - Interactive system selection with detailed info panel
  * - Left sidebar for filter controls
  * - Right sidebar for system information
  * - Color-coded system highlights based on combat activity
  *
  * Filter Priority (when multiple attributes apply):
- * 1. Capital Kills (purple) - highest priority
+ * 0. LIVE Hotspots (white pulsing) - HIGHEST PRIORITY, real-time combat
+ * 1. Capital Kills (purple) - capital ship losses
  * 2. Hot Zones (red/orange) - high kill activity
  * 3. High-Value Kills (cyan) - expensive kills
  * 4. Danger Zones (yellow) - industrial ship losses
@@ -36,11 +38,15 @@ export function BattleMap() {
 
   // Filter state (default: only Hot Zones enabled)
   const [filters, setFilters] = useState({
+    liveHotspots: true,
     hotZones: true,
     capitalKills: false,
     dangerZones: false,
     highValueKills: false,
   });
+
+  // Live hotspots state
+  const [liveHotspots, setLiveHotspots] = useState<any[]>([]);
 
   // Selected system state for info panel
   const [selectedSystem, setSelectedSystem] = useState<{
@@ -133,6 +139,30 @@ export function BattleMap() {
     loadBattleReport();
   }, []);
 
+  // Poll live hotspots every 10 seconds
+  useEffect(() => {
+    const fetchLiveHotspots = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/war/live-hotspots');
+        if (response.ok) {
+          const data = await response.json();
+          setLiveHotspots(data.hotspots || []);
+          console.log(`[BattleMap] Loaded ${data.hotspots?.length || 0} live hotspots`);
+        }
+      } catch (err) {
+        console.error('[BattleMap] Failed to fetch live hotspots:', err);
+      }
+    };
+
+    // Initial fetch
+    fetchLiveHotspots();
+
+    // Poll every 10 seconds
+    const interval = setInterval(fetchLiveHotspots, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Build system lookup maps for quick access
   const systemLookups = useMemo(() => {
     if (!battleReport) return null;
@@ -203,6 +233,43 @@ export function BattleMap() {
 
     const { hotZoneMap, capitalKillsMap, dangerZoneMap, highValueKillsMap } = systemLookups;
 
+    // Track which systems already rendered (for priority management)
+    const renderedSystems = new Set<number>();
+
+    // Priority 0: LIVE HOTSPOTS (highest priority - pulsing white/yellow)
+    if (filters.liveHotspots && liveHotspots.length > 0) {
+      console.log(`[BattleMap] Rendering ${liveHotspots.length} LIVE hotspots`);
+      liveHotspots.forEach(hotspot => {
+        const age = hotspot.age_seconds || 0;
+        let color = '#ffffff';
+        let size = 7.0;
+
+        if (age < 60) {
+          // Very fresh (<1 min) - Pulsing white
+          color = '#ffffff';
+          size = 7.0;
+        } else if (age < 180) {
+          // Fresh (1-3 min) - Bright yellow
+          color = '#ffff00';
+          size = 6.0;
+        } else {
+          // Older (3-5 min) - Fading orange
+          color = '#ff9900';
+          size = 5.0;
+        }
+
+        configs.push({
+          systemId: hotspot.system_id,
+          color,
+          size,
+          highlighted: true,
+          opacity: 1.0,
+        });
+
+        renderedSystems.add(hotspot.system_id);
+      });
+    }
+
     // Collect all unique system IDs across all enabled filters
     const allSystemIds = new Set<number>();
 
@@ -220,8 +287,14 @@ export function BattleMap() {
     }
 
     // For each system, determine color and size based on priority
+    // Skip if already rendered as live hotspot
     // MUCH LARGER and BRIGHTER for better visibility
     allSystemIds.forEach(systemId => {
+      // Skip if already rendered as live hotspot
+      if (renderedSystems.has(systemId)) {
+        return;
+      }
+
       let color = '#ffffff';
       let size = 3.0;
 
@@ -258,7 +331,7 @@ export function BattleMap() {
     });
 
     return configs;
-  }, [battleReport, systemLookups, filters]);
+  }, [battleReport, systemLookups, filters, liveHotspots.length]);
 
   // Update map with new render configs when filters change
   useEffect(() => {
@@ -314,6 +387,7 @@ export function BattleMap() {
   const filterCounts = useMemo(() => {
     if (!battleReport || !systemLookups) {
       return {
+        liveHotspots: liveHotspots.length,
         hotZones: 0,
         capitalKills: 0,
         dangerZones: 0,
@@ -322,12 +396,13 @@ export function BattleMap() {
     }
 
     return {
+      liveHotspots: liveHotspots.length,
       hotZones: battleReport.hot_zones.length,
       capitalKills: systemLookups.capitalKillsMap.size,
       dangerZones: systemLookups.dangerZoneMap.size,
       highValueKills: systemLookups.highValueKillsMap.size,
     };
-  }, [battleReport, systemLookups]);
+  }, [battleReport, systemLookups, liveHotspots.length]);
 
   // Loading state
   if (mapLoading || reportLoading) {
@@ -379,6 +454,56 @@ export function BattleMap() {
 
         {/* Filter Checkboxes */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* LIVE Hotspots */}
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            cursor: 'pointer',
+            padding: '0.75rem',
+            background: filters.liveHotspots ? 'var(--bg-elevated)' : 'transparent',
+            borderRadius: '6px',
+            border: '1px solid',
+            borderColor: filters.liveHotspots ? '#ffffff' : 'var(--border-color)',
+            transition: 'all 0.2s',
+          }}>
+            <input
+              type="checkbox"
+              checked={filters.liveHotspots}
+              onChange={() => toggleFilter('liveHotspots')}
+              style={{
+                marginRight: '0.75rem',
+                width: '18px',
+                height: '18px',
+                cursor: 'pointer',
+                accentColor: '#ffffff',
+              }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginBottom: '0.25rem',
+              }}>
+                <div style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  background: '#ffffff',
+                  boxShadow: '0 0 12px #ffffff',
+                  animation: 'pulse 2s ease-in-out infinite',
+                }} />
+                <span style={{ fontWeight: 700, color: '#ffffff' }}>LIVE Hotspots ⚡</span>
+              </div>
+              <div style={{
+                fontSize: '0.75rem',
+                color: 'var(--text-secondary)',
+              }}>
+                {filterCounts.liveHotspots} active
+              </div>
+            </div>
+          </label>
+
           {/* Hot Zones */}
           <label style={{
             display: 'flex',
