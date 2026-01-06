@@ -27,9 +27,8 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
   const [systems, setSystems] = useState<SolarSystem[]>([]);
   const [stargates, setStargates] = useState<Stargate[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
-  const [loading, setLoading] = useState(false); // Start as false - load on demand
+  const [loading, setLoading] = useState(true); // Start as true - load automatically
   const [error, setError] = useState<string | null>(null);
-  const [mapLoaded, setMapLoaded] = useState(false); // Track if user wants to see map
   const navigate = useNavigate();
 
   // Initialize map control with hot zones highlighted
@@ -43,8 +42,8 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
     },
   });
 
-  // Load JSONL data files only when user clicks "Load Map"
-  const loadMapData = async () => {
+  // Load JSONL data files automatically on mount
+  useEffect(() => {
     const loadJSONL = async (path: string): Promise<any[]> => {
       const response = await fetch(path);
       if (!response.ok) {
@@ -59,32 +58,35 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
         .map(line => JSON.parse(line));
     };
 
-    try {
-      setError(null);
-      setLoading(true);
-      setMapLoaded(true);
+    const loadMapData = async () => {
+      try {
+        setError(null);
+        setLoading(true);
 
-      console.log('[BattleMapPreview] Loading 7.7 MB of map data...');
+        console.log('[BattleMapPreview] Loading 7.7 MB of map data automatically...');
 
-      // Load all three data files in parallel
-      const [systemsData, stargatesData, regionsData] = await Promise.all([
-        loadJSONL('/data/mapSolarSystems.jsonl'),
-        loadJSONL('/data/mapStargates.jsonl'),
-        loadJSONL('/data/mapRegions.jsonl'),
-      ]);
+        // Load all three data files in parallel
+        const [systemsData, stargatesData, regionsData] = await Promise.all([
+          loadJSONL('/data/mapSolarSystems.jsonl'),
+          loadJSONL('/data/mapStargates.jsonl'),
+          loadJSONL('/data/mapRegions.jsonl'),
+        ]);
 
-      console.log('[BattleMapPreview] Map data loaded successfully');
+        console.log('[BattleMapPreview] Map data loaded successfully');
 
-      setSystems(systemsData);
-      setStargates(stargatesData);
-      setRegions(regionsData);
-      setLoading(false);
-    } catch (err) {
-      console.error('Failed to load map data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load map data');
-      setLoading(false);
-    }
-  };
+        setSystems(systemsData);
+        setStargates(stargatesData);
+        setRegions(regionsData);
+        setLoading(false);
+      } catch (err) {
+        console.error('Failed to load map data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load map data');
+        setLoading(false);
+      }
+    };
+
+    loadMapData();
+  }, []);
 
   // Highlight combat events when data is loaded
   useEffect(() => {
@@ -105,14 +107,27 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
 
         const allSystemIds = new Set<number>();
 
+        // Extract capital kills from nested structure (it's a dict, not array)
+        const capitalKillsList: any[] = [];
+        const capitalKills = battleReport.capital_kills as any;
+        if (capitalKills && typeof capitalKills === 'object') {
+          ['titans', 'supercarriers', 'carriers', 'dreadnoughts', 'force_auxiliaries'].forEach(category => {
+            if (capitalKills[category]?.kills) {
+              capitalKillsList.push(...capitalKills[category].kills);
+            }
+          });
+        }
+
         // Collect all unique system IDs
         battleReport.hot_zones?.forEach(z => allSystemIds.add(z.system_id));
-        battleReport.capital_kills?.forEach((k: any) => allSystemIds.add(k.system_id));
+        capitalKillsList.forEach((k: any) => allSystemIds.add(k.system_id));
         battleReport.danger_zones?.forEach((d: any) => allSystemIds.add(d.system_id));
         battleReport.high_value_kills?.forEach((h: any) => allSystemIds.add(h.system_id));
 
+        console.log(`[BattleMapPreview] Found systems - Hot: ${battleReport.hot_zones?.length || 0}, Capital: ${capitalKillsList.length}, Danger: ${(battleReport.danger_zones as any[])?.length || 0}, High-Value: ${(battleReport.high_value_kills as any[])?.length || 0}`);
+
         // Create lookups for priority determination
-        const capitalKillsMap = new Map(battleReport.capital_kills?.map((k: any) => [k.system_id, k]) || []);
+        const capitalKillsMap = new Map(capitalKillsList.map((k: any) => [k.system_id, k]));
         const hotZoneMap = new Map(battleReport.hot_zones?.map(z => [z.system_id, z]) || []);
         const highValueMap = new Map(battleReport.high_value_kills?.map((h: any) => [h.system_id, h]) || []);
         const dangerZoneMap = new Map(battleReport.danger_zones?.map((d: any) => [d.system_id, d]) || []);
@@ -193,82 +208,6 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
     navigate('/battle-map');
   };
 
-  // Show placeholder if map not loaded yet
-  if (!mapLoaded) {
-    return (
-      <div
-        className="card"
-        style={{
-          height: '500px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'linear-gradient(135deg, #0d1117 0%, #161b22 100%)',
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Stars background effect */}
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundImage: 'radial-gradient(2px 2px at 20% 30%, white, transparent), radial-gradient(2px 2px at 60% 70%, white, transparent), radial-gradient(1px 1px at 50% 50%, white, transparent), radial-gradient(1px 1px at 80% 10%, white, transparent), radial-gradient(2px 2px at 90% 60%, white, transparent)',
-          backgroundSize: '200% 200%',
-          opacity: 0.3,
-        }} />
-
-        <div style={{ textAlign: 'center', position: 'relative', zIndex: 1 }}>
-          <p style={{ fontSize: '3rem', marginBottom: '1rem' }}>🌌</p>
-          <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
-            3D Galaxy Map
-          </h3>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.875rem' }}>
-            {showAllLayers && battleReport ? (
-              <>
-                Visualize all combat activity: {battleReport.hot_zones?.length || 0} hot zones,
-                {' '}{(battleReport.capital_kills as any[])?.length || 0} capital kills,
-                {' '}{(battleReport.high_value_kills as any[])?.length || 0} high-value kills,
-                {' '}{(battleReport.danger_zones as any[])?.length || 0} danger zones
-              </>
-            ) : (
-              <>Visualize {hotZones.length} combat hot zones across New Eden</>
-            )}
-          </p>
-          <button
-            onClick={loadMapData}
-            style={{
-              background: 'var(--accent-blue)',
-              color: 'white',
-              border: 'none',
-              padding: '0.875rem 2rem',
-              borderRadius: '6px',
-              fontSize: '1rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(88, 166, 255, 0.3)',
-              transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#6eb8ff';
-              e.currentTarget.style.transform = 'translateY(-2px)';
-              e.currentTarget.style.boxShadow = '0 6px 16px rgba(88, 166, 255, 0.4)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'var(--accent-blue)';
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 4px 12px rgba(88, 166, 255, 0.3)';
-            }}
-          >
-            🗺️ Load 3D Map (7.7 MB)
-          </button>
-          <p style={{ color: 'var(--text-tertiary)', marginTop: '1rem', fontSize: '0.75rem' }}>
-            High-fidelity 3D rendering of 8,437 solar systems
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   if (loading) {
     return (
       <div className="card" style={{ height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -293,7 +232,7 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
             Unable to load map data
           </p>
           <button
-            onClick={loadMapData}
+            onClick={() => window.location.reload()}
             style={{
               marginTop: '1rem',
               background: 'var(--accent-blue)',
@@ -304,7 +243,7 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
               cursor: 'pointer',
             }}
           >
-            Retry
+            Reload Page
           </button>
         </div>
       </div>
