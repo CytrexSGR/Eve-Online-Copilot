@@ -266,7 +266,8 @@ export function BattleMap() {
         systemRenderConfigs,
       });
     }
-  }, [systems, systemRenderConfigs, mapControl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [systems.length, systemRenderConfigs]);
 
   // Handle system click - show info panel
   const handleSystemClick = (systemId: number) => {

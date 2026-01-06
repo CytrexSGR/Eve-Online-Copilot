@@ -1,0 +1,92 @@
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                                    EVE Co-Pilot - Battle Map                              │
+│                                  (Navigation Bar - 60px)                                  │
+├──────────────┬───────────────────────────────────────────────────────────┬────────────────┤
+│              │                                                           │                │
+│   FILTERS    │                   3D GALAXY MAP                          │  SYSTEM INFO   │
+│   (280px)    │                   (Flex: 1)                              │   (320px)      │
+│              │                                                           │   (Optional)   │
+│ ┌──────────┐ │                                                           │                │
+│ │ Combat   │ │  ┌─────────────────────────────────────────────┐         │ ┌────────────┐ │
+│ │ Layers   │ │  │ Controls Info                               │         │ │ [X] Close  │ │
+│ └──────────┘ │  │ • Click & drag to rotate                    │         │ └────────────┘ │
+│              │  │ • Scroll to zoom                            │         │                │
+│ ☑ Hot Zones  │  │ • Click system for details                  │         │ System Name    │
+│   (15)       │  └─────────────────────────────────────────────┘         │ Region: Forge  │
+│   🔴 Red     │                                                           │ Security: 0.8  │
+│              │                                                           │                │
+│ ☐ Capital    │                    🌌                                    │ ┌────────────┐ │
+│   Kills      │                   ✨🌟✨                                  │ │ 🔥 Hot     │ │
+│   (8)        │                  🌟  🌟                                  │ │    Zone    │ │
+│   🟣 Purple  │                 ✨🌟🌟✨                                 │ │            │ │
+│              │                  🌟  🌟                                  │ │ Kills: 234 │ │
+│ ☐ Danger     │                   ✨🌟✨                                  │ │ ISK: 45.2B │ │
+│   Zones      │                    🌌                                    │ │ Ship: Rif  │ │
+│   (12)       │                                                           │ └────────────┘ │
+│   🟡 Yellow  │                                                           │                │
+│              │                  Interactive                              │ ┌────────────┐ │
+│ ☐ High-      │                    3D Map                                │ │ 💎 High-   │ │
+│   Value      │                  (eve-map-3d)                            │ │    Value   │ │
+│   (23)       │                                                           │ │            │ │
+│   🔵 Cyan    │                                                           │ │ Count: 5   │ │
+│              │   • Red systems = Hot Zones                              │ │ Max: 2.5B  │ │
+│ ──────────── │   • Purple = Capital Kills                               │ │ Erebus     │ │
+│              │   • Yellow = Danger Zones                                │ └────────────┘ │
+│ 24h Summary  │   • Cyan = High-Value Kills                              │                │
+│              │                                                           │ (Scrollable)   │
+│ Total Kills  │   Hover/click for details                                │                │
+│  12,345      │                                                           │                │
+│              │                                                           │                │
+│ ISK Destroyed│                                                           │                │
+│  567.8B ISK  │                                                           │                │
+│              │                                                           │                │
+│ Peak Hour    │                                                           │                │
+│  18:00 UTC   │                                                           │                │
+│              │                                                           │                │
+│ (Scrollable) │                                                           │                │
+│              │                                                           │                │
+└──────────────┴───────────────────────────────────────────────────────────┴────────────────┘
+                            Total Height: calc(100vh - 120px)
+
+LEGEND:
+═══════════════════════════════════════════════════════════════════════════
+
+COLOR CODING:
+  🔴 Red (#ff4444)      - Top 3 Hot Zones (highest kills)
+  🟠 Orange (#ff9944)   - Other Hot Zones
+  🟣 Purple (#bc8cff)   - Capital Kills (highest priority)
+  🟡 Yellow (#d29922)   - Danger Zones (industrial losses)
+  🔵 Cyan (#00d9ff)     - High-Value Kills (expensive losses)
+
+PRIORITY SYSTEM (when multiple attributes):
+  1. Capital Kills (purple)      ← Highest priority
+  2. Hot Zones (red/orange)
+  3. High-Value Kills (cyan)
+  4. Danger Zones (yellow)       ← Lowest priority
+
+INTERACTIVITY:
+  • Click checkbox → Toggle filter on/off
+  • Click system → Open info panel (right sidebar)
+  • Click X → Close info panel
+  • Drag map → Rotate galaxy view
+  • Scroll → Zoom in/out
+
+RESPONSIVE BEHAVIOR:
+  • Left sidebar: Fixed 280px width, scrollable
+  • Right sidebar: Fixed 320px width, scrollable, slides in on demand
+  • Center map: Flexible width, fills remaining space
+  • All sections: Full viewport height minus header (120px)
+
+ANIMATIONS:
+  • Filter toggle: Border color transition (0.2s)
+  • Info panel: Slide-in from right (0.3s ease)
+  • Map updates: Smooth color transitions when filters change
+
+DATA FLOW:
+  1. Load map data (JSONL files) → systems, stargates, regions
+  2. Fetch battle report (/api/reports/battle-24h) → combat data
+  3. Build lookup maps (O(1) access) → systemLookups
+  4. Apply filters → systemRenderConfigs
+  5. Render map → EveMap3D component
+  6. User clicks system → handleSystemClick
+  7. Display info panel → selectedSystem state
