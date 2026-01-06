@@ -112,6 +112,72 @@ class ZKillboardReportsService:
         industrial_categories = ['freighter', 'industrial', 'exhumer']
         return self.get_ship_category(group_id) in industrial_categories
 
+    def extract_capital_kills(self, killmails: List[Dict]) -> Dict:
+        """Extract and categorize capital kills"""
+        capitals = {
+            'titans': {'count': 0, 'total_isk': 0, 'kills': []},
+            'supercarriers': {'count': 0, 'total_isk': 0, 'kills': []},
+            'carriers': {'count': 0, 'total_isk': 0, 'kills': []},
+            'dreadnoughts': {'count': 0, 'total_isk': 0, 'kills': []},
+            'force_auxiliaries': {'count': 0, 'total_isk': 0, 'kills': []}
+        }
+
+        # Get groupID for all unique ship_type_ids
+        ship_type_ids = list(set(km.get('ship_type_id') for km in killmails if km.get('ship_type_id')))
+        ship_groups = {}
+        ship_names = {}
+
+        if ship_type_ids:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Batch lookup of groupIDs and ship names
+                    cur.execute(
+                        'SELECT "typeID", "groupID", "typeName" FROM "invTypes" WHERE "typeID" = ANY(%s)',
+                        (ship_type_ids,)
+                    )
+                    for row in cur.fetchall():
+                        ship_groups[row[0]] = row[1]
+                        ship_names[row[0]] = row[2]
+
+        for km in killmails:
+            ship_type_id = km.get('ship_type_id')
+            if not ship_type_id or ship_type_id not in ship_groups:
+                continue
+
+            group_id = ship_groups[ship_type_id]
+            category = self.get_ship_category(group_id)
+
+            if category not in ['titan', 'supercarrier', 'carrier', 'dreadnought', 'force_auxiliary']:
+                continue
+
+            # Get system info
+            system_id = km.get('solar_system_id')
+            system_info = self.get_system_location_info(system_id) if system_id else {}
+
+            kill_data = {
+                'killmail_id': km.get('killmail_id'),
+                'ship_name': ship_names.get(ship_type_id, 'Unknown'),
+                'victim': km.get('victim_character_id', 0),  # Character ID
+                'isk_destroyed': float(km.get('ship_value', 0)),
+                'system_name': system_info.get('system_name', 'Unknown'),
+                'region_name': system_info.get('region_name', 'Unknown'),
+                'security_status': system_info.get('security_status', 0.0),
+                'time_utc': km.get('killmail_time', '')
+            }
+
+            # Add to appropriate category
+            key = category + 's' if category != 'force_auxiliary' else 'force_auxiliaries'
+            if key in capitals:
+                capitals[key]['count'] += 1
+                capitals[key]['total_isk'] += kill_data['isk_destroyed']
+                capitals[key]['kills'].append(kill_data)
+
+        # Sort kills by ISK value within each category
+        for cat_data in capitals.values():
+            cat_data['kills'].sort(key=lambda x: x['isk_destroyed'], reverse=True)
+
+        return capitals
+
     def get_war_profiteering_report(self, limit: int = 20) -> Dict:
         """
         Generate war profiteering report with market opportunities.
