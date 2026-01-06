@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EveMap3D, useMapControl } from 'eve-map-3d';
 import type { SolarSystem, Stargate, Region } from 'eve-map-3d';
-import type { HotZone } from '../types/reports';
+import type { HotZone, BattleReport } from '../types/reports';
 
 interface BattleMapPreviewProps {
-  hotZones: HotZone[];
+  hotZones?: HotZone[];
+  battleReport?: BattleReport;  // Full battle report for all 4 layers
+  showAllLayers?: boolean;  // If true, show all 4 combat layers
 }
 
 /**
@@ -21,7 +23,7 @@ interface BattleMapPreviewProps {
  * - Click-to-navigate functionality
  * - Loading states and error handling
  */
-export function BattleMapPreview({ hotZones }: BattleMapPreviewProps) {
+export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = false }: BattleMapPreviewProps) {
   const [systems, setSystems] = useState<SolarSystem[]>([]);
   const [stargates, setStargates] = useState<Stargate[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
@@ -84,48 +86,107 @@ export function BattleMapPreview({ hotZones }: BattleMapPreviewProps) {
     }
   };
 
-  // Highlight hot zones when data is loaded
+  // Highlight combat events when data is loaded
   useEffect(() => {
-    if (systems.length > 0 && hotZones.length > 0) {
-      try {
+    if (systems.length === 0) return;
+
+    try {
+      const systemRenderConfigs: Array<{
+        systemId: number;
+        color: string;
+        size: number;
+        highlighted: boolean;
+        opacity: number;
+      }> = [];
+
+      if (showAllLayers && battleReport) {
+        // Show ALL 4 combat layers with priority-based coloring
+        console.log('[BattleMapPreview] Showing all 4 combat layers');
+
+        const allSystemIds = new Set<number>();
+
+        // Collect all unique system IDs
+        battleReport.hot_zones?.forEach(z => allSystemIds.add(z.system_id));
+        battleReport.capital_kills?.forEach((k: any) => allSystemIds.add(k.system_id));
+        battleReport.danger_zones?.forEach((d: any) => allSystemIds.add(d.system_id));
+        battleReport.high_value_kills?.forEach((h: any) => allSystemIds.add(h.system_id));
+
+        // Create lookups for priority determination
+        const capitalKillsMap = new Map(battleReport.capital_kills?.map((k: any) => [k.system_id, k]) || []);
+        const hotZoneMap = new Map(battleReport.hot_zones?.map(z => [z.system_id, z]) || []);
+        const highValueMap = new Map(battleReport.high_value_kills?.map((h: any) => [h.system_id, h]) || []);
+        const dangerZoneMap = new Map(battleReport.danger_zones?.map((d: any) => [d.system_id, d]) || []);
+
+        // Assign colors based on priority
+        allSystemIds.forEach(systemId => {
+          let color = '#ffffff';
+          let size = 3.0;
+
+          // Priority 1: Capital Kills (bright purple)
+          if (capitalKillsMap.has(systemId)) {
+            color = '#d946ef';
+            size = 5.0;
+          }
+          // Priority 2: Hot Zones (bright red/orange)
+          else if (hotZoneMap.has(systemId)) {
+            const index = battleReport.hot_zones.findIndex(z => z.system_id === systemId);
+            const isTopThree = index < 3;
+            color = isTopThree ? '#ff0000' : '#ff6600';
+            size = isTopThree ? 4.5 : 3.5;
+          }
+          // Priority 3: High-Value Kills (bright cyan)
+          else if (highValueMap.has(systemId)) {
+            color = '#00ffff';
+            size = 4.0;
+          }
+          // Priority 4: Danger Zones (bright yellow)
+          else if (dangerZoneMap.has(systemId)) {
+            color = '#ffaa00';
+            size = 3.5;
+          }
+
+          systemRenderConfigs.push({
+            systemId,
+            color,
+            size,
+            highlighted: true,
+            opacity: 1.0,
+          });
+        });
+
+        console.log(`[BattleMapPreview] Configured ${systemRenderConfigs.length} combat systems across all layers`);
+      }
+      else if (hotZones.length > 0) {
+        // Show only hot zones (legacy mode)
         console.log('[BattleMapPreview] Highlighting hot zones:', hotZones.length);
 
-        // Map hot zones to system render configs with red/orange coloring
-        // Make them MUCH more visible with larger sizes and brighter colors
-        const systemRenderConfigs = hotZones.map((zone, index) => {
-          // Top 3 are bright red (most dangerous), rest are bright orange
+        hotZones.forEach((zone, index) => {
           const isTopThree = index < 3;
-          const color = isTopThree ? '#ff0000' : '#ff6600';  // Brighter colors
-          const size = isTopThree ? 4.5 : 3.5;  // Much larger (was 2.5/2.0)
+          const color = isTopThree ? '#ff0000' : '#ff6600';
+          const size = isTopThree ? 4.5 : 3.5;
 
-          return {
+          systemRenderConfigs.push({
             systemId: zone.system_id,
             color,
             size,
             highlighted: true,
             opacity: 1.0,
-          };
+          });
         });
+      }
 
-        // Update map control configuration with hot zones
+      // Update map control configuration
+      if (systemRenderConfigs.length > 0) {
         mapControl.setConfig({
           systemRenderConfigs,
         });
-
-        console.log('[BattleMapPreview] Hot zones configured successfully');
-
-        // Focus on the hottest system (first in list) - optional, removed to reduce complexity
-        // if (hotZones.length > 0) {
-        //   setTimeout(() => {
-        //     mapControl.focusSystem(hotZones[0].system_id, 1500);
-        //   }, 100);
-        // }
-      } catch (err) {
-        console.error('[BattleMapPreview] Error highlighting hot zones:', err);
+        console.log('[BattleMapPreview] Combat systems configured successfully');
       }
+    } catch (err) {
+      console.error('[BattleMapPreview] Error highlighting combat systems:', err);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [systems.length, hotZones.length]);
+  }, [systems.length, hotZones.length, battleReport, showAllLayers]);
 
   // Handle container click to navigate to full map
   const handleClick = () => {
@@ -162,7 +223,16 @@ export function BattleMapPreview({ hotZones }: BattleMapPreviewProps) {
             3D Galaxy Map
           </h3>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.875rem' }}>
-            Visualize {hotZones.length} combat hot zones across New Eden
+            {showAllLayers && battleReport ? (
+              <>
+                Visualize all combat activity: {battleReport.hot_zones?.length || 0} hot zones,
+                {' '}{(battleReport.capital_kills as any[])?.length || 0} capital kills,
+                {' '}{(battleReport.high_value_kills as any[])?.length || 0} high-value kills,
+                {' '}{(battleReport.danger_zones as any[])?.length || 0} danger zones
+              </>
+            ) : (
+              <>Visualize {hotZones.length} combat hot zones across New Eden</>
+            )}
           </p>
           <button
             onClick={loadMapData}
