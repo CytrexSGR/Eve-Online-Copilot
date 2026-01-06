@@ -26,6 +26,8 @@ app.add_middleware(
     allow_origins=[
         "https://eve.infinimind-creations.com",
         "http://localhost:5173",  # Development
+        "http://192.168.178.108:5173",  # Local network development
+        "http://77.24.99.81:5173",  # Public IP development
     ],
     allow_credentials=False,
     allow_methods=["GET"],
