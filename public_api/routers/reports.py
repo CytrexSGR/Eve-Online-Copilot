@@ -180,8 +180,71 @@ async def get_trade_routes() -> Dict:
     Cache: 1 hour (refreshed daily at 08:00 UTC)
     """
     try:
-        report = zkill_live_service.get_trade_route_danger_map()
-        return report
+        # Get original routes data
+        routes_data = zkill_live_service.get_trade_route_danger_map()
+
+        # Calculate global summary
+        total_routes = len(routes_data.get("routes", []))
+        dangerous_count = 0
+        total_danger = 0
+        gate_camps = 0
+
+        # Transform routes
+        transformed_routes = []
+        for route in routes_data.get("routes", []):
+            avg_danger = route.get("avg_danger_score", 0)
+            total_danger += avg_danger
+
+            if avg_danger >= 5:
+                dangerous_count += 1
+
+            # Transform systems
+            transformed_systems = []
+            total_kills = 0
+            total_isk = 0
+
+            for system in route.get("systems", []):
+                kills = system.get("kills_24h", 0)
+                isk = system.get("isk_destroyed_24h", 0)
+                is_camp = system.get("gate_camp_detected", False)
+
+                total_kills += kills
+                total_isk += isk
+                if is_camp:
+                    gate_camps += 1
+
+                transformed_systems.append({
+                    "system_id": system["system_id"],
+                    "system_name": system["system_name"],
+                    "security_status": system.get("security", 0),
+                    "danger_score": system.get("danger_score", 0),
+                    "kills_24h": kills,
+                    "isk_destroyed_24h": isk,
+                    "is_gate_camp": is_camp
+                })
+
+            transformed_routes.append({
+                "origin_system": route["from_hub"],
+                "destination_system": route["to_hub"],
+                "jumps": route.get("total_jumps", 0),
+                "danger_score": avg_danger,
+                "total_kills": total_kills,
+                "total_isk_destroyed": total_isk,
+                "systems": transformed_systems
+            })
+
+        avg_danger_score = total_danger / total_routes if total_routes > 0 else 0
+
+        return {
+            "period": routes_data.get("period", "24h"),
+            "global": {
+                "total_routes": total_routes,
+                "dangerous_routes": dangerous_count,
+                "avg_danger_score": avg_danger_score,
+                "gate_camps_detected": gate_camps
+            },
+            "routes": transformed_routes
+        }
     except redis.RedisError as e:
         raise HTTPException(
             status_code=503,
