@@ -220,31 +220,32 @@ export function BattleMap() {
     }
 
     // For each system, determine color and size based on priority
+    // MUCH LARGER and BRIGHTER for better visibility
     allSystemIds.forEach(systemId => {
       let color = '#ffffff';
-      let size = 2.0;
+      let size = 3.0;
 
-      // Priority 1: Capital Kills (purple)
+      // Priority 1: Capital Kills (bright purple - highest priority)
       if (filters.capitalKills && capitalKillsMap.has(systemId)) {
-        color = '#bc8cff'; // purple
-        size = 2.5;
+        color = '#d946ef'; // bright purple/magenta
+        size = 5.0; // Very large for capital kills
       }
-      // Priority 2: Hot Zones (red/orange)
+      // Priority 2: Hot Zones (bright red/orange)
       else if (filters.hotZones && hotZoneMap.has(systemId)) {
         const index = battleReport.hot_zones.findIndex(z => z.system_id === systemId);
         const isTopThree = index < 3;
-        color = isTopThree ? '#ff4444' : '#ff9944';
-        size = isTopThree ? 2.5 : 2.0;
+        color = isTopThree ? '#ff0000' : '#ff6600'; // Bright red/orange
+        size = isTopThree ? 4.5 : 3.5; // Much larger
       }
-      // Priority 3: High-Value Kills (cyan)
+      // Priority 3: High-Value Kills (bright cyan)
       else if (filters.highValueKills && highValueKillsMap.has(systemId)) {
-        color = '#00d9ff'; // cyan
-        size = 2.2;
+        color = '#00ffff'; // bright cyan
+        size = 4.0; // Larger
       }
-      // Priority 4: Danger Zones (yellow)
+      // Priority 4: Danger Zones (bright yellow)
       else if (filters.dangerZones && dangerZoneMap.has(systemId)) {
-        color = '#d29922'; // yellow/warning
-        size = 2.0;
+        color = '#ffaa00'; // bright yellow/orange
+        size = 3.5; // Larger
       }
 
       configs.push({

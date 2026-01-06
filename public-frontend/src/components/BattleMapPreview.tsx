@@ -91,11 +91,12 @@ export function BattleMapPreview({ hotZones }: BattleMapPreviewProps) {
         console.log('[BattleMapPreview] Highlighting hot zones:', hotZones.length);
 
         // Map hot zones to system render configs with red/orange coloring
+        // Make them MUCH more visible with larger sizes and brighter colors
         const systemRenderConfigs = hotZones.map((zone, index) => {
-          // Top 3 are red (most dangerous), rest are orange
+          // Top 3 are bright red (most dangerous), rest are bright orange
           const isTopThree = index < 3;
-          const color = isTopThree ? '#ff4444' : '#ff9944';
-          const size = isTopThree ? 2.5 : 2.0;
+          const color = isTopThree ? '#ff0000' : '#ff6600';  // Brighter colors
+          const size = isTopThree ? 4.5 : 3.5;  // Much larger (was 2.5/2.0)
 
           return {
             systemId: zone.system_id,
