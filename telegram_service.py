@@ -100,6 +100,50 @@ class TelegramService:
 
         return await self.send_message(self.reports_channel, message)
 
+    async def create_forum_topic(
+        self,
+        chat_id: str,
+        name: str,
+        icon_color: Optional[int] = None,
+        icon_custom_emoji_id: Optional[str] = None
+    ) -> dict:
+        """
+        Create a new forum topic in a supergroup.
+
+        Args:
+            chat_id: Chat ID of the supergroup
+            name: Topic name (1-128 characters)
+            icon_color: Color of the topic icon (optional)
+            icon_custom_emoji_id: Custom emoji ID for topic icon (optional)
+
+        Returns:
+            Dict with topic info including message_thread_id
+        """
+        url = f"{self.base_url}/createForumTopic"
+        payload = {
+            "chat_id": chat_id,
+            "name": name
+        }
+
+        if icon_color is not None:
+            payload["icon_color"] = icon_color
+        if icon_custom_emoji_id:
+            payload["icon_custom_emoji_id"] = icon_custom_emoji_id
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as response:
+                    result = await response.json()
+                    if response.status == 200 and result.get("ok"):
+                        return result
+                    else:
+                        error_msg = result.get("description", await response.text())
+                        print(f"Error creating topic: {error_msg}")
+                        return {"ok": False, "error": error_msg}
+
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     async def get_updates(self) -> dict:
         """
         Get bot updates (for testing and getting chat IDs).
