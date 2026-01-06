@@ -64,6 +64,8 @@ class LiveKillmail:
     is_npc: bool
     destroyed_items: List[Dict]  # Items that were destroyed (market demand)
     dropped_items: List[Dict]    # Items that dropped (no market demand)
+    attacker_corporations: List[int]  # Corp IDs of attackers
+    attacker_alliances: List[int]     # Alliance IDs of attackers
 
 
 class ZKillboardLiveService:
@@ -198,6 +200,17 @@ class ZKillboardLiveService:
             is_solo = attacker_count == 1
             is_npc = zkb.get("npc", False)
 
+            # Extract attacker corps and alliances
+            attacker_corporations = []
+            attacker_alliances = []
+            for attacker in attackers:
+                corp_id = attacker.get("corporation_id")
+                if corp_id:
+                    attacker_corporations.append(corp_id)
+                alliance_id = attacker.get("alliance_id")
+                if alliance_id:
+                    attacker_alliances.append(alliance_id)
+
             # Item segregation: destroyed vs dropped
             items = victim.get("items", [])
             destroyed_items = []
@@ -234,7 +247,9 @@ class ZKillboardLiveService:
                 is_solo=is_solo,
                 is_npc=is_npc,
                 destroyed_items=destroyed_items,
-                dropped_items=dropped_items
+                dropped_items=dropped_items,
+                attacker_corporations=attacker_corporations,
+                attacker_alliances=attacker_alliances
             )
 
         except Exception as e:
@@ -525,6 +540,91 @@ class ZKillboardLiveService:
 
         return is_camp, confidence, indicators
 
+    def get_involved_parties(self, system_id: int, limit: int = 5) -> Dict:
+        """
+        Get involved corporations and alliances from recent kills.
+
+        Args:
+            system_id: Solar system ID
+            limit: Max parties to return per side
+
+        Returns:
+            Dict with attacker/victim corps and alliances with names
+        """
+        # Get recent kills
+        kill_ids = self.redis_client.zrevrange(
+            f"kill:system:{system_id}:timeline",
+            0,
+            50
+        )
+
+        kills = []
+        for kill_id in kill_ids[:20]:
+            kill_data = self.redis_client.get(f"kill:id:{kill_id}")
+            if kill_data:
+                kills.append(json.loads(kill_data))
+
+        if not kills:
+            return {"attackers": {"corps": [], "alliances": []}, "victims": {"corps": [], "alliances": []}}
+
+        # Aggregate attacker corps and alliances
+        attacker_corps = {}
+        attacker_alliances = {}
+        victim_corps = {}
+        victim_alliances = {}
+
+        for kill in kills:
+            # Count attacker corps
+            for corp_id in kill.get('attacker_corporations', []):
+                attacker_corps[corp_id] = attacker_corps.get(corp_id, 0) + 1
+
+            # Count attacker alliances
+            for alliance_id in kill.get('attacker_alliances', []):
+                attacker_alliances[alliance_id] = attacker_alliances.get(alliance_id, 0) + 1
+
+            # Count victim corp
+            victim_corp = kill.get('victim_corporation_id')
+            if victim_corp:
+                victim_corps[victim_corp] = victim_corps.get(victim_corp, 0) + 1
+
+            # Count victim alliance
+            victim_alliance = kill.get('victim_alliance_id')
+            if victim_alliance:
+                victim_alliances[victim_alliance] = victim_alliances.get(victim_alliance, 0) + 1
+
+        # Get top corps/alliances by count
+        top_attacker_corps = sorted(attacker_corps.items(), key=lambda x: x[1], reverse=True)[:limit]
+        top_attacker_alliances = sorted(attacker_alliances.items(), key=lambda x: x[1], reverse=True)[:limit]
+        top_victim_corps = sorted(victim_corps.items(), key=lambda x: x[1], reverse=True)[:limit]
+        top_victim_alliances = sorted(victim_alliances.items(), key=lambda x: x[1], reverse=True)[:limit]
+
+        # Fetch names from ESI (using a simple cache approach)
+        def get_corp_name(corp_id: int) -> str:
+            # Try to get from database first (if we have it cached)
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Check if we have a corp name cache table (we don't, so just return ID for now)
+                    return f"Corp {corp_id}"
+
+        def get_alliance_name(alliance_id: int) -> str:
+            # Same as corps - return ID for now
+            return f"Alliance {alliance_id}"
+
+        return {
+            "attackers": {
+                "corps": [{"id": corp_id, "name": get_corp_name(corp_id), "kills": count}
+                         for corp_id, count in top_attacker_corps],
+                "alliances": [{"id": alliance_id, "name": get_alliance_name(alliance_id), "kills": count}
+                             for alliance_id, count in top_attacker_alliances]
+            },
+            "victims": {
+                "corps": [{"id": corp_id, "name": get_corp_name(corp_id), "kills": count}
+                         for corp_id, count in top_victim_corps],
+                "alliances": [{"id": alliance_id, "name": get_alliance_name(alliance_id), "kills": count}
+                             for alliance_id, count in top_victim_alliances]
+            }
+        }
+
     async def create_enhanced_alert(self, hotspot: Dict):
         """
         Create enhanced Discord alert with:
@@ -570,6 +670,9 @@ class ZKillboardLiveService:
         # Detect gate camp
         is_camp, camp_confidence, camp_indicators = self.detect_gate_camp(system_id)
 
+        # Get involved parties
+        involved = self.get_involved_parties(system_id, limit=3)
+
         # Build alert message
         alert = f"""⚠️ **Combat Hotspot Detected**
 
@@ -585,6 +688,25 @@ class ZKillboardLiveService:
             alert += f"🚨 **Pattern:** {pattern_desc} ({camp_confidence:.0f}% confidence)\n"
             if camp_indicators:
                 alert += f"   Evidence: {', '.join(camp_indicators[:2])}\n"
+
+        # Add involved parties
+        if involved['attackers']['alliances'] or involved['attackers']['corps']:
+            alert += "\n**⚔️ Attacking Forces:**\n"
+            if involved['attackers']['alliances']:
+                for alliance in involved['attackers']['alliances']:
+                    alert += f"   • {alliance['name']} ({alliance['kills']} kills)\n"
+            elif involved['attackers']['corps']:
+                for corp in involved['attackers']['corps'][:2]:
+                    alert += f"   • {corp['name']} ({corp['kills']} kills)\n"
+
+        if involved['victims']['alliances'] or involved['victims']['corps']:
+            alert += "\n**💀 Primary Victims:**\n"
+            if involved['victims']['alliances']:
+                for alliance in involved['victims']['alliances'][:2]:
+                    alert += f"   • {alliance['name']} ({alliance['kills']} losses)\n"
+            elif involved['victims']['corps']:
+                for corp in involved['victims']['corps'][:2]:
+                    alert += f"   • {corp['name']} ({corp['kills']} losses)\n"
 
         # Add top 5 ships
         if top_ships:
