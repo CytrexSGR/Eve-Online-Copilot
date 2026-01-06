@@ -1,0 +1,36 @@
+[Unit]
+Description=EVE Intelligence Public API
+Documentation=https://github.com/CytrexSGR/Eve-Online-Copilot
+After=network.target redis.service
+Requires=redis.service
+
+[Service]
+Type=simple
+User=cytrex
+Group=cytrex
+WorkingDirectory=/home/cytrex/eve_copilot
+Environment="PATH=/home/cytrex/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+ExecStart=/home/cytrex/.local/bin/uvicorn public_api.main:app \
+    --host 0.0.0.0 \
+    --port 8001 \
+    --workers 2 \
+    --log-level info \
+    --access-log
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eve-intelligence-api
+
+Restart=always
+RestartSec=10
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/log/eve-intelligence
+
+[Install]
+WantedBy=multi-user.target
