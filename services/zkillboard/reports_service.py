@@ -23,6 +23,24 @@ from route_service import RouteService, TRADE_HUB_SYSTEMS
 # Battle Report Configuration
 BATTLE_REPORT_CACHE_TTL = 600  # 10 minutes cache
 
+# Ship type categories based on groupID from invTypes table
+SHIP_CATEGORIES = {
+    'titan': [30],  # Titans
+    'supercarrier': [659],  # Supercarriers
+    'carrier': [547],  # Carriers
+    'dreadnought': [485],  # Dreadnoughts
+    'force_auxiliary': [1538],  # Force Auxiliaries
+    'battleship': [27, 898, 900],  # Battleships, Black Ops, Marauders
+    'battlecruiser': [419, 540],  # Battlecruisers, Command Ships
+    'cruiser': [26, 358, 894, 906, 963],  # Cruisers, HACs, Recons, etc
+    'destroyer': [420, 541],  # Destroyers, Interdictors
+    'frigate': [25, 324, 831, 893],  # Frigates, AFs, Interceptors, etc
+    'freighter': [513, 902],  # Freighters, Jump Freighters
+    'industrial': [28, 463],  # Industrials, Mining Barges
+    'exhumer': [543],  # Exhumers
+    'capsule': [29]  # Capsules/Pods
+}
+
 
 class ZKillboardReportsService:
     """Service for generating analytical reports from killmail data"""
@@ -76,6 +94,23 @@ class ZKillboardReportsService:
                         'region_name': result[3]
                     }
                 return {}
+
+    def get_ship_category(self, group_id: int) -> str:
+        """Determine ship category from group ID"""
+        for category, group_ids in SHIP_CATEGORIES.items():
+            if group_id in group_ids:
+                return category
+        return 'other'
+
+    def is_capital_ship(self, group_id: int) -> bool:
+        """Check if ship is a capital"""
+        capital_categories = ['titan', 'supercarrier', 'carrier', 'dreadnought', 'force_auxiliary']
+        return self.get_ship_category(group_id) in capital_categories
+
+    def is_industrial_ship(self, group_id: int) -> bool:
+        """Check if ship is industrial/hauler"""
+        industrial_categories = ['freighter', 'industrial', 'exhumer']
+        return self.get_ship_category(group_id) in industrial_categories
 
     def get_war_profiteering_report(self, limit: int = 20) -> Dict:
         """
