@@ -315,6 +315,47 @@ class ZKillboardReportsService:
 
         return danger_zones
 
+    def calculate_ship_breakdown(self, killmails: List[Dict]) -> Dict:
+        """Calculate kills and ISK by ship category"""
+        breakdown = {}
+
+        # Get groupID for all unique ship_type_ids
+        ship_type_ids = list(set(km.get('ship_type_id') for km in killmails if km.get('ship_type_id')))
+        ship_groups = {}
+
+        if ship_type_ids:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        'SELECT "typeID", "groupID" FROM "invTypes" WHERE "typeID" = ANY(%s)',
+                        (ship_type_ids,)
+                    )
+                    for row in cur.fetchall():
+                        ship_groups[row[0]] = row[1]
+
+        for km in killmails:
+            ship_type_id = km.get('ship_type_id', 0)
+            group_id = ship_groups.get(ship_type_id, 0)
+            category = self.get_ship_category(group_id) if group_id else 'other'
+
+            if category not in breakdown:
+                breakdown[category] = {
+                    'count': 0,
+                    'total_isk': 0
+                }
+
+            breakdown[category]['count'] += 1
+            breakdown[category]['total_isk'] += float(km.get('ship_value', 0))
+
+        # Sort by ISK value
+        sorted_breakdown = dict(sorted(
+            breakdown.items(),
+            key=lambda x: x[1]['total_isk'],
+            reverse=True
+        ))
+
+        return sorted_breakdown
+
     def get_war_profiteering_report(self, limit: int = 20) -> Dict:
         """
         Generate war profiteering report with market opportunities.
