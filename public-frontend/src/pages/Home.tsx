@@ -36,8 +36,15 @@ export function Home() {
       setTradeRoutes(routes);
       setLastUpdated(new Date());
       setLoading(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load reports:', err);
+      console.error('Error details:', {
+        message: err.message,
+        code: err.code,
+        response: err.response,
+        status: err.response?.status,
+        data: err.response?.data
+      });
       setError('Failed to load reports. Please try again.');
       setLoading(false);
     }

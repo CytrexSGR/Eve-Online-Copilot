@@ -10,9 +10,15 @@ const API_BASE_URL = import.meta.env.PROD
   ? 'https://eve.infinimind-creations.com/api'
   : '/api';
 
+console.log('API Configuration:', {
+  isProd: import.meta.env.PROD,
+  mode: import.meta.env.MODE,
+  baseURL: API_BASE_URL
+});
+
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 60000,  // 60 seconds for initial report generation
   headers: {
     'Content-Type': 'application/json',
   },

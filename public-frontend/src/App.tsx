@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { BattleReport } from './pages/BattleReport';
+import { BattleMap } from './pages/BattleMap';
 import { WarProfiteering } from './pages/WarProfiteering';
 import { AllianceWars } from './pages/AllianceWars';
 import { TradeRoutes } from './pages/TradeRoutes';
@@ -14,6 +15,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/battle-report" element={<BattleReport />} />
+          <Route path="/battle-map" element={<BattleMap />} />
           <Route path="/war-profiteering" element={<WarProfiteering />} />
           <Route path="/alliance-wars" element={<AllianceWars />} />
           <Route path="/trade-routes" element={<TradeRoutes />} />

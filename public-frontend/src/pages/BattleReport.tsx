@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { reportsApi } from '../services/api';
 import { RefreshIndicator } from '../components/RefreshIndicator';
+import { BattleMapPreview } from '../components/BattleMapPreview';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { getSecurityColor, formatSecurity, formatISK } from '../utils/security';
 import type { BattleReport as BattleReportType } from '../types/reports';
@@ -83,6 +84,17 @@ export function BattleReport() {
           </div>
         )}
       </div>
+
+      {/* 3D GALAXY MAP PREVIEW */}
+      {report.hot_zones && report.hot_zones.length > 0 && (
+        <div style={{ marginBottom: '2rem' }}>
+          <h2 style={{ marginBottom: '1rem' }}>🗺️ Galaxy Hot Zones - 3D View</h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+            Interactive 3D map showing combat hot zones across New Eden
+          </p>
+          <BattleMapPreview hotZones={report.hot_zones} />
+        </div>
+      )}
 
       {/* HOT ZONES */}
       {report.hot_zones && report.hot_zones.length > 0 && (
