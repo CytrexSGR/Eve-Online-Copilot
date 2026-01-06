@@ -58,8 +58,12 @@ class CombinedZKillboardService(ZKillboardLiveService):
         return self._reports_service.get_trade_route_danger_map()
 
     def get_24h_battle_report(self):
-        """Generate 24h battle report"""
+        """Generate 24h battle report (legacy)"""
         return self._reports_service.get_24h_battle_report()
+
+    def build_pilot_intelligence_report(self):
+        """Generate pilot intelligence battle report"""
+        return self._reports_service.build_pilot_intelligence_report()
 
 
 # Singleton instance for backwards compatibility

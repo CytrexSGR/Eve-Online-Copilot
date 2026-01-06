@@ -14,15 +14,20 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 @router.get("/battle-24h")
 async def get_battle_report() -> Dict:
     """
-    24-Hour Battle Report by Region
+    24-Hour Battle Report - Pilot Intelligence
 
-    Returns comprehensive combat statistics for the last 24 hours,
-    organized by region with top systems, ships, and destroyed items.
+    Returns actionable combat intelligence from pilot perspective:
+    - Hot zones (top systems by activity)
+    - Capital kills summary
+    - High-value individual kills with gank detection
+    - Danger zones for haulers
+    - Ship type breakdown
+    - Hourly activity timeline
 
     Cache: 10 minutes
     """
     try:
-        report = zkill_live_service.get_24h_battle_report()
+        report = zkill_live_service.build_pilot_intelligence_report()
         return report
     except redis.RedisError as e:
         raise HTTPException(
@@ -32,7 +37,7 @@ async def get_battle_report() -> Dict:
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail="Failed to generate battle report"
+            detail=f"Failed to generate battle report: {str(e)}"
         )
 
 
