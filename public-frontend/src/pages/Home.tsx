@@ -175,6 +175,17 @@ export function Home() {
             </p>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  background: '#ffffff',
+                  boxShadow: '0 0 8px #ffffff',
+                  animation: 'pulse 2s ease-in-out infinite'
+                }} />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>LIVE Hotspots ⚡</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#d946ef' }} />
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Capital Kills</span>
               </div>

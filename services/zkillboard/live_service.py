@@ -852,6 +852,32 @@ class ZKillboardLiveService:
             key = f"hotspot:{system_id}:{int(now)}"
             self.redis_client.setex(key, 3600, json.dumps(hotspot))  # 1h TTL
 
+            # Calculate simplified danger score for live visualization
+            # Based on kill count: 5-7 = LOW, 8-10 = MEDIUM, 11+ = HIGH
+            kill_count = hotspot.get("kill_count", 0)
+            if kill_count >= 11:
+                simple_danger = "HIGH"
+            elif kill_count >= 8:
+                simple_danger = "MEDIUM"
+            else:
+                simple_danger = "LOW"
+
+            # Store live hotspot for real-time map visualization (5-minute TTL)
+            live_hotspot_data = {
+                "system_id": system_id,
+                "region_id": hotspot.get("region_id"),
+                "kill_count": kill_count,
+                "timestamp": hotspot.get("timestamp"),
+                "latest_ship": hotspot.get("latest_ship"),
+                "latest_value": hotspot.get("latest_value"),
+                "system_name": self._get_system_name(system_id),
+                "danger_level": simple_danger,
+                "age_seconds": 0  # Age will be calculated by API endpoint
+            }
+            live_key = f"live_hotspot:{system_id}"
+            self.redis_client.setex(live_key, 300, json.dumps(live_hotspot_data))  # 5-minute TTL
+            print(f"Stored live hotspot for system {system_id} (TTL: 300s, danger: {simple_danger})")
+
     def _get_system_name(self, system_id: int) -> str:
         """Get system name from DB"""
         try:

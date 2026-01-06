@@ -29,6 +29,7 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
   const [regions, setRegions] = useState<Region[]>([]);
   const [loading, setLoading] = useState(true); // Start as true - load automatically
   const [error, setError] = useState<string | null>(null);
+  const [liveHotspots, setLiveHotspots] = useState<any[]>([]);
   const navigate = useNavigate();
 
   // Initialize map control with hot zones highlighted
@@ -41,6 +42,30 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
       connectionLineOpacity: 0.3,
     },
   });
+
+  // Poll live hotspots every 10 seconds
+  useEffect(() => {
+    const fetchLiveHotspots = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/war/live-hotspots');
+        if (response.ok) {
+          const data = await response.json();
+          setLiveHotspots(data.hotspots || []);
+          console.log(`[BattleMapPreview] Loaded ${data.hotspots?.length || 0} live hotspots`);
+        }
+      } catch (err) {
+        console.error('[BattleMapPreview] Failed to fetch live hotspots:', err);
+      }
+    };
+
+    // Initial fetch
+    fetchLiveHotspots();
+
+    // Poll every 10 seconds
+    const interval = setInterval(fetchLiveHotspots, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Load JSONL data files automatically on mount
   useEffect(() => {
@@ -101,6 +126,45 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
         opacity: number;
       }> = [];
 
+      // Track which systems already rendered (for priority management)
+      const renderedSystems = new Set<number>();
+
+      // Priority 0: LIVE HOTSPOTS (highest priority - pulsing white/yellow)
+      // Age-based coloring: <1min = white pulsing, 1-3min = bright yellow, 3-5min = orange
+      if (liveHotspots.length > 0) {
+        console.log(`[BattleMapPreview] Rendering ${liveHotspots.length} LIVE hotspots`);
+        liveHotspots.forEach(hotspot => {
+          const age = hotspot.age_seconds || 0;
+          let color = '#ffffff';
+          let size = 7.0;
+
+          if (age < 60) {
+            // Very fresh (<1 min) - Pulsing white
+            color = '#ffffff';
+            size = 7.0;
+          } else if (age < 180) {
+            // Fresh (1-3 min) - Bright yellow
+            color = '#ffff00';
+            size = 6.0;
+          } else {
+            // Older (3-5 min) - Fading orange
+            color = '#ff9900';
+            size = 5.0;
+          }
+
+          systemRenderConfigs.push({
+            systemId: hotspot.system_id,
+            color,
+            size,
+            highlighted: true,
+            opacity: 1.0,
+          });
+
+          // Mark as rendered so other layers don't override
+          renderedSystems.add(hotspot.system_id);
+        });
+      }
+
       if (showAllLayers && battleReport) {
         // Show ALL 4 combat layers with priority-based coloring
         console.log('[BattleMapPreview] Showing all 4 combat layers');
@@ -132,8 +196,13 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
         const highValueMap = new Map(battleReport.high_value_kills?.map((h: any) => [h.system_id, h]) || []);
         const dangerZoneMap = new Map(battleReport.danger_zones?.map((d: any) => [d.system_id, d]) || []);
 
-        // Assign colors based on priority
+        // Assign colors based on priority (skip if already rendered as live hotspot)
         allSystemIds.forEach(systemId => {
+          // Skip if already rendered as live hotspot (highest priority)
+          if (renderedSystems.has(systemId)) {
+            return;
+          }
+
           let color = '#ffffff';
           let size = 3.0;
 
@@ -167,6 +236,8 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
             highlighted: true,
             opacity: 1.0,
           });
+
+          renderedSystems.add(systemId);
         });
 
         console.log(`[BattleMapPreview] Configured ${systemRenderConfigs.length} combat systems across all layers`);
@@ -176,6 +247,11 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
         console.log('[BattleMapPreview] Highlighting hot zones:', hotZones.length);
 
         hotZones.forEach((zone, index) => {
+          // Skip if already rendered as live hotspot
+          if (renderedSystems.has(zone.system_id)) {
+            return;
+          }
+
           const isTopThree = index < 3;
           const color = isTopThree ? '#ff0000' : '#ff6600';
           const size = isTopThree ? 4.5 : 3.5;
@@ -187,6 +263,8 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
             highlighted: true,
             opacity: 1.0,
           });
+
+          renderedSystems.add(zone.system_id);
         });
       }
 
@@ -201,7 +279,7 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
       console.error('[BattleMapPreview] Error highlighting combat systems:', err);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [systems.length, hotZones.length, battleReport, showAllLayers]);
+  }, [systems.length, hotZones.length, battleReport, showAllLayers, liveHotspots.length]);
 
   // Handle container click to navigate to full map
   const handleClick = () => {
@@ -294,6 +372,11 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
                 🌌 Combat Activity
               </div>
               <div style={{ color: 'var(--text-secondary)' }}>
+                {liveHotspots.length > 0 && (
+                  <div style={{ color: '#ffffff', fontWeight: 700, animation: 'pulse 2s ease-in-out infinite' }}>
+                    ⚡ {liveHotspots.length} LIVE hotspots
+                  </div>
+                )}
                 <div style={{ color: '#ff4444' }}>🔴 {battleReport.hot_zones?.length || 0} hot zones</div>
                 {(() => {
                   const capitalKills = battleReport.capital_kills as any;
@@ -318,6 +401,9 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
               <div style={{ fontWeight: 600, marginBottom: '0.25rem', color: 'var(--text-primary)', fontSize: '0.875rem' }}>
                 🌌 Combat Activity
               </div>
+              {liveHotspots.length > 0 && (
+                <div style={{ color: '#ffffff', fontWeight: 700 }}>⚡ {liveHotspots.length} LIVE hotspots</div>
+              )}
               <div style={{ color: '#ff4444' }}>🔴 {hotZones.length} hot zones</div>
             </div>
           )}

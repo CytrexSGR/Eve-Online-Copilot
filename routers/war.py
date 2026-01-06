@@ -607,3 +607,67 @@ async def get_24h_battle_report():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/live-hotspots")
+async def get_live_hotspots():
+    """
+    Get all currently active combat hotspots for real-time 3D map visualization.
+
+    Returns hotspots detected in the last 5 minutes with age calculation.
+    Used by BattleMapPreview component for live pulsing visualization.
+
+    Response:
+    {
+        "hotspots": [
+            {
+                "system_id": 30002187,
+                "system_name": "Jita",
+                "region_id": 10000002,
+                "kill_count": 12,
+                "timestamp": 1735939200.0,
+                "age_seconds": 45,
+                "latest_ship": 670,
+                "latest_value": 5000000.0,
+                "danger_level": "HIGH"
+            },
+            ...
+        ],
+        "count": 5,
+        "last_updated": "2025-01-06T20:00:00Z"
+    }
+    """
+    try:
+        import time
+        import json
+        from datetime import datetime
+
+        hotspots = []
+        current_time = time.time()
+
+        # Scan Redis for all live_hotspot:* keys
+        redis_client = zkill_live_service.redis_client
+        hotspot_keys = list(redis_client.scan_iter("live_hotspot:*"))
+
+        for key in hotspot_keys:
+            data = redis_client.get(key)
+            if data:
+                hotspot = json.loads(data)
+
+                # Calculate age in seconds
+                hotspot_time = hotspot.get("timestamp", current_time)
+                age_seconds = int(current_time - hotspot_time)
+                hotspot["age_seconds"] = age_seconds
+
+                # Only include hotspots less than 5 minutes old
+                if age_seconds < 300:
+                    hotspots.append(hotspot)
+
+        return {
+            "hotspots": hotspots,
+            "count": len(hotspots),
+            "last_updated": datetime.utcnow().isoformat() + "Z"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch live hotspots: {str(e)}")
