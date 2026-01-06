@@ -45,6 +45,7 @@ ESI_USER_AGENT = "EVE-CoPilot/1.0"
 # Hotspot Detection Configuration
 HOTSPOT_WINDOW_SECONDS = 300  # 5 minutes
 HOTSPOT_THRESHOLD_KILLS = 5   # 5+ kills in 5min = hotspot
+HOTSPOT_ALERT_COOLDOWN = 600  # 10 minutes between alerts for same system
 
 
 @dataclass
@@ -86,6 +87,9 @@ class ZKillboardLiveService:
 
         # In-memory hotspot tracking (system_id -> deque of timestamps)
         self.kill_timestamps: Dict[int, deque] = defaultdict(lambda: deque(maxlen=100))
+
+        # Track when alerts were last sent per system (system_id -> timestamp)
+        self.last_alert_sent: Dict[int, float] = {}
 
         # System -> Region mapping cache
         self.system_region_map: Dict[int, int] = {}
@@ -820,13 +824,27 @@ class ZKillboardLiveService:
         # Detect hotspot
         hotspot = self.detect_hotspot(kill)
         if hotspot:
-            # Create enhanced alert with intelligent danger level, gate camp detection, and top ships
-            alert_msg = await self.create_enhanced_alert(hotspot)
-            if alert_msg:
-                await self.send_discord_alert(alert_msg)
+            system_id = kill.solar_system_id
+            now = time.time()
 
-            # Store hotspot alert
-            key = f"hotspot:{kill.solar_system_id}:{int(time.time())}"
+            # Check cooldown to prevent alert spam during long battles
+            last_alert = self.last_alert_sent.get(system_id, 0)
+            time_since_last_alert = now - last_alert
+
+            if time_since_last_alert >= HOTSPOT_ALERT_COOLDOWN:
+                # Cooldown expired, send alert
+                alert_msg = await self.create_enhanced_alert(hotspot)
+                if alert_msg:
+                    await self.send_discord_alert(alert_msg)
+                    self.last_alert_sent[system_id] = now
+                    print(f"Alert sent for system {system_id} (cooldown: {HOTSPOT_ALERT_COOLDOWN}s)")
+            else:
+                # Still in cooldown
+                remaining = HOTSPOT_ALERT_COOLDOWN - time_since_last_alert
+                print(f"Hotspot detected in system {system_id}, but alert suppressed (cooldown: {remaining:.0f}s remaining)")
+
+            # Store hotspot alert (always, even if Discord alert suppressed)
+            key = f"hotspot:{system_id}:{int(now)}"
             self.redis_client.setex(key, 3600, json.dumps(hotspot))  # 1h TTL
 
     def _get_system_name(self, system_id: int) -> str:
