@@ -465,14 +465,26 @@ class ZKillboardReportsService:
 
     def build_pilot_intelligence_report(self) -> Dict:
         """Build complete pilot intelligence battle report"""
+        # Check cache first
+        cache_key = "report:pilot_intelligence:24h"
+        cached_report = self.redis_client.get(cache_key)
+        if cached_report:
+            print(f"[CACHE HIT] Returning cached pilot intelligence report")
+            return json.loads(cached_report)
+
+        print(f"[CACHE MISS] Building pilot intelligence report from scratch...")
+
         # Get all killmails from Redis
         kill_ids = list(self.redis_client.scan_iter("kill:id:*"))
+        print(f"[Performance] Found {len(kill_ids)} killmail keys")
 
         killmails = []
         for kill_id_key in kill_ids:
             kill_data = self.redis_client.get(kill_id_key)
             if kill_data:
                 killmails.append(json.loads(kill_data))
+
+        print(f"[Performance] Loaded {len(killmails)} killmails")
 
         if not killmails:
             return self._empty_pilot_report()
@@ -493,7 +505,7 @@ class ZKillboardReportsService:
         # Build region summary for backwards compatibility
         region_summary = self._build_region_summary_compat(killmails)
 
-        return {
+        report = {
             'period': '24h',
             'global': {
                 'total_kills': total_kills,
@@ -509,6 +521,13 @@ class ZKillboardReportsService:
             'timeline': timeline,
             'regions': region_summary
         }
+
+        # Cache the report for 10 minutes (600 seconds)
+        cache_key = "report:pilot_intelligence:24h"
+        self.redis_client.setex(cache_key, BATTLE_REPORT_CACHE_TTL, json.dumps(report))
+        print(f"[CACHE] Cached pilot intelligence report for {BATTLE_REPORT_CACHE_TTL}s")
+
+        return report
 
     def _empty_pilot_report(self) -> Dict:
         """Return empty report structure"""
