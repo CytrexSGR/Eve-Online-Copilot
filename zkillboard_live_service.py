@@ -47,6 +47,9 @@ HOTSPOT_WINDOW_SECONDS = 300  # 5 minutes
 HOTSPOT_THRESHOLD_KILLS = 5   # 5+ kills in 5min = hotspot
 HOTSPOT_ALERT_COOLDOWN = 600  # 10 minutes between alerts for same system
 
+# Battle Report Configuration
+BATTLE_REPORT_CACHE_TTL = 600  # 10 minutes cache
+
 
 @dataclass
 class LiveKillmail:
@@ -1042,9 +1045,18 @@ class ZKillboardLiveService:
         """
         Generate comprehensive 24h battle report by region.
 
+        Cached for 10 minutes to reduce computation load.
+
         Returns:
             Dict with regional stats and global summary
         """
+        # Check cache first
+        cache_key = "battle_report:24h:cache"
+        cached = self.redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
+
+        # Generate fresh report
         # Get all region timelines
         region_keys = list(self.redis_client.scan_iter("kill:region:*:timeline"))
 
@@ -1093,6 +1105,15 @@ class ZKillboardLiveService:
                 ship_counts[ship_id] = ship_counts.get(ship_id, 0) + 1
             top_ships = sorted(ship_counts.items(), key=lambda x: x[1], reverse=True)[:3]
 
+            # Get top 5 destroyed items/modules
+            item_counts = {}
+            for kill in kills:
+                for item in kill.get('destroyed_items', []):
+                    item_id = item['item_type_id']
+                    quantity = item['quantity']
+                    item_counts[item_id] = item_counts.get(item_id, 0) + quantity
+            top_items = sorted(item_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+
             # Get region name from DB
             with get_db_connection() as conn:
                 with conn.cursor() as cur:
@@ -1133,6 +1154,21 @@ class ZKillboardLiveService:
                             "losses": count
                         })
 
+                    # Get item/module names
+                    top_items_with_names = []
+                    for item_id, quantity in top_items:
+                        cur.execute(
+                            'SELECT "typeName" FROM "invTypes" WHERE "typeID" = %s',
+                            (item_id,)
+                        )
+                        row = cur.fetchone()
+                        item_name = row[0] if row else f"Item {item_id}"
+                        top_items_with_names.append({
+                            "item_type_id": item_id,
+                            "item_name": item_name,
+                            "quantity_destroyed": quantity
+                        })
+
             regional_stats.append({
                 "region_id": region_id,
                 "region_name": region_name,
@@ -1140,7 +1176,8 @@ class ZKillboardLiveService:
                 "total_isk_destroyed": total_isk,
                 "avg_kill_value": avg_isk,
                 "top_systems": top_systems_with_names,
-                "top_ships": top_ships_with_names
+                "top_ships": top_ships_with_names,
+                "top_destroyed_items": top_items_with_names
             })
 
             total_kills_global += kill_count
@@ -1153,7 +1190,7 @@ class ZKillboardLiveService:
         most_active_region = regional_stats[0] if regional_stats else None
         most_expensive_region = max(regional_stats, key=lambda x: x['total_isk_destroyed']) if regional_stats else None
 
-        return {
+        report = {
             "period": "24h",
             "global": {
                 "total_kills": total_kills_global,
@@ -1163,6 +1200,11 @@ class ZKillboardLiveService:
             },
             "regions": regional_stats
         }
+
+        # Cache report for 10 minutes
+        self.redis_client.setex(cache_key, BATTLE_REPORT_CACHE_TTL, json.dumps(report))
+
+        return report
 
 
 # Singleton instance
