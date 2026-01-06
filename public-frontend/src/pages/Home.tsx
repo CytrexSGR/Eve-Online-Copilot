@@ -37,6 +37,7 @@ export function Home() {
       setLastUpdated(new Date());
       setLoading(false);
     } catch (err) {
+      console.error('Failed to load reports:', err);
       setError('Failed to load reports. Please try again.');
       setLoading(false);
     }
