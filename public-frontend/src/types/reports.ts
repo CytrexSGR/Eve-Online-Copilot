@@ -1,33 +1,93 @@
+// Pilot Intelligence Battle Report Types
+
+export interface HotZone {
+  system_id: number;
+  system_name: string;
+  region_name: string;
+  constellation_name: string;
+  security_status: number;
+  kills: number;
+  total_isk_destroyed: number;
+  dominant_ship_type: string;
+  flags: string[];
+}
+
+export interface CapitalKill {
+  killmail_id: number;
+  ship_name: string;
+  victim: number;
+  isk_destroyed: number;
+  system_name: string;
+  region_name: string;
+  security_status: number;
+  time_utc: string;
+}
+
+export interface CapitalCategory {
+  count: number;
+  total_isk: number;
+  kills: CapitalKill[];
+}
+
+export interface CapitalKills {
+  titans: CapitalCategory;
+  supercarriers: CapitalCategory;
+  carriers: CapitalCategory;
+  dreadnoughts: CapitalCategory;
+  force_auxiliaries: CapitalCategory;
+}
+
+export interface HighValueKill {
+  rank: number;
+  killmail_id: number;
+  isk_destroyed: number;
+  ship_type: string;
+  ship_name: string;
+  victim: number;
+  system_id: number;
+  system_name: string;
+  region_name: string;
+  security_status: number;
+  is_gank: boolean;
+  time_utc: string;
+}
+
+export interface DangerZone {
+  system_name: string;
+  region_name: string;
+  security_status: number;
+  industrials_killed: number;
+  freighters_killed: number;
+  total_value: number;
+  warning_level: 'EXTREME' | 'HIGH' | 'MODERATE';
+}
+
+export interface ShipCategory {
+  count: number;
+  total_isk: number;
+}
+
+export interface TimelineHour {
+  hour_utc: number;
+  kills: number;
+  isk_destroyed: number;
+}
+
 export interface BattleReport {
   period: string;
   global: {
     total_kills: number;
     total_isk_destroyed: number;
-    most_active_region: string;
-    most_expensive_region: string;
+    peak_hour_utc: number;
+    peak_kills_per_hour: number;
   };
-  regions: Array<{
-    region_id: number;
-    region_name: string;
-    kills: number;
-    total_isk_destroyed: number;
-    avg_kill_value: number;
-    top_systems: Array<{
-      system_id: number;
-      system_name: string;
-      kills: number;
-    }>;
-    top_ships: Array<{
-      ship_type_id: number;
-      ship_name: string;
-      losses: number;
-    }>;
-    top_destroyed_items: Array<{
-      item_type_id: number;
-      item_name: string;
-      quantity_destroyed: number;
-    }>;
-  }>;
+  hot_zones: HotZone[];
+  capital_kills: CapitalKills;
+  high_value_kills: HighValueKill[];
+  danger_zones: DangerZone[];
+  ship_breakdown: Record<string, ShipCategory>;
+  timeline: TimelineHour[];
+  regions: any[];  // Kept for backwards compatibility
 }
 
 export interface WarProfiteering {
