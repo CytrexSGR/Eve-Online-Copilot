@@ -274,42 +274,53 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
           mapControl={mapControl}
         />
 
-        {/* Info badge - top left */}
+        {/* Info badge - top left (vertical layout) */}
         <div
           style={{
             position: 'absolute',
             top: '1rem',
             left: '1rem',
-            background: 'rgba(0, 0, 0, 0.7)',
-            padding: '0.5rem 0.75rem',
-            borderRadius: '4px',
+            background: 'rgba(0, 0, 0, 0.85)',
+            padding: '0.75rem',
+            borderRadius: '6px',
             border: '1px solid rgba(255, 255, 255, 0.1)',
             pointerEvents: 'none',
+            minWidth: '140px',
           }}
         >
-          <p style={{
-            fontSize: '0.875rem',
-            color: 'var(--text-secondary)',
-            margin: 0,
-          }}>
-            {showAllLayers && battleReport ? (
-              <>
-                🌌 {battleReport.hot_zones?.length || 0} hot zones
-                {battleReport.capital_kills && (() => {
+          {showAllLayers && battleReport ? (
+            <div style={{ fontSize: '0.75rem', lineHeight: '1.6' }}>
+              <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)', fontSize: '0.875rem' }}>
+                🌌 Combat Activity
+              </div>
+              <div style={{ color: 'var(--text-secondary)' }}>
+                <div style={{ color: '#ff4444' }}>🔴 {battleReport.hot_zones?.length || 0} hot zones</div>
+                {(() => {
                   const capitalKills = battleReport.capital_kills as any;
                   let count = 0;
-                  ['titans', 'supercarriers', 'carriers', 'dreadnoughts', 'force_auxiliaries'].forEach(category => {
-                    count += capitalKills[category]?.kills?.length || 0;
-                  });
-                  return count > 0 ? ` • ${count} capitals` : '';
+                  if (capitalKills) {
+                    ['titans', 'supercarriers', 'carriers', 'dreadnoughts', 'force_auxiliaries'].forEach(category => {
+                      count += capitalKills[category]?.kills?.length || 0;
+                    });
+                  }
+                  return count > 0 ? <div style={{ color: '#d946ef' }}>🟣 {count} capitals</div> : null;
                 })()}
-                {(battleReport.high_value_kills as any[])?.length > 0 ? ` • ${(battleReport.high_value_kills as any[]).length} high-value` : ''}
-                {(battleReport.danger_zones as any[])?.length > 0 ? ` • ${(battleReport.danger_zones as any[]).length} danger zones` : ''}
-              </>
-            ) : (
-              <>🌌 {hotZones.length} hot zones</>
-            )}
-          </p>
+                {(battleReport.high_value_kills as any[])?.length > 0 && (
+                  <div style={{ color: '#00ffff' }}>🔵 {(battleReport.high_value_kills as any[]).length} high-value</div>
+                )}
+                {(battleReport.danger_zones as any[])?.length > 0 && (
+                  <div style={{ color: '#ffaa00' }}>🟡 {(battleReport.danger_zones as any[]).length} danger zones</div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              <div style={{ fontWeight: 600, marginBottom: '0.25rem', color: 'var(--text-primary)', fontSize: '0.875rem' }}>
+                🌌 Combat Activity
+              </div>
+              <div style={{ color: '#ff4444' }}>🔴 {hotZones.length} hot zones</div>
+            </div>
+          )}
         </div>
 
         {/* "View Full Map" button - bottom right */}
