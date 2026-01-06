@@ -45,6 +45,9 @@ A comprehensive industry and market analysis tool for EVE Online. Built with Fas
 - **Sovereignty Tracking** - Monitor sov campaigns and timers
 - **Faction Warfare** - FW system status and hotspots
 - **Alliance Conflicts** - Track ongoing wars and combat demand
+- **Live Killmail Stream** - Real-time killmails from zKillboard (NEW!)
+- **Hotspot Alerts** - Discord notifications for combat spikes (NEW!)
+- **War Profiteering** - Track destroyed item demand in real-time (NEW!)
 
 ### Character Management
 - **OAuth2 Authentication** - Secure EVE SSO integration
@@ -366,6 +369,11 @@ eve_copilot/
 - `GET /api/war/system/{system_id}/danger` - System danger score
 - `GET /api/war/top-ships` - Most destroyed ships
 - `GET /api/war/alerts` - War alerts
+- `GET /api/war/live/kills` - Live killmail stream (zKillboard + ESI)
+- `GET /api/war/live/hotspots` - Active combat hotspots (last hour)
+- `GET /api/war/live/demand/{item_type_id}` - Real-time item destruction demand
+- `GET /api/war/live/demand/top` - Most destroyed items (24h)
+- `GET /api/war/live/stats` - Live service statistics
 
 ### Research
 - `GET /api/research/skills-for-item/{type_id}` - Required skills
@@ -373,16 +381,31 @@ eve_copilot/
 
 Full API documentation available at `/docs` when running.
 
-## Cron Jobs
+## Background Services
 
+### Cron Jobs
 | Job | Schedule | Description |
 |-----|----------|-------------|
 | batch_calculator | */5 min | Calculate manufacturing opportunities |
 | regional_price_fetcher | */30 min | Update regional market prices |
 | market_hunter | */5 min | Scan for profitable items |
-| killmail_fetcher | Daily 06:00 | Download killmail data |
+| killmail_fetcher | Daily 06:00 | Download killmail archives (EVE Ref) |
 | sov_tracker | */30 min | Update sovereignty campaigns |
 | fw_tracker | */30 min | Update faction warfare status |
+
+### Long-running Services
+| Service | Type | Description |
+|---------|------|-------------|
+| zkill_live_listener | Daemon | Real-time killmail stream from zKillboard |
+
+**Start Live Listener:**
+```bash
+# In background (recommended with systemd or screen)
+python3 -m jobs.zkill_live_listener --verbose
+
+# Or in screen session
+screen -dmS zkill python3 -m jobs.zkill_live_listener --verbose
+```
 
 ## Contributing
 

@@ -12,6 +12,7 @@ from sovereignty_service import sovereignty_service as legacy_sovereignty_servic
 from fw_service import fw_service as legacy_fw_service
 from war_analyzer import war_analyzer as legacy_war_analyzer
 from route_service import route_service
+from zkillboard_live_service import zkill_live_service
 from config import REGIONS
 
 # New refactored services
@@ -406,3 +407,152 @@ async def get_war_alerts(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch war alerts: {str(e)}")
+
+
+# ============================================================
+# zKillboard Live Endpoints (Real-time Combat Intelligence)
+# ============================================================
+
+@router.get("/live/kills")
+async def get_live_kills(
+    system_id: Optional[int] = Query(None, description="Filter by solar system ID"),
+    region_id: Optional[int] = Query(None, description="Filter by region ID"),
+    limit: int = Query(50, ge=1, le=200, description="Max results")
+):
+    """
+    Get recent killmails from live zKillboard stream (last 24h).
+
+    Real-time combat intelligence from RedisQ. Data is updated continuously
+    by the background listener service.
+
+    Args:
+        system_id: Filter kills to specific system
+        region_id: Filter kills to specific region
+        limit: Maximum number of kills to return
+
+    Returns:
+        List of recent killmails with full details
+    """
+    try:
+        if not system_id and not region_id:
+            return {
+                "error": "Must specify either system_id or region_id",
+                "example": "/api/war/live/kills?region_id=10000002&limit=50"
+            }
+
+        kills = zkill_live_service.get_recent_kills(
+            system_id=system_id,
+            region_id=region_id,
+            limit=limit
+        )
+
+        return {
+            "kills": kills,
+            "count": len(kills),
+            "filter": {
+                "system_id": system_id,
+                "region_id": region_id
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/live/hotspots")
+async def get_live_hotspots():
+    """
+    Get active combat hotspots (last hour).
+
+    Hotspot = 5+ kills in 5 minutes in same system.
+    Indicates active combat, gate camps, or fleet battles.
+
+    Returns:
+        List of active hotspots with kill counts and locations
+    """
+    try:
+        hotspots = zkill_live_service.get_active_hotspots()
+
+        return {
+            "hotspots": hotspots,
+            "count": len(hotspots),
+            "threshold": "5 kills in 5 minutes"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/live/demand/{item_type_id}")
+async def get_live_item_demand(
+    item_type_id: int
+):
+    """
+    Get destroyed quantity for an item (last 24h).
+
+    Only counts DESTROYED items (not dropped), as these create market demand.
+    Useful for war profiteering and market speculation.
+
+    Args:
+        item_type_id: EVE item type ID
+
+    Returns:
+        Total quantity destroyed in last 24h
+    """
+    try:
+        quantity = zkill_live_service.get_item_demand(item_type_id)
+
+        return {
+            "item_type_id": item_type_id,
+            "quantity_destroyed_24h": quantity,
+            "note": "Only destroyed items counted (not dropped)"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/live/demand/top")
+async def get_top_destroyed_items(
+    limit: int = Query(20, ge=1, le=100)
+):
+    """
+    Get most destroyed items in last 24h.
+
+    Identifies high-demand items for war profiteering.
+    Items are sorted by quantity destroyed (descending).
+
+    Args:
+        limit: Maximum number of items to return
+
+    Returns:
+        List of items with destruction counts
+    """
+    try:
+        items = zkill_live_service.get_top_destroyed_items(limit)
+
+        return {
+            "items": items,
+            "count": len(items),
+            "window": "24 hours"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/live/stats")
+async def get_live_stats():
+    """
+    Get zKillboard live service statistics.
+
+    Returns:
+        Service status and statistics
+    """
+    try:
+        stats = zkill_live_service.get_stats()
+
+        return stats
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
