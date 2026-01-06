@@ -540,7 +540,7 @@ class ZKillboardLiveService:
 
         return is_camp, confidence, indicators
 
-    def get_involved_parties(self, system_id: int, limit: int = 5) -> Dict:
+    async def get_involved_parties(self, system_id: int, limit: int = 5) -> Dict:
         """
         Get involved corporations and alliances from recent kills.
 
@@ -598,30 +598,60 @@ class ZKillboardLiveService:
         top_victim_corps = sorted(victim_corps.items(), key=lambda x: x[1], reverse=True)[:limit]
         top_victim_alliances = sorted(victim_alliances.items(), key=lambda x: x[1], reverse=True)[:limit]
 
-        # Fetch names from ESI (using a simple cache approach)
-        def get_corp_name(corp_id: int) -> str:
-            # Try to get from database first (if we have it cached)
-            with get_db_connection() as conn:
-                with conn.cursor() as cur:
-                    # Check if we have a corp name cache table (we don't, so just return ID for now)
-                    return f"Corp {corp_id}"
+        # Fetch names from ESI
+        session = await self._get_session()
 
-        def get_alliance_name(alliance_id: int) -> str:
-            # Same as corps - return ID for now
+        async def get_corp_name(corp_id: int) -> str:
+            try:
+                url = f"https://esi.evetech.net/latest/corporations/{corp_id}/"
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("name", f"Corp {corp_id}")
+            except:
+                pass
+            return f"Corp {corp_id}"
+
+        async def get_alliance_name(alliance_id: int) -> str:
+            try:
+                url = f"https://esi.evetech.net/latest/alliances/{alliance_id}/"
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("name", f"Alliance {alliance_id}")
+            except:
+                pass
             return f"Alliance {alliance_id}"
+
+        # Fetch all names concurrently
+        attacker_corps_with_names = []
+        for corp_id, count in top_attacker_corps:
+            name = await get_corp_name(corp_id)
+            attacker_corps_with_names.append({"id": corp_id, "name": name, "kills": count})
+
+        attacker_alliances_with_names = []
+        for alliance_id, count in top_attacker_alliances:
+            name = await get_alliance_name(alliance_id)
+            attacker_alliances_with_names.append({"id": alliance_id, "name": name, "kills": count})
+
+        victim_corps_with_names = []
+        for corp_id, count in top_victim_corps:
+            name = await get_corp_name(corp_id)
+            victim_corps_with_names.append({"id": corp_id, "name": name, "kills": count})
+
+        victim_alliances_with_names = []
+        for alliance_id, count in top_victim_alliances:
+            name = await get_alliance_name(alliance_id)
+            victim_alliances_with_names.append({"id": alliance_id, "name": name, "kills": count})
 
         return {
             "attackers": {
-                "corps": [{"id": corp_id, "name": get_corp_name(corp_id), "kills": count}
-                         for corp_id, count in top_attacker_corps],
-                "alliances": [{"id": alliance_id, "name": get_alliance_name(alliance_id), "kills": count}
-                             for alliance_id, count in top_attacker_alliances]
+                "corps": attacker_corps_with_names,
+                "alliances": attacker_alliances_with_names
             },
             "victims": {
-                "corps": [{"id": corp_id, "name": get_corp_name(corp_id), "kills": count}
-                         for corp_id, count in top_victim_corps],
-                "alliances": [{"id": alliance_id, "name": get_alliance_name(alliance_id), "kills": count}
-                             for alliance_id, count in top_victim_alliances]
+                "corps": victim_corps_with_names,
+                "alliances": victim_alliances_with_names
             }
         }
 
@@ -671,7 +701,7 @@ class ZKillboardLiveService:
         is_camp, camp_confidence, camp_indicators = self.detect_gate_camp(system_id)
 
         # Get involved parties
-        involved = self.get_involved_parties(system_id, limit=3)
+        involved = await self.get_involved_parties(system_id, limit=3)
 
         # Build alert message
         alert = f"""⚠️ **Combat Hotspot Detected**
