@@ -236,6 +236,85 @@ class ZKillboardReportsService:
 
         return high_value[:limit]
 
+    def identify_danger_zones(self, killmails: List[Dict], min_kills: int = 3) -> List[Dict]:
+        """Identify systems where industrials/freighters are dying"""
+        system_industrial_kills = {}
+
+        # Get groupID for all unique ship_type_ids
+        ship_type_ids = list(set(km.get('ship_type_id') for km in killmails if km.get('ship_type_id')))
+        ship_groups = {}
+
+        if ship_type_ids:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        'SELECT "typeID", "groupID" FROM "invTypes" WHERE "typeID" = ANY(%s)',
+                        (ship_type_ids,)
+                    )
+                    for row in cur.fetchall():
+                        ship_groups[row[0]] = row[1]
+
+        for km in killmails:
+            ship_type_id = km.get('ship_type_id')
+            if not ship_type_id or ship_type_id not in ship_groups:
+                continue
+
+            group_id = ship_groups[ship_type_id]
+            if not self.is_industrial_ship(group_id):
+                continue
+
+            system_id = km.get('solar_system_id')
+            if not system_id:
+                continue
+
+            if system_id not in system_industrial_kills:
+                system_info = self.get_system_location_info(system_id)
+                system_industrial_kills[system_id] = {
+                    'system_name': system_info.get('system_name', 'Unknown'),
+                    'region_name': system_info.get('region_name', 'Unknown'),
+                    'security_status': system_info.get('security_status', 0.0),
+                    'industrials_killed': 0,
+                    'freighters_killed': 0,
+                    'total_value': 0,
+                    'kills': []
+                }
+
+            isk_value = float(km.get('ship_value', 0))
+            system_industrial_kills[system_id]['total_value'] += isk_value
+            system_industrial_kills[system_id]['kills'].append(km)
+
+            # Count by type
+            ship_cat = self.get_ship_category(group_id)
+            if ship_cat == 'freighter':
+                system_industrial_kills[system_id]['freighters_killed'] += 1
+            else:
+                system_industrial_kills[system_id]['industrials_killed'] += 1
+
+        # Filter systems with minimum kills and calculate warning levels
+        danger_zones = []
+        for sys_id, data in system_industrial_kills.items():
+            total_kills = data['industrials_killed'] + data['freighters_killed']
+            if total_kills < min_kills:
+                continue
+
+            # Warning level based on kills and value
+            if total_kills >= 20 or data['total_value'] > 50_000_000_000:
+                warning_level = 'EXTREME'
+            elif total_kills >= 10 or data['total_value'] > 20_000_000_000:
+                warning_level = 'HIGH'
+            else:
+                warning_level = 'MODERATE'
+
+            data['warning_level'] = warning_level
+            # Remove kills array (not needed in output)
+            del data['kills']
+            danger_zones.append(data)
+
+        # Sort by total value
+        danger_zones.sort(key=lambda x: x['total_value'], reverse=True)
+
+        return danger_zones
+
     def get_war_profiteering_report(self, limit: int = 20) -> Dict:
         """
         Generate war profiteering report with market opportunities.
