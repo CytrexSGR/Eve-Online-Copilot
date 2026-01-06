@@ -47,8 +47,44 @@ async def get_war_profiteering() -> Dict:
     Cache: 1 hour (refreshed daily at 06:00 UTC)
     """
     try:
-        report = zkill_live_service.get_war_profiteering_report(limit=20)
-        return report
+        # Get original profiteering data
+        profit_data = zkill_live_service.get_war_profiteering_report(limit=20)
+
+        # Convert Decimal to float for JSON serialization
+        items = []
+        total_items_destroyed = 0
+        max_value_item = None
+        max_value = 0
+
+        for item in profit_data.get("items", []):
+            market_price = float(item["market_price"])
+            opportunity_value = float(item["opportunity_value"])
+            qty = item["quantity_destroyed"]
+
+            total_items_destroyed += qty
+
+            if opportunity_value > max_value:
+                max_value = opportunity_value
+                max_value_item = item["item_name"]
+
+            items.append({
+                "item_type_id": item["item_type_id"],
+                "item_name": item["item_name"],
+                "quantity_destroyed": qty,
+                "market_price": market_price,
+                "opportunity_value": opportunity_value
+            })
+
+        return {
+            "period": profit_data.get("period", "24h"),
+            "global": {
+                "total_opportunity_value": float(profit_data.get("total_opportunity_value", 0)),
+                "total_items_destroyed": total_items_destroyed,
+                "unique_item_types": len(items),
+                "most_valuable_item": max_value_item or "N/A"
+            },
+            "items": items
+        }
     except redis.RedisError as e:
         raise HTTPException(
             status_code=503,
