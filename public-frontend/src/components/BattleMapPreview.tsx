@@ -47,7 +47,8 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
   useEffect(() => {
     const fetchLiveHotspots = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/war/live-hotspots');
+        // Use relative URL so it works with Vite proxy in dev and production URL
+        const response = await fetch('/api/war/live-hotspots');
         if (response.ok) {
           const data = await response.json();
           setLiveHotspots(data.hotspots || []);
