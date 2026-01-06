@@ -81,7 +81,7 @@ export function AllianceWars() {
           Ongoing alliance wars ranked by intensity and strategic significance
         </p>
 
-        {report.conflicts.map((conflict, idx) => (
+        {report.conflicts.map((conflict) => (
           <div
             key={`${conflict.alliance_1_id}-${conflict.alliance_2_id}`}
             className="card"

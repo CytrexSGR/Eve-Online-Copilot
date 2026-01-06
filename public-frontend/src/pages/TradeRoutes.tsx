@@ -88,7 +88,7 @@ export function TradeRoutes() {
       </div>
 
       {/* Trade Routes - Full List */}
-      {report.routes.map((route, idx) => (
+      {report.routes.map((route) => (
         <div
           key={`${route.origin_system}-${route.destination_system}`}
           className="card"

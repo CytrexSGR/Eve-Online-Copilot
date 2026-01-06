@@ -128,7 +128,7 @@ export function WarProfiteering() {
         <div className="card" style={{ marginTop: '1.5rem' }}>
           <h2>Top Categories</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
-            {report.categories.map((category, idx) => (
+            {report.categories.map((category) => (
               <div
                 key={category.category_name}
                 style={{
