@@ -313,6 +313,299 @@ class ZKillboardLiveService:
 
         return None
 
+    def get_top_expensive_ships(self, system_id: int, limit: int = 5) -> List[Dict]:
+        """
+        Get top N most expensive ships destroyed in a system.
+
+        Args:
+            system_id: Solar system ID
+            limit: Number of ships to return
+
+        Returns:
+            List of {ship_type_id, ship_name, value} dicts
+        """
+        # Get recent kills from Redis
+        kill_ids = self.redis_client.zrevrange(
+            f"kill:system:{system_id}:timeline",
+            0,
+            50
+        )
+
+        kills = []
+        for kill_id in kill_ids[:20]:  # Check last 20
+            kill_data = self.redis_client.get(f"kill:id:{kill_id}")
+            if kill_data:
+                kill = json.loads(kill_data)
+                kills.append(kill)
+
+        # Sort by value
+        kills_sorted = sorted(kills, key=lambda x: x['ship_value'], reverse=True)[:limit]
+
+        # Get ship names from DB
+        result = []
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                for kill in kills_sorted:
+                    cur.execute(
+                        'SELECT "typeName" FROM "invTypes" WHERE "typeID" = %s',
+                        (kill['ship_type_id'],)
+                    )
+                    row = cur.fetchone()
+                    ship_name = row[0] if row else f"Ship {kill['ship_type_id']}"
+
+                    result.append({
+                        'ship_type_id': kill['ship_type_id'],
+                        'ship_name': ship_name,
+                        'value': kill['ship_value']
+                    })
+
+        return result
+
+    def calculate_danger_level(self, security: float, kill_count: int, kill_rate: float, isk_destroyed: float) -> Tuple[str, int]:
+        """
+        Calculate intelligent danger level based on multiple factors.
+
+        Args:
+            security: System security status
+            kill_count: Number of kills in window
+            kill_rate: Kills per minute
+            isk_destroyed: Total ISK destroyed
+
+        Returns:
+            Tuple of (level_emoji, score) where:
+            - level_emoji: "🟢 LOW", "🟡 MEDIUM", "🟠 HIGH", "🔴 EXTREME"
+            - score: 0-12 points
+        """
+        # Factor 1: Security Status (0-2 points)
+        if security >= 0.5:
+            sec_score = 2
+        elif security > 0:
+            sec_score = 1
+        else:
+            sec_score = 0
+
+        # Factor 2: Kill Count (0-3 points)
+        if kill_count >= 10:
+            kc_score = 3
+        elif kill_count >= 7:
+            kc_score = 2
+        elif kill_count >= 5:
+            kc_score = 1
+        else:
+            kc_score = 0
+
+        # Factor 3: Kill Rate (0-3 points)
+        if kill_rate >= 2.0:
+            kr_score = 3
+        elif kill_rate >= 1.5:
+            kr_score = 2
+        elif kill_rate >= 1.0:
+            kr_score = 1
+        else:
+            kr_score = 0
+
+        # Factor 4: ISK Value (0-3 points)
+        if isk_destroyed >= 50_000_000:
+            isk_score = 3
+        elif isk_destroyed >= 20_000_000:
+            isk_score = 2
+        elif isk_destroyed >= 10_000_000:
+            isk_score = 1
+        else:
+            isk_score = 0
+
+        # Total score
+        total_score = sec_score + kc_score + kr_score + isk_score
+
+        # Map to danger level
+        if total_score >= 10:
+            return "🔴 EXTREME", total_score
+        elif total_score >= 7:
+            return "🟠 HIGH", total_score
+        elif total_score >= 4:
+            return "🟡 MEDIUM", total_score
+        else:
+            return "🟢 LOW", total_score
+
+    def detect_gate_camp(self, system_id: int) -> Tuple[bool, float, List[str]]:
+        """
+        Detect if kills in a system indicate a gate camp.
+
+        Args:
+            system_id: Solar system ID
+
+        Returns:
+            Tuple of (is_camp, confidence, indicators)
+        """
+        # Get recent kills
+        kill_ids = self.redis_client.zrevrange(
+            f"kill:system:{system_id}:timeline",
+            0,
+            50
+        )
+
+        kills = []
+        for kill_id in kill_ids[:20]:
+            kill_data = self.redis_client.get(f"kill:id:{kill_id}")
+            if kill_data:
+                kills.append(json.loads(kill_data))
+
+        if len(kills) < 3:
+            return False, 0.0, []
+
+        score = 0
+        max_score = 4
+        indicators = []
+
+        # Indicator 1: Attacker Pattern
+        avg_attackers = sum(k['attacker_count'] for k in kills) / len(kills)
+        if avg_attackers >= 5:
+            score += 1
+            indicators.append("Multi-attacker pattern")
+        elif avg_attackers >= 2:
+            score += 0.5
+            indicators.append("Small gang")
+
+        # Indicator 2: Ship Types (check for Interdictors)
+        ship_types = {}
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                for kill in kills:
+                    cur.execute(
+                        'SELECT g."groupName" FROM "invTypes" t '
+                        'JOIN "invGroups" g ON t."groupID" = g."groupID" '
+                        'WHERE t."typeID" = %s',
+                        (kill['ship_type_id'],)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        group = row[0]
+                        ship_types[group] = ship_types.get(group, 0) + 1
+
+        interdictors = ship_types.get("Interdictor", 0)
+        if interdictors >= 2:
+            score += 1
+            indicators.append(f"{interdictors}x Interdictors (Bubble camp)")
+        elif ship_types.get("Frigate", 0) >= 5:
+            score += 0.5
+            indicators.append("Multiple frigates")
+
+        # Indicator 3: Kill Frequency
+        from datetime import datetime
+        kill_times = []
+        for kill in kills:
+            try:
+                dt = datetime.fromisoformat(kill['killmail_time'].replace('Z', '+00:00'))
+                kill_times.append(dt.timestamp())
+            except:
+                pass
+
+        if len(kill_times) >= 2:
+            kill_times.sort()
+            intervals = [kill_times[i+1] - kill_times[i] for i in range(len(kill_times)-1)]
+            avg_interval = sum(intervals) / len(intervals)
+
+            if avg_interval <= 180:  # <= 3 minutes
+                score += 1
+                indicators.append(f"Regular kills every {avg_interval/60:.1f}min")
+            elif avg_interval <= 600:  # <= 10 minutes
+                score += 0.5
+
+        # Indicator 4: Victim Diversity
+        unique_corps = len(set(k['victim_corporation_id'] for k in kills if k['victim_corporation_id']))
+        if unique_corps >= 8:
+            score += 1
+            indicators.append("Diverse victims (random traffic)")
+        elif unique_corps >= 4:
+            score += 0.5
+            indicators.append("Multiple victims")
+
+        confidence = (score / max_score) * 100
+        is_camp = score >= 2.0  # 50%+ confidence
+
+        return is_camp, confidence, indicators
+
+    async def create_enhanced_alert(self, hotspot: Dict):
+        """
+        Create enhanced Discord alert with:
+        - Intelligent danger level
+        - Top 5 expensive ships
+        - Gate camp detection
+        - Compact emoji formatting
+        """
+        system_id = hotspot['solar_system_id']
+        region_id = hotspot['region_id']
+        kill_count = hotspot['kill_count']
+        window_minutes = hotspot['window_seconds'] // 60
+
+        # Get system info from DB
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    'SELECT ms."solarSystemName", mr."regionName", ms.security '
+                    'FROM "mapSolarSystems" ms '
+                    'JOIN "mapRegions" mr ON ms."regionID" = mr."regionID" '
+                    'WHERE ms."solarSystemID" = %s',
+                    (system_id,)
+                )
+                result = cur.fetchone()
+                if not result:
+                    return None
+
+                system_name, region_name, security = result
+
+        # Get top 5 expensive ships
+        top_ships = self.get_top_expensive_ships(system_id, limit=5)
+
+        # Calculate totals
+        total_value = sum(ship['value'] for ship in top_ships)
+        avg_value = total_value / len(top_ships) if top_ships else 0
+        kill_rate = kill_count / window_minutes
+
+        # Calculate intelligent danger level
+        danger_level, danger_score = self.calculate_danger_level(
+            security, kill_count, kill_rate, total_value
+        )
+
+        # Detect gate camp
+        is_camp, camp_confidence, camp_indicators = self.detect_gate_camp(system_id)
+
+        # Build alert message
+        alert = f"""⚠️ **Combat Hotspot Detected**
+
+📍 **Location:** {system_name} ({security:.1f}) - {region_name}
+🔥 **Activity:** {kill_count} kills in {window_minutes} minutes
+💰 **Total Value:** {total_value/1_000_000:.1f}M ISK (avg {avg_value/1_000_000:.1f}M/kill)
+🎯 **Danger Level:** {danger_level} ({danger_score}/12 pts)
+"""
+
+        # Add gate camp detection
+        if is_camp:
+            pattern_desc = "Bubble Camp" if any("Interdictor" in ind for ind in camp_indicators) else "Gate Camp"
+            alert += f"🚨 **Pattern:** {pattern_desc} ({camp_confidence:.0f}% confidence)\n"
+            if camp_indicators:
+                alert += f"   Evidence: {', '.join(camp_indicators[:2])}\n"
+
+        # Add top 5 ships
+        if top_ships:
+            alert += "\n**💀 Top 5 Most Expensive Losses:**\n"
+            for i, ship in enumerate(top_ships, 1):
+                alert += f"`{i}.` {ship['ship_name']:25} - **{ship['value']/1_000_000:>6.1f}M** ISK\n"
+
+        # Add recommendation
+        if danger_score >= 10:
+            recommendation = "🛑 AVOID"
+        elif danger_score >= 7:
+            recommendation = "⚠️ HIGH ALERT"
+        elif security < 0.5:
+            recommendation = "⚠️ USE CAUTION"
+        else:
+            recommendation = "✅ MONITOR"
+
+        alert += f"\n{recommendation} - Active combat zone"
+
+        return alert
+
     async def send_discord_alert(self, message: str):
         """Send alert to Discord webhook"""
         if not WAR_DISCORD_ENABLED or not DISCORD_WEBHOOK_URL:
@@ -375,17 +668,10 @@ class ZKillboardLiveService:
         # Detect hotspot
         hotspot = self.detect_hotspot(kill)
         if hotspot:
-            # Get system name from DB
-            system_name = self._get_system_name(kill.solar_system_id)
-
-            alert_msg = (
-                f"⚠️ **Combat Hotspot Detected**\n"
-                f"System: **{system_name}** (ID: {kill.solar_system_id})\n"
-                f"Kills: **{hotspot['kill_count']}** in {hotspot['window_seconds']//60} minutes\n"
-                f"Latest: {self._get_ship_name(kill.ship_type_id)} ({kill.ship_value:,.0f} ISK)"
-            )
-
-            await self.send_discord_alert(alert_msg)
+            # Create enhanced alert with intelligent danger level, gate camp detection, and top ships
+            alert_msg = await self.create_enhanced_alert(hotspot)
+            if alert_msg:
+                await self.send_discord_alert(alert_msg)
 
             # Store hotspot alert
             key = f"hotspot:{kill.solar_system_id}:{int(time.time())}"
