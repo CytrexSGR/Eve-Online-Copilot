@@ -609,6 +609,54 @@ async def get_24h_battle_report():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/pilot-intelligence")
+async def get_pilot_intelligence_report():
+    """
+    Get comprehensive pilot intelligence battle report with all 4 combat layers.
+
+    Includes:
+    - Hot Zones: Systems with highest kill activity (5+ kills in 5 minutes)
+    - Capital Kills: Capital ship losses (Titans, Supercarriers, Carriers, Dreadnoughts, FAX)
+    - High-Value Kills: Expensive ship losses (100M+ ISK)
+    - Danger Zones: Areas with industrial/hauler losses
+    - Global Statistics: Total kills, ISK destroyed, peak activity hour
+
+    Data is cached for 10 minutes for performance.
+
+    Response:
+    {
+        "global": {
+            "total_kills": 2500,
+            "total_isk_destroyed": 500000000000.0,
+            "peak_hour_utc": 18
+        },
+        "hot_zones": [
+            {
+                "system_id": 30002187,
+                "system_name": "Jita",
+                "region_name": "The Forge",
+                "kills": 45,
+                "kill_rate": 0.5,
+                "total_value": 2500000000.0
+            },
+            ...
+        ],
+        "capital_kills": {
+            "titans": {"count": 2, "kills": [...]},
+            "supercarriers": {"count": 1, "kills": [...]},
+            ...
+        },
+        "high_value_kills": [...],
+        "danger_zones": [...]
+    }
+    """
+    try:
+        report = zkill_live_service.build_pilot_intelligence_report()
+        return report
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to build pilot intelligence report: {str(e)}")
+
+
 @router.get("/live-hotspots")
 async def get_live_hotspots():
     """

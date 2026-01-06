@@ -27,7 +27,7 @@ const api = axios.create({
 // API methods
 export const reportsApi = {
   getBattleReport: async (): Promise<BattleReport> => {
-    const { data } = await api.get('/reports/battle-24h');
+    const { data } = await api.get('/war/pilot-intelligence');
     return data;
   },
 
