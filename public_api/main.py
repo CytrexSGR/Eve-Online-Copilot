@@ -5,6 +5,7 @@ Serves cached combat intelligence reports to the public
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from public_api.middleware.security import SecurityHeadersMiddleware
 
 app = FastAPI(
     title="EVE Intelligence API",
@@ -25,6 +26,9 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
+
+# Security Headers
+app.add_middleware(SecurityHeadersMiddleware)
 
 @app.get("/")
 async def root():
