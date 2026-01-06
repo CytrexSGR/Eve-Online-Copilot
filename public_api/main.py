@@ -10,6 +10,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from public_api.middleware.security import SecurityHeadersMiddleware
 from public_api.middleware.rate_limit import limiter, rate_limit_handler
+from public_api.routers import reports
 
 app = FastAPI(
     title="EVE Intelligence API",
@@ -38,6 +39,9 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Register routers
+app.include_router(reports.router)
 
 @app.get("/")
 async def root():
