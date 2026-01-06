@@ -38,6 +38,45 @@ class ZKillboardReportsService:
         self.redis_client = redis_client
         self.session = session
 
+    def get_system_security(self, system_id: int) -> float:
+        """Get security status for a solar system"""
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    'SELECT security FROM "mapSolarSystems" WHERE "solarSystemID" = %s',
+                    (system_id,)
+                )
+                result = cur.fetchone()
+                return float(result[0]) if result else 0.0
+
+    def get_system_location_info(self, system_id: int) -> Dict:
+        """Get full location info for a system"""
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    '''
+                    SELECT
+                        s."solarSystemName",
+                        s.security,
+                        c."constellationName",
+                        r."regionName"
+                    FROM "mapSolarSystems" s
+                    JOIN "mapConstellations" c ON s."constellationID" = c."constellationID"
+                    JOIN "mapRegions" r ON s."regionID" = r."regionID"
+                    WHERE s."solarSystemID" = %s
+                    ''',
+                    (system_id,)
+                )
+                result = cur.fetchone()
+                if result:
+                    return {
+                        'system_name': result[0],
+                        'security_status': float(result[1]),
+                        'constellation_name': result[2],
+                        'region_name': result[3]
+                    }
+                return {}
+
     def get_war_profiteering_report(self, limit: int = 20) -> Dict:
         """
         Generate war profiteering report with market opportunities.
