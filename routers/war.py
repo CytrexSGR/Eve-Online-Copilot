@@ -483,35 +483,6 @@ async def get_live_hotspots():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/live/demand/{item_type_id}")
-async def get_live_item_demand(
-    item_type_id: int
-):
-    """
-    Get destroyed quantity for an item (last 24h).
-
-    Only counts DESTROYED items (not dropped), as these create market demand.
-    Useful for war profiteering and market speculation.
-
-    Args:
-        item_type_id: EVE item type ID
-
-    Returns:
-        Total quantity destroyed in last 24h
-    """
-    try:
-        quantity = zkill_live_service.get_item_demand(item_type_id)
-
-        return {
-            "item_type_id": item_type_id,
-            "quantity_destroyed_24h": quantity,
-            "note": "Only destroyed items counted (not dropped)"
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/live/demand/top")
 async def get_top_destroyed_items(
     limit: int = Query(20, ge=1, le=100)
@@ -535,6 +506,35 @@ async def get_top_destroyed_items(
             "items": items,
             "count": len(items),
             "window": "24 hours"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/live/demand/{item_type_id}")
+async def get_live_item_demand(
+    item_type_id: int
+):
+    """
+    Get destroyed quantity for an item (last 24h).
+
+    Only counts DESTROYED items (not dropped), as these create market demand.
+    Useful for war profiteering and market speculation.
+
+    Args:
+        item_type_id: EVE item type ID
+
+    Returns:
+        Total quantity destroyed in last 24h
+    """
+    try:
+        quantity = zkill_live_service.get_item_demand(item_type_id)
+
+        return {
+            "item_type_id": item_type_id,
+            "quantity_destroyed_24h": quantity,
+            "note": "Only destroyed items counted (not dropped)"
         }
 
     except Exception as e:
