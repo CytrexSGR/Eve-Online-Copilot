@@ -6,6 +6,7 @@ __pycache__/
 .Python
 venv/
 .venv/
+venv-public-api/
 env/
 .env
 *.egg-info/
