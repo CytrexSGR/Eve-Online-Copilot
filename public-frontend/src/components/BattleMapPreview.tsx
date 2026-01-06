@@ -292,7 +292,23 @@ export function BattleMapPreview({ hotZones = [], battleReport, showAllLayers = 
             color: 'var(--text-secondary)',
             margin: 0,
           }}>
-            🌌 {hotZones.length} hot zones
+            {showAllLayers && battleReport ? (
+              <>
+                🌌 {battleReport.hot_zones?.length || 0} hot zones
+                {battleReport.capital_kills && (() => {
+                  const capitalKills = battleReport.capital_kills as any;
+                  let count = 0;
+                  ['titans', 'supercarriers', 'carriers', 'dreadnoughts', 'force_auxiliaries'].forEach(category => {
+                    count += capitalKills[category]?.kills?.length || 0;
+                  });
+                  return count > 0 ? ` • ${count} capitals` : '';
+                })()}
+                {(battleReport.high_value_kills as any[])?.length > 0 ? ` • ${(battleReport.high_value_kills as any[]).length} high-value` : ''}
+                {(battleReport.danger_zones as any[])?.length > 0 ? ` • ${(battleReport.danger_zones as any[]).length} danger zones` : ''}
+              </>
+            ) : (
+              <>🌌 {hotZones.length} hot zones</>
+            )}
           </p>
         </div>
 
