@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { reportsApi } from '../services/api';
 import { RefreshIndicator } from '../components/RefreshIndicator';
+import { RegionDetailModal } from '../components/RegionDetailModal';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { BattleReport as BattleReportType } from '../types/reports';
 
@@ -9,6 +10,7 @@ export function BattleReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [selectedRegion, setSelectedRegion] = useState<BattleReportType['regions'][0] | null>(null);
 
   const fetchReport = async () => {
     try {
@@ -76,9 +78,26 @@ export function BattleReport() {
 
       {/* Regional Breakdown */}
       {report.regions.map((region) => (
-        <div key={region.region_id} className="card" style={{ marginTop: '1.5rem' }}>
+        <div
+          key={region.region_id}
+          className="card"
+          style={{
+            marginTop: '1.5rem',
+            cursor: 'pointer',
+            transition: 'transform 0.2s, box-shadow 0.2s'
+          }}
+          onClick={() => setSelectedRegion(region)}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.3)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '';
+          }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h2>{region.region_name}</h2>
+            <h2>{region.region_name} <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 400 }}>Click for details →</span></h2>
             <div style={{ textAlign: 'right' }}>
               <p style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--accent-blue)' }}>
                 {region.kills} kills
@@ -167,6 +186,14 @@ export function BattleReport() {
           </div>
         </div>
       ))}
+
+      {/* Region Detail Modal */}
+      {selectedRegion && (
+        <RegionDetailModal
+          region={selectedRegion}
+          onClose={() => setSelectedRegion(null)}
+        />
+      )}
     </div>
   );
 }
