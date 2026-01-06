@@ -1038,6 +1038,132 @@ class ZKillboardLiveService:
             "running": self.running
         }
 
+    def get_24h_battle_report(self) -> Dict:
+        """
+        Generate comprehensive 24h battle report by region.
+
+        Returns:
+            Dict with regional stats and global summary
+        """
+        # Get all region timelines
+        region_keys = list(self.redis_client.scan_iter("kill:region:*:timeline"))
+
+        regional_stats = []
+        total_kills_global = 0
+        total_isk_global = 0.0
+
+        for region_key in region_keys:
+            # Extract region_id from key
+            parts = region_key.split(":")
+            if len(parts) < 3:
+                continue
+            region_id = int(parts[2])
+
+            # Get all kills for this region
+            kill_ids = self.redis_client.zrevrange(region_key, 0, -1)
+
+            if not kill_ids:
+                continue
+
+            kills = []
+            for kill_id in kill_ids:
+                kill_data = self.redis_client.get(f"kill:id:{kill_id}")
+                if kill_data:
+                    kills.append(json.loads(kill_data))
+
+            if not kills:
+                continue
+
+            # Calculate region stats
+            kill_count = len(kills)
+            total_isk = sum(k['ship_value'] for k in kills)
+            avg_isk = total_isk / kill_count if kill_count > 0 else 0
+
+            # Get top 3 systems
+            system_counts = {}
+            for kill in kills:
+                system_id = kill['solar_system_id']
+                system_counts[system_id] = system_counts.get(system_id, 0) + 1
+            top_systems = sorted(system_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+
+            # Get top 3 ship types
+            ship_counts = {}
+            for kill in kills:
+                ship_id = kill['ship_type_id']
+                ship_counts[ship_id] = ship_counts.get(ship_id, 0) + 1
+            top_ships = sorted(ship_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+
+            # Get region name from DB
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        'SELECT "regionName" FROM "mapRegions" WHERE "regionID" = %s',
+                        (region_id,)
+                    )
+                    row = cur.fetchone()
+                    region_name = row[0] if row else f"Region {region_id}"
+
+                    # Get system names
+                    top_systems_with_names = []
+                    for system_id, count in top_systems:
+                        cur.execute(
+                            'SELECT "solarSystemName" FROM "mapSolarSystems" WHERE "solarSystemID" = %s',
+                            (system_id,)
+                        )
+                        row = cur.fetchone()
+                        system_name = row[0] if row else f"System {system_id}"
+                        top_systems_with_names.append({
+                            "system_id": system_id,
+                            "system_name": system_name,
+                            "kills": count
+                        })
+
+                    # Get ship names
+                    top_ships_with_names = []
+                    for ship_id, count in top_ships:
+                        cur.execute(
+                            'SELECT "typeName" FROM "invTypes" WHERE "typeID" = %s',
+                            (ship_id,)
+                        )
+                        row = cur.fetchone()
+                        ship_name = row[0] if row else f"Ship {ship_id}"
+                        top_ships_with_names.append({
+                            "ship_type_id": ship_id,
+                            "ship_name": ship_name,
+                            "losses": count
+                        })
+
+            regional_stats.append({
+                "region_id": region_id,
+                "region_name": region_name,
+                "kills": kill_count,
+                "total_isk_destroyed": total_isk,
+                "avg_kill_value": avg_isk,
+                "top_systems": top_systems_with_names,
+                "top_ships": top_ships_with_names
+            })
+
+            total_kills_global += kill_count
+            total_isk_global += total_isk
+
+        # Sort regions by kills descending
+        regional_stats.sort(key=lambda x: x['kills'], reverse=True)
+
+        # Find most active and most expensive regions
+        most_active_region = regional_stats[0] if regional_stats else None
+        most_expensive_region = max(regional_stats, key=lambda x: x['total_isk_destroyed']) if regional_stats else None
+
+        return {
+            "period": "24h",
+            "global": {
+                "total_kills": total_kills_global,
+                "total_isk_destroyed": total_isk_global,
+                "most_active_region": most_active_region['region_name'] if most_active_region else None,
+                "most_expensive_region": most_expensive_region['region_name'] if most_expensive_region else None
+            },
+            "regions": regional_stats
+        }
+
 
 # Singleton instance
 zkill_live_service = ZKillboardLiveService()

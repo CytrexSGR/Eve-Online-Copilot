@@ -556,3 +556,54 @@ async def get_live_stats():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/live/report/24h")
+async def get_24h_battle_report():
+    """
+    Get comprehensive 24h battle report by region.
+
+    Returns detailed statistics for each region including:
+    - Total kills and ISK destroyed
+    - Top 3 most active systems
+    - Top 3 most destroyed ship types
+    - Average kill value
+
+    Also includes global summary with most active and expensive regions.
+
+    Example response:
+    {
+        "period": "24h",
+        "global": {
+            "total_kills": 1523,
+            "total_isk_destroyed": 45678900000.0,
+            "most_active_region": "The Forge",
+            "most_expensive_region": "Delve"
+        },
+        "regions": [
+            {
+                "region_id": 10000002,
+                "region_name": "The Forge",
+                "kills": 234,
+                "total_isk_destroyed": 8900000000.0,
+                "avg_kill_value": 38034188.03,
+                "top_systems": [
+                    {"system_id": 30002187, "system_name": "Jita", "kills": 45},
+                    ...
+                ],
+                "top_ships": [
+                    {"ship_type_id": 670, "ship_name": "Capsule", "losses": 12},
+                    ...
+                ]
+            },
+            ...
+        ]
+    }
+    """
+    try:
+        report = zkill_live_service.get_24h_battle_report()
+
+        return report
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
