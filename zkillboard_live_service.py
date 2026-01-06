@@ -24,6 +24,7 @@ from dataclasses import dataclass, asdict
 
 from database import get_db_connection
 from config import DISCORD_WEBHOOK_URL, WAR_DISCORD_ENABLED
+from telegram_service import telegram_service
 
 
 # Redis Configuration
@@ -765,22 +766,26 @@ class ZKillboardLiveService:
 
         return alert
 
-    async def send_discord_alert(self, message: str):
-        """Send alert to Discord webhook"""
-        if not WAR_DISCORD_ENABLED or not DISCORD_WEBHOOK_URL:
-            return
+    async def send_alert(self, message: str):
+        """Send alert to Discord and Telegram"""
+        # Send to Discord
+        if WAR_DISCORD_ENABLED and DISCORD_WEBHOOK_URL:
+            session = await self._get_session()
+            try:
+                async with session.post(
+                    DISCORD_WEBHOOK_URL,
+                    json={"content": message}
+                ) as response:
+                    if response.status != 204:
+                        print(f"Discord webhook failed: {response.status}")
+            except Exception as e:
+                print(f"Error sending Discord alert: {e}")
 
-        session = await self._get_session()
-
+        # Send to Telegram
         try:
-            async with session.post(
-                DISCORD_WEBHOOK_URL,
-                json={"content": message}
-            ) as response:
-                if response.status != 204:
-                    print(f"Discord webhook failed: {response.status}")
+            await telegram_service.send_alert(message)
         except Exception as e:
-            print(f"Error sending Discord alert: {e}")
+            print(f"Error sending Telegram alert: {e}")
 
     async def process_live_kill(self, zkb_entry: Dict):
         """
@@ -838,7 +843,7 @@ class ZKillboardLiveService:
                 # Cooldown expired, send alert
                 alert_msg = await self.create_enhanced_alert(hotspot)
                 if alert_msg:
-                    await self.send_discord_alert(alert_msg)
+                    await self.send_alert(alert_msg)
                     self.last_alert_sent[system_id] = now
                     print(f"Alert sent for system {system_id} (cooldown: {HOTSPOT_ALERT_COOLDOWN}s)")
             else:
