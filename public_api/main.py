@@ -5,7 +5,11 @@ Serves cached combat intelligence reports to the public
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from public_api.middleware.security import SecurityHeadersMiddleware
+from public_api.middleware.rate_limit import limiter, rate_limit_handler
 
 app = FastAPI(
     title="EVE Intelligence API",
@@ -29,6 +33,11 @@ app.add_middleware(
 
 # Security Headers
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Rate Limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 @app.get("/")
 async def root():
