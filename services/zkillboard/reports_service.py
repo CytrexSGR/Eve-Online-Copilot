@@ -356,6 +356,44 @@ class ZKillboardReportsService:
 
         return sorted_breakdown
 
+    def calculate_hourly_timeline(self, killmails: List[Dict]) -> List[Dict]:
+        """Calculate kills and ISK per hour (UTC)"""
+        hourly_data = {hour: {'hour_utc': hour, 'kills': 0, 'isk_destroyed': 0}
+                       for hour in range(24)}
+
+        for km in killmails:
+            time_str = km.get('killmail_time', '')
+            if not time_str:
+                continue
+
+            try:
+                # Parse ISO 8601 timestamp
+                dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+                hour = dt.hour
+
+                hourly_data[hour]['kills'] += 1
+                hourly_data[hour]['isk_destroyed'] += float(km.get('ship_value', 0))
+            except:
+                continue
+
+        # Convert to list and sort by hour
+        timeline = list(hourly_data.values())
+        timeline.sort(key=lambda x: x['hour_utc'])
+
+        return timeline
+
+    def find_peak_activity(self, timeline: List[Dict]) -> Dict:
+        """Find hour with most kills"""
+        if not timeline:
+            return {'hour_utc': 0, 'kills_per_hour': 0, 'isk_per_hour': 0}
+
+        peak = max(timeline, key=lambda x: x['kills'])
+        return {
+            'hour_utc': peak['hour_utc'],
+            'kills_per_hour': peak['kills'],
+            'isk_per_hour': peak['isk_destroyed']
+        }
+
     def get_war_profiteering_report(self, limit: int = 20) -> Dict:
         """
         Generate war profiteering report with market opportunities.
