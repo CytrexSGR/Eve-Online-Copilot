@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { reportsApi } from '../services/api';
 import { RefreshIndicator } from '../components/RefreshIndicator';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import { getSecurityColor, formatSecurity, formatISK, formatTime } from '../utils/security';
+import { getSecurityColor, formatSecurity, formatISK } from '../utils/security';
 import type { BattleReport as BattleReportType } from '../types/reports';
 
 export function BattleReport() {

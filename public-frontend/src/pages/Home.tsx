@@ -136,10 +136,10 @@ export function Home() {
               </div>
               <div>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                  Hottest Region
+                  Peak Hour (UTC)
                 </p>
                 <p style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--warning)' }}>
-                  {battleReport.global.most_active_region}
+                  {battleReport.global.peak_hour_utc}:00
                 </p>
               </div>
             </div>
