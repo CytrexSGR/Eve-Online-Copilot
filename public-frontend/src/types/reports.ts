@@ -30,67 +30,92 @@ export interface BattleReport {
   }>;
 }
 
-export interface WarProfiteeringReport {
+export interface WarProfiteering {
+  period: string;
+  global: {
+    total_opportunity_value: number;
+    total_items_destroyed: number;
+    unique_item_types: number;
+    most_valuable_item: string;
+  };
   items: Array<{
     item_type_id: number;
     item_name: string;
-    group_id: number;
     quantity_destroyed: number;
     market_price: number;
     opportunity_value: number;
   }>;
-  total_items: number;
-  total_opportunity_value: number;
-  period: string;
-}
-
-export interface AllianceWarsReport {
-  wars: Array<{
-    alliance_a_id: number;
-    alliance_a_name: string;
-    alliance_b_id: number;
-    alliance_b_name: string;
-    total_kills: number;
-    kills_by_a: number;
-    kills_by_b: number;
-    isk_destroyed_by_a: number;
-    isk_destroyed_by_b: number;
-    kill_ratio_a: number;
-    isk_efficiency_a: number;
-    active_systems: number;
-    winner: string;
+  categories?: Array<{
+    category_name: string;
+    total_destroyed: number;
+    total_value: number;
   }>;
-  total_wars: number;
-  period: string;
 }
 
-export interface TradeRoutesReport {
-  timestamp: string;
-  routes: Array<{
-    from_hub: string;
-    to_hub: string;
-    from_system_id: number;
-    to_system_id: number;
-    total_jumps: number;
-    danger_level: string;
-    avg_danger_score: number;
-    total_danger_score: number;
-    max_danger_system: {
+export interface AllianceWars {
+  period: string;
+  global: {
+    active_conflicts: number;
+    total_alliances_involved: number;
+    total_kills: number;
+    total_isk_destroyed: number;
+  };
+  conflicts: Array<{
+    alliance_1_id: number;
+    alliance_1_name: string;
+    alliance_2_id: number;
+    alliance_2_name: string;
+    alliance_1_kills: number;
+    alliance_1_losses: number;
+    alliance_1_isk_destroyed: number;
+    alliance_1_isk_lost: number;
+    alliance_1_efficiency: number;
+    alliance_2_kills: number;
+    alliance_2_losses: number;
+    alliance_2_isk_destroyed: number;
+    alliance_2_isk_lost: number;
+    alliance_2_efficiency: number;
+    duration_days: number;
+    primary_regions: string[];
+    active_systems: Array<{
       system_id: number;
       system_name: string;
-      danger_score: number;
-    } | null;
+      kills: number;
+    }>;
+    winner: string | null;
+  }>;
+  strategic_hotspots?: Array<{
+    system_id: number;
+    system_name: string;
+    region_name: string;
+    kills_24h: number;
+    strategic_value: number;
+  }>;
+}
+
+export interface TradeRoutes {
+  period: string;
+  global: {
+    total_routes: number;
+    dangerous_routes: number;
+    avg_danger_score: number;
+    gate_camps_detected: number;
+  };
+  routes: Array<{
+    origin_system: string;
+    destination_system: string;
+    jumps: number;
+    danger_score: number;
+    total_kills: number;
+    total_isk_destroyed: number;
     systems: Array<{
       system_id: number;
       system_name: string;
-      security: number;
+      security_status: number;
       danger_score: number;
       kills_24h: number;
       isk_destroyed_24h: number;
-      gate_camp_detected: boolean;
+      is_gate_camp: boolean;
     }>;
   }>;
-  total_routes: number;
-  period: string;
-  danger_scale: Record<string, string>;
 }

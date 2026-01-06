@@ -5,16 +5,16 @@ import { RefreshIndicator } from '../components/RefreshIndicator';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type {
   BattleReport,
-  WarProfiteeringReport,
-  AllianceWarsReport,
-  TradeRoutesReport
+  WarProfiteering,
+  AllianceWars,
+  TradeRoutes
 } from '../types/reports';
 
 export function Home() {
   const [battleReport, setBattleReport] = useState<BattleReport | null>(null);
-  const [profiteering, setProfiteering] = useState<WarProfiteeringReport | null>(null);
-  const [allianceWars, setAllianceWars] = useState<AllianceWarsReport | null>(null);
-  const [tradeRoutes, setTradeRoutes] = useState<TradeRoutesReport | null>(null);
+  const [profiteering, setProfiteering] = useState<WarProfiteering | null>(null);
+  const [allianceWars, setAllianceWars] = useState<AllianceWars | null>(null);
+  const [tradeRoutes, setTradeRoutes] = useState<TradeRoutes | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

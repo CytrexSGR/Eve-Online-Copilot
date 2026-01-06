@@ -1,9 +1,9 @@
 import axios from 'axios';
 import type {
   BattleReport,
-  WarProfiteeringReport,
-  AllianceWarsReport,
-  TradeRoutesReport
+  WarProfiteering,
+  AllianceWars,
+  TradeRoutes
 } from '../types/reports';
 
 const API_BASE_URL = import.meta.env.PROD
@@ -25,17 +25,17 @@ export const reportsApi = {
     return data;
   },
 
-  getWarProfiteering: async (): Promise<WarProfiteeringReport> => {
+  getWarProfiteering: async (): Promise<WarProfiteering> => {
     const { data } = await api.get('/reports/war-profiteering');
     return data;
   },
 
-  getAllianceWars: async (): Promise<AllianceWarsReport> => {
+  getAllianceWars: async (): Promise<AllianceWars> => {
     const { data } = await api.get('/reports/alliance-wars');
     return data;
   },
 
-  getTradeRoutes: async (): Promise<TradeRoutesReport> => {
+  getTradeRoutes: async (): Promise<TradeRoutes> => {
     const { data } = await api.get('/reports/trade-routes');
     return data;
   },

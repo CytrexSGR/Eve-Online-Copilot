@@ -1,6 +1,10 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
+import { BattleReport } from './pages/BattleReport';
+import { WarProfiteering } from './pages/WarProfiteering';
+import { AllianceWars } from './pages/AllianceWars';
+import { TradeRoutes } from './pages/TradeRoutes';
 import './App.css';
 
 function App() {
@@ -9,10 +13,10 @@ function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/battle-report" element={<div>Battle Report Detail (Coming Soon)</div>} />
-          <Route path="/war-profiteering" element={<div>War Profiteering Detail (Coming Soon)</div>} />
-          <Route path="/alliance-wars" element={<div>Alliance Wars Detail (Coming Soon)</div>} />
-          <Route path="/trade-routes" element={<div>Trade Routes Detail (Coming Soon)</div>} />
+          <Route path="/battle-report" element={<BattleReport />} />
+          <Route path="/war-profiteering" element={<WarProfiteering />} />
+          <Route path="/alliance-wars" element={<AllianceWars />} />
+          <Route path="/trade-routes" element={<TradeRoutes />} />
           <Route path="/privacy" element={<div>Privacy Policy (Coming Soon)</div>} />
           <Route path="/cookies" element={<div>Cookie Policy (Coming Soon)</div>} />
           <Route path="*" element={<div>404 - Not Found</div>} />
