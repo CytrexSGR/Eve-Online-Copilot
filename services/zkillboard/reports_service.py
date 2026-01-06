@@ -394,6 +394,75 @@ class ZKillboardReportsService:
             'isk_per_hour': peak['isk_destroyed']
         }
 
+    def extract_hot_zones(self, killmails: List[Dict], limit: int = 15) -> List[Dict]:
+        """Extract top N most active systems"""
+        system_activity = {}
+
+        # Get groupID and ship names for all unique ship_type_ids
+        ship_type_ids = list(set(km.get('ship_type_id') for km in killmails if km.get('ship_type_id')))
+        ship_names = {}
+
+        if ship_type_ids:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        'SELECT "typeID", "typeName" FROM "invTypes" WHERE "typeID" = ANY(%s)',
+                        (ship_type_ids,)
+                    )
+                    for row in cur.fetchall():
+                        ship_names[row[0]] = row[1]
+
+        for km in killmails:
+            system_id = km.get('solar_system_id')
+            if not system_id:
+                continue
+
+            if system_id not in system_activity:
+                system_info = self.get_system_location_info(system_id)
+                system_activity[system_id] = {
+                    'system_id': system_id,
+                    'system_name': system_info.get('system_name', 'Unknown'),
+                    'region_name': system_info.get('region_name', 'Unknown'),
+                    'constellation_name': system_info.get('constellation_name', 'Unknown'),
+                    'security_status': system_info.get('security_status', 0.0),
+                    'kills': 0,
+                    'total_isk_destroyed': 0,
+                    'ship_types': {},
+                    'flags': []
+                }
+
+            system_activity[system_id]['kills'] += 1
+            system_activity[system_id]['total_isk_destroyed'] += float(km.get('ship_value', 0))
+
+            # Track ship types
+            ship_type_id = km.get('ship_type_id')
+            ship_name = ship_names.get(ship_type_id, 'Unknown')
+            if ship_name not in system_activity[system_id]['ship_types']:
+                system_activity[system_id]['ship_types'][ship_name] = 0
+            system_activity[system_id]['ship_types'][ship_name] += 1
+
+        # Determine dominant ship type and flags for each system
+        for sys_data in system_activity.values():
+            if sys_data['ship_types']:
+                dominant = max(sys_data['ship_types'].items(), key=lambda x: x[1])
+                sys_data['dominant_ship_type'] = dominant[0]
+            else:
+                sys_data['dominant_ship_type'] = 'Unknown'
+
+            # Add flags
+            if sys_data['kills'] >= 20:
+                sys_data['flags'].append('high_activity')
+            if sys_data['total_isk_destroyed'] > 10_000_000_000:  # 10B
+                sys_data['flags'].append('high_value')
+
+            # Remove ship_types dict (not needed in output)
+            del sys_data['ship_types']
+
+        # Sort by kills and take top N
+        hot_zones = sorted(system_activity.values(), key=lambda x: x['kills'], reverse=True)[:limit]
+
+        return hot_zones
+
     def get_war_profiteering_report(self, limit: int = 20) -> Dict:
         """
         Generate war profiteering report with market opportunities.
