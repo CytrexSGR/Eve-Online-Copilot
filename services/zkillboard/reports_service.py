@@ -178,6 +178,64 @@ class ZKillboardReportsService:
 
         return capitals
 
+    def extract_high_value_kills(self, killmails: List[Dict], limit: int = 20) -> List[Dict]:
+        """Extract top N highest value kills"""
+        high_value = []
+
+        # Get groupID for all unique ship_type_ids
+        ship_type_ids = list(set(km.get('ship_type_id') for km in killmails if km.get('ship_type_id')))
+        ship_groups = {}
+        ship_names = {}
+
+        if ship_type_ids:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        'SELECT "typeID", "groupID", "typeName" FROM "invTypes" WHERE "typeID" = ANY(%s)',
+                        (ship_type_ids,)
+                    )
+                    for row in cur.fetchall():
+                        ship_groups[row[0]] = row[1]
+                        ship_names[row[0]] = row[2]
+
+        for km in killmails:
+            system_id = km.get('solar_system_id')
+            system_info = self.get_system_location_info(system_id) if system_id else {}
+
+            isk_value = float(km.get('ship_value', 0))
+            security = system_info.get('security_status', 0.0)
+
+            ship_type_id = km.get('ship_type_id', 0)
+            group_id = ship_groups.get(ship_type_id, 0)
+
+            # Gank detection: high-value kill in HighSec
+            is_gank = security >= 0.5 and isk_value > 1_000_000_000  # 1B ISK threshold
+
+            kill_data = {
+                'killmail_id': km.get('killmail_id'),
+                'isk_destroyed': isk_value,
+                'ship_type': self.get_ship_category(group_id) if group_id else 'unknown',
+                'ship_name': ship_names.get(ship_type_id, 'Unknown'),
+                'victim': km.get('victim_character_id', 0),
+                'system_id': system_id,
+                'system_name': system_info.get('system_name', 'Unknown'),
+                'region_name': system_info.get('region_name', 'Unknown'),
+                'security_status': security,
+                'is_gank': is_gank,
+                'time_utc': km.get('killmail_time', '')
+            }
+
+            high_value.append(kill_data)
+
+        # Sort by ISK value and take top N
+        high_value.sort(key=lambda x: x['isk_destroyed'], reverse=True)
+
+        # Add rank
+        for idx, kill in enumerate(high_value[:limit], 1):
+            kill['rank'] = idx
+
+        return high_value[:limit]
+
     def get_war_profiteering_report(self, limit: int = 20) -> Dict:
         """
         Generate war profiteering report with market opportunities.
