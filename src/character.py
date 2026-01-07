@@ -143,7 +143,7 @@ class CharacterAPI:
             skills = result.get("skills", [])
 
             # Enrich skills with names from database
-            from database import get_item_info
+            from src.database import get_item_info
             enriched_skills = []
             for skill in skills:
                 skill_info = get_item_info(skill.get("skill_id"))

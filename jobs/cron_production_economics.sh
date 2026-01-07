@@ -3,6 +3,8 @@
 # Runs every 30 minutes to keep economics data fresh
 #
 # Add to crontab:
+
+export PYTHONPATH="/home/cytrex/eve_copilot:$PYTHONPATH"
 # */30 * * * * /home/cytrex/eve_copilot/jobs/cron_production_economics.sh
 
 cd /home/cytrex/eve_copilot

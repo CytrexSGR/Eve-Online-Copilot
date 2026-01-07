@@ -20,7 +20,7 @@ def get_market_service():
     """Lazy load market service"""
     global _market_service
     if _market_service is None:
-        from market_service import market_service
+        from src.market_service import market_service
         _market_service = market_service
     return _market_service
 

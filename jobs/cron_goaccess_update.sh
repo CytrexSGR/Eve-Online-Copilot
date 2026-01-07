@@ -3,6 +3,8 @@
 
 LOGFILE="/home/cytrex/eve_copilot/logs/goaccess_update.log"
 
+
+export PYTHONPATH="/home/cytrex/eve_copilot:$PYTHONPATH"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting GoAccess report update..." >> "$LOGFILE"
 
 # Generate GoAccess HTML report

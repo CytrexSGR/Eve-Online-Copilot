@@ -623,7 +623,7 @@ class ShoppingService:
         runs: int = 1
     ) -> List[dict]:
         """Add all materials for producing an item to the shopping list"""
-        from database import get_db_connection
+        from src.database import get_db_connection
 
         # Region ID to name mapping
         REGION_ID_TO_NAME = {

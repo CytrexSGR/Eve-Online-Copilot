@@ -4,6 +4,8 @@
 
 cd /home/cytrex/eve_copilot
 
+export PYTHONPATH="/home/cytrex/eve_copilot:$PYTHONPATH"
+
 # Log file
 LOG_FILE="/home/cytrex/eve_copilot/logs/fw_tracker.log"
 mkdir -p /home/cytrex/eve_copilot/logs

@@ -3,6 +3,8 @@
 # Fetches market prices from ESI for all regions
 # Runs every 30 minutes
 
+
+export PYTHONPATH="/home/cytrex/eve_copilot:$PYTHONPATH"
 cd /home/cytrex/eve_copilot
 
 # Log file
