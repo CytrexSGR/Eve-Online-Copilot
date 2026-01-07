@@ -136,6 +136,7 @@ https://www.ssllabs.com/ssltest/analyze.html?d=eve.infinimind-creations.com
 ## Web Analytics (GoAccess)
 
 **Live Dashboard:** https://eve.infinimind-creations.com/stats.html
+**Authentication:** HTTP Basic Auth (Username: `cytrex`)
 
 GoAccess is installed and configured to provide real-time web analytics:
 
@@ -162,6 +163,19 @@ echo 'Aug2012#' | sudo -S goaccess /var/log/nginx/access.log \
 - Nginx serves stats.html from `/var/www/html/`
 - Log format: COMBINED (nginx default)
 - Access restricted to HTTPS only
+- Protected with HTTP Basic Authentication
+
+**Security:**
+```bash
+# Change password for existing user
+echo 'Aug2012#' | sudo -S htpasswd /etc/nginx/.htpasswd cytrex
+
+# Add new user
+echo 'Aug2012#' | sudo -S htpasswd /etc/nginx/.htpasswd newuser
+
+# Remove user
+echo 'Aug2012#' | sudo -S htpasswd -D /etc/nginx/.htpasswd username
+```
 
 ## Production Deployment
 

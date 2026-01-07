@@ -122,6 +122,7 @@ Add to cron for daily reports:
 ## Advanced Analytics with GoAccess ✅ INSTALLED
 
 **Live Dashboard:** https://eve.infinimind-creations.com/stats.html
+**Authentication:** HTTP Basic Auth (Username: `cytrex`)
 
 GoAccess is now installed and configured to provide beautiful web analytics:
 
