@@ -1063,7 +1063,10 @@ class ZKillboardLiveService:
 
     async def get_involved_parties(self, system_id: int, limit: int = 5) -> Dict:
         """
-        Get involved corporations and alliances from recent kills.
+        Get involved corporations and alliances from ongoing battle or recent kills.
+
+        If an active battle exists in this system, returns cumulative battle statistics.
+        Otherwise, falls back to recent Redis kills.
 
         Args:
             system_id: Solar system ID
@@ -1072,52 +1075,146 @@ class ZKillboardLiveService:
         Returns:
             Dict with attacker/victim corps and alliances with names
         """
-        # Get recent kills
-        kill_ids = self.redis_client.zrevrange(
-            f"kill:system:{system_id}:timeline",
-            0,
-            50
-        )
+        # Check for active battle in this system
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT battle_id
+                        FROM battles
+                        WHERE solar_system_id = %s
+                          AND status = 'active'
+                          AND last_kill_at > NOW() - INTERVAL '30 minutes'
+                        ORDER BY battle_id DESC
+                        LIMIT 1
+                    """, (system_id,))
 
-        kills = []
-        for kill_id in kill_ids[:20]:
-            kill_data = self.redis_client.get(f"kill:id:{kill_id}")
-            if kill_data:
-                kills.append(json.loads(kill_data))
+                    battle_row = cur.fetchone()
+                    if battle_row:
+                        battle_id = battle_row[0]
 
-        if not kills:
-            return {"attackers": {"corps": [], "alliances": []}, "victims": {"corps": [], "alliances": []}}
+                        # Get cumulative battle statistics from battle_participants
+                        # Attackers: entities with kills > 0
+                        cur.execute("""
+                            SELECT
+                                alliance_id,
+                                SUM(kills) as total_kills
+                            FROM battle_participants
+                            WHERE battle_id = %s
+                              AND alliance_id IS NOT NULL
+                              AND kills > 0
+                            GROUP BY alliance_id
+                            ORDER BY total_kills DESC
+                            LIMIT %s
+                        """, (battle_id, limit))
 
-        # Aggregate attacker corps and alliances
-        attacker_corps = {}
-        attacker_alliances = {}
-        victim_corps = {}
-        victim_alliances = {}
+                        attacker_alliances = [(row[0], row[1]) for row in cur.fetchall()]
 
-        for kill in kills:
-            # Count attacker corps
-            for corp_id in kill.get('attacker_corporations', []):
-                attacker_corps[corp_id] = attacker_corps.get(corp_id, 0) + 1
+                        # Victims: entities with losses > 0
+                        cur.execute("""
+                            SELECT
+                                alliance_id,
+                                SUM(losses) as total_losses
+                            FROM battle_participants
+                            WHERE battle_id = %s
+                              AND alliance_id IS NOT NULL
+                              AND losses > 0
+                            GROUP BY alliance_id
+                            ORDER BY total_losses DESC
+                            LIMIT %s
+                        """, (battle_id, limit))
 
-            # Count attacker alliances
-            for alliance_id in kill.get('attacker_alliances', []):
-                attacker_alliances[alliance_id] = attacker_alliances.get(alliance_id, 0) + 1
+                        victim_alliances = [(row[0], row[1]) for row in cur.fetchall()]
 
-            # Count victim corp
-            victim_corp = kill.get('victim_corporation_id')
-            if victim_corp:
-                victim_corps[victim_corp] = victim_corps.get(victim_corp, 0) + 1
+                        # Get corps if alliances are limited
+                        cur.execute("""
+                            SELECT
+                                corporation_id,
+                                SUM(kills) as total_kills
+                            FROM battle_participants
+                            WHERE battle_id = %s
+                              AND corporation_id IS NOT NULL
+                              AND alliance_id IS NULL
+                              AND kills > 0
+                            GROUP BY corporation_id
+                            ORDER BY total_kills DESC
+                            LIMIT %s
+                        """, (battle_id, limit))
 
-            # Count victim alliance
-            victim_alliance = kill.get('victim_alliance_id')
-            if victim_alliance:
-                victim_alliances[victim_alliance] = victim_alliances.get(victim_alliance, 0) + 1
+                        attacker_corps = [(row[0], row[1]) for row in cur.fetchall()]
 
-        # Get top corps/alliances by count
-        top_attacker_corps = sorted(attacker_corps.items(), key=lambda x: x[1], reverse=True)[:limit]
-        top_attacker_alliances = sorted(attacker_alliances.items(), key=lambda x: x[1], reverse=True)[:limit]
-        top_victim_corps = sorted(victim_corps.items(), key=lambda x: x[1], reverse=True)[:limit]
-        top_victim_alliances = sorted(victim_alliances.items(), key=lambda x: x[1], reverse=True)[:limit]
+                        cur.execute("""
+                            SELECT
+                                corporation_id,
+                                SUM(losses) as total_losses
+                            FROM battle_participants
+                            WHERE battle_id = %s
+                              AND corporation_id IS NOT NULL
+                              AND alliance_id IS NULL
+                              AND losses > 0
+                            GROUP BY corporation_id
+                            ORDER BY total_losses DESC
+                            LIMIT %s
+                        """, (battle_id, limit))
+
+                        victim_corps = [(row[0], row[1]) for row in cur.fetchall()]
+
+                        # Use cumulative battle data
+                        top_attacker_corps = attacker_corps
+                        top_attacker_alliances = attacker_alliances
+                        top_victim_corps = victim_corps
+                        top_victim_alliances = victim_alliances
+
+                    else:
+                        # No active battle, fall back to Redis
+                        raise ValueError("No active battle")
+        except:
+            # Fall back to Redis-based aggregation
+            kill_ids = self.redis_client.zrevrange(
+                f"kill:system:{system_id}:timeline",
+                0,
+                50
+            )
+
+            kills = []
+            for kill_id in kill_ids[:20]:
+                kill_data = self.redis_client.get(f"kill:id:{kill_id}")
+                if kill_data:
+                    kills.append(json.loads(kill_data))
+
+            if not kills:
+                return {"attackers": {"corps": [], "alliances": []}, "victims": {"corps": [], "alliances": []}}
+
+            # Aggregate attacker corps and alliances
+            attacker_corps = {}
+            attacker_alliances = {}
+            victim_corps = {}
+            victim_alliances = {}
+
+            for kill in kills:
+                # Count attacker corps
+                for corp_id in kill.get('attacker_corporations', []):
+                    attacker_corps[corp_id] = attacker_corps.get(corp_id, 0) + 1
+
+                # Count attacker alliances
+                for alliance_id in kill.get('attacker_alliances', []):
+                    attacker_alliances[alliance_id] = attacker_alliances.get(alliance_id, 0) + 1
+
+                # Count victim corp
+                victim_corp = kill.get('victim_corporation_id')
+                if victim_corp:
+                    victim_corps[victim_corp] = victim_corps.get(victim_corp, 0) + 1
+
+                # Count victim alliance
+                victim_alliance = kill.get('victim_alliance_id')
+                if victim_alliance:
+                    victim_alliances[victim_alliance] = victim_alliances.get(victim_alliance, 0) + 1
+
+            # Get top corps/alliances by count
+            top_attacker_corps = sorted(attacker_corps.items(), key=lambda x: x[1], reverse=True)[:limit]
+            top_attacker_alliances = sorted(attacker_alliances.items(), key=lambda x: x[1], reverse=True)[:limit]
+            top_victim_corps = sorted(victim_corps.items(), key=lambda x: x[1], reverse=True)[:limit]
+            top_victim_alliances = sorted(victim_alliances.items(), key=lambda x: x[1], reverse=True)[:limit]
 
         # Fetch names from ESI
         session = await self._get_session()
@@ -1224,11 +1321,40 @@ class ZKillboardLiveService:
         # Get involved parties
         involved = await self.get_involved_parties(system_id, limit=3)
 
+        # Check for active battle to show cumulative stats
+        battle_info = None
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT battle_id, total_kills, total_isk_destroyed
+                        FROM battles
+                        WHERE solar_system_id = %s
+                          AND status = 'active'
+                          AND last_kill_at > NOW() - INTERVAL '30 minutes'
+                        ORDER BY battle_id DESC
+                        LIMIT 1
+                    """, (system_id,))
+                    row = cur.fetchone()
+                    if row:
+                        battle_info = {
+                            'battle_id': row[0],
+                            'total_kills': row[1],
+                            'total_isk': row[2]
+                        }
+        except:
+            pass
+
         # Build alert message
+        activity_line = f"{kill_count} kills in {window_minutes} minutes"
+        if battle_info:
+            battle_isk_b = battle_info['total_isk'] / 1_000_000_000
+            activity_line += f" (Battle: {battle_info['total_kills']} kills, {battle_isk_b:.1f}B ISK)"
+
         alert = f"""⚠️ **Combat Hotspot Detected**
 
 📍 **Location:** {system_name} ({security:.1f}) - {region_name}
-🔥 **Activity:** {kill_count} kills in {window_minutes} minutes
+🔥 **Activity:** {activity_line}
 💰 **Total Value:** {total_value/1_000_000:.1f}M ISK (avg {avg_value/1_000_000:.1f}M/kill)
 🎯 **Danger Level:** {danger_level} ({danger_score}/12 pts)
 """
@@ -1246,17 +1372,19 @@ class ZKillboardLiveService:
             if involved['attackers']['alliances']:
                 for alliance in involved['attackers']['alliances']:
                     alert += f"   • {alliance['name']} ({alliance['kills']} kills)\n"
-            elif involved['attackers']['corps']:
-                for corp in involved['attackers']['corps'][:2]:
+            # Show corps if no alliances or to supplement alliance data
+            if involved['attackers']['corps'] and not involved['attackers']['alliances']:
+                for corp in involved['attackers']['corps'][:3]:
                     alert += f"   • {corp['name']} ({corp['kills']} kills)\n"
 
         if involved['victims']['alliances'] or involved['victims']['corps']:
             alert += "\n**💀 Primary Victims:**\n"
             if involved['victims']['alliances']:
-                for alliance in involved['victims']['alliances'][:2]:
+                for alliance in involved['victims']['alliances'][:3]:
                     alert += f"   • {alliance['name']} ({alliance['kills']} losses)\n"
-            elif involved['victims']['corps']:
-                for corp in involved['victims']['corps'][:2]:
+            # Show corps if no alliances or to supplement alliance data
+            if involved['victims']['corps'] and not involved['victims']['alliances']:
+                for corp in involved['victims']['corps'][:3]:
                     alert += f"   • {corp['name']} ({corp['kills']} losses)\n"
 
         # Add top 5 ships
