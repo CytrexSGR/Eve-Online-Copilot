@@ -654,6 +654,10 @@ class ZKillboardReportsService:
                     price_row = cur.fetchone()
                     market_price = price_row[0] if price_row else 0
 
+                    # Skip items without valid market price
+                    if market_price is None or market_price <= 0:
+                        continue
+
                     # Calculate opportunity score
                     opportunity_value = quantity * market_price
 
