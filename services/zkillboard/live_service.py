@@ -520,7 +520,12 @@ class ZKillboardLiveService:
                         ))
 
                         conn.commit()
-                        print(f"[BATTLE] Battle {battle_id} updated to {total_kills + 1} kills")
+                        new_kill_count = total_kills + 1
+                        print(f"[BATTLE] Battle {battle_id} updated to {new_kill_count} kills")
+
+                        # Check if milestone reached
+                        asyncio.create_task(self.check_and_send_milestone_alert(battle_id, new_kill_count, kill.solar_system_id))
+
                         return battle_id
                     else:
                         # Create new battle
@@ -553,11 +558,241 @@ class ZKillboardLiveService:
                         battle_id = cur.fetchone()[0]
                         conn.commit()
                         print(f"[BATTLE] Battle {battle_id} created in system {kill.solar_system_id}")
+
+                        # Send initial battle alert
+                        asyncio.create_task(self.send_initial_battle_alert(battle_id, kill.solar_system_id))
+
                         return battle_id
 
         except Exception as e:
             print(f"Error creating/updating battle: {e}")
             return None
+
+    async def send_initial_battle_alert(self, battle_id: int, system_id: int):
+        """
+        Send initial "New Battle" alert when battle starts.
+
+        Args:
+            battle_id: Battle ID
+            system_id: Solar system ID
+        """
+        try:
+            # Get battle and system info
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            b.total_kills,
+                            b.total_isk_destroyed,
+                            ms."solarSystemName",
+                            mr."regionName",
+                            ms.security,
+                            b.initial_alert_sent
+                        FROM battles b
+                        JOIN "mapSolarSystems" ms ON ms."solarSystemID" = b.solar_system_id
+                        JOIN "mapRegions" mr ON mr."regionID" = ms."regionID"
+                        WHERE b.battle_id = %s
+                    """, (battle_id,))
+
+                    row = cur.fetchone()
+                    if not row or row[5]:  # Skip if alert already sent
+                        return
+
+                    kills, isk_destroyed, system_name, region_name, security, _ = row
+
+                    # Create initial alert message
+                    alert_msg = f"""⚠️ **NEW BATTLE DETECTED**
+
+📍 **Location:** {system_name} ({security:.1f}) - {region_name}
+🆕 **Status:** Battle just started
+💀 **Current:** {kills} kills, {isk_destroyed / 1_000_000:.1f}M ISK
+
+⚔️ Combat has begun - monitoring engagement"""
+
+                    # Send to Telegram
+                    message_id = await telegram_service.send_alert(alert_msg)
+                    if message_id:
+                        # Update battle with message_id
+                        cur.execute("""
+                            UPDATE battles
+                            SET telegram_message_id = %s,
+                                initial_alert_sent = TRUE,
+                                last_milestone_notified = 0
+                            WHERE battle_id = %s
+                        """, (message_id, battle_id))
+                        conn.commit()
+                        print(f"[ALERT] Initial battle alert sent for battle {battle_id} (message_id: {message_id})")
+
+        except Exception as e:
+            print(f"Error sending initial battle alert: {e}")
+
+    async def check_and_send_milestone_alert(self, battle_id: int, current_kills: int, system_id: int):
+        """
+        Check if battle reached a milestone and send alert if needed.
+
+        Milestones: 10, 25, 50, 100 kills
+
+        Args:
+            battle_id: Battle ID
+            current_kills: Current total kill count
+            system_id: Solar system ID
+        """
+        try:
+            # Define milestones
+            MILESTONES = [10, 25, 50, 100, 200, 500]
+
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            last_milestone_notified,
+                            telegram_message_id,
+                            total_isk_destroyed
+                        FROM battles
+                        WHERE battle_id = %s
+                    """, (battle_id,))
+
+                    row = cur.fetchone()
+                    if not row:
+                        return
+
+                    last_milestone, message_id, total_isk = row
+
+                    # Find next milestone to notify
+                    next_milestone = None
+                    for milestone in MILESTONES:
+                        if current_kills >= milestone and milestone > last_milestone:
+                            next_milestone = milestone
+                            break
+
+                    if not next_milestone:
+                        return  # No milestone reached
+
+                    # Get system info
+                    cur.execute("""
+                        SELECT ms."solarSystemName", mr."regionName", ms.security
+                        FROM "mapSolarSystems" ms
+                        JOIN "mapRegions" mr ON mr."regionID" = ms."regionID"
+                        WHERE ms."solarSystemID" = %s
+                    """, (system_id,))
+
+                    sys_row = cur.fetchone()
+                    if not sys_row:
+                        return
+
+                    system_name, region_name, security = sys_row
+
+                    # Get involved parties
+                    involved = await self.get_involved_parties(system_id, limit=3)
+
+                    # Create milestone alert message
+                    isk_b = total_isk / 1_000_000_000
+                    alert_msg = f"""📊 **BATTLE UPDATE - Milestone Reached**
+
+📍 **Location:** {system_name} ({security:.1f}) - {region_name}
+🎯 **Milestone:** {next_milestone} KILLS REACHED
+💀 **Battle Totals:** {current_kills} kills, {isk_b:.1f}B ISK"""
+
+                    # Add involved parties
+                    if involved['attackers']['alliances']:
+                        alert_msg += "\n\n**⚔️ Attacking Forces:**"
+                        for alliance in involved['attackers']['alliances'][:3]:
+                            alert_msg += f"\n   • {alliance['name']} ({alliance['kills']} kills)"
+
+                    if involved['victims']['alliances']:
+                        alert_msg += "\n\n**💀 Primary Victims:**"
+                        for alliance in involved['victims']['alliances'][:3]:
+                            alert_msg += f"\n   • {alliance['name']} ({alliance['kills']} losses)"
+
+                    alert_msg += "\n\n🔥 Battle ongoing - use caution"
+
+                    # Send or update message
+                    if message_id:
+                        # Edit existing message
+                        success = await telegram_service.edit_message(message_id, alert_msg)
+                        if success:
+                            print(f"[ALERT] Milestone alert updated for battle {battle_id} ({next_milestone} kills)")
+                    else:
+                        # Send new message (fallback)
+                        message_id = await telegram_service.send_alert(alert_msg)
+                        if message_id:
+                            print(f"[ALERT] Milestone alert sent for battle {battle_id} ({next_milestone} kills)")
+
+                    # Update milestone tracking
+                    if message_id:
+                        cur.execute("""
+                            UPDATE battles
+                            SET last_milestone_notified = %s,
+                                telegram_message_id = %s
+                            WHERE battle_id = %s
+                        """, (next_milestone, message_id, battle_id))
+                        conn.commit()
+
+        except Exception as e:
+            print(f"Error checking milestone alert: {e}")
+
+    async def send_battle_ended_alert(self, battle_id: int, system_id: int, final_stats: Dict):
+        """
+        Send final alert when battle ends.
+
+        Args:
+            battle_id: Battle ID
+            system_id: Solar system ID
+            final_stats: Dict with total_kills, total_isk, duration_minutes
+        """
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            telegram_message_id,
+                            ms."solarSystemName",
+                            mr."regionName",
+                            ms.security
+                        FROM battles b
+                        JOIN "mapSolarSystems" ms ON ms."solarSystemID" = b.solar_system_id
+                        JOIN "mapRegions" mr ON mr."regionID" = ms."regionID"
+                        WHERE b.battle_id = %s
+                    """, (battle_id,))
+
+                    row = cur.fetchone()
+                    if not row:
+                        return
+
+                    message_id, system_name, region_name, security = row
+
+                    # Create final alert message
+                    isk_b = final_stats.get('total_isk', 0) / 1_000_000_000
+                    duration = final_stats.get('duration_minutes', 0)
+                    alert_msg = f"""✅ **BATTLE ENDED**
+
+📍 **Location:** {system_name} ({security:.1f}) - {region_name}
+⏱️ **Duration:** {duration} minutes
+💀 **Final Count:** {final_stats.get('total_kills', 0)} kills
+💰 **Total Destroyed:** {isk_b:.1f}B ISK
+
+🏁 Combat has ceased"""
+
+                    # Get top alliances involved
+                    involved = await self.get_involved_parties(system_id, limit=2)
+                    if involved['attackers']['alliances']:
+                        alert_msg += "\n\n**Top Attackers:**"
+                        for alliance in involved['attackers']['alliances'][:2]:
+                            alert_msg += f"\n   • {alliance['name']} ({alliance['kills']} kills)"
+
+                    # Edit existing message or send new
+                    if message_id:
+                        success = await telegram_service.edit_message(message_id, alert_msg)
+                        if success:
+                            print(f"[ALERT] Battle ended alert sent for battle {battle_id}")
+                    else:
+                        # Fallback: send new message
+                        message_id = await telegram_service.send_alert(alert_msg)
+                        if message_id:
+                            print(f"[ALERT] Battle ended alert sent (new) for battle {battle_id}")
+
+        except Exception as e:
+            print(f"Error sending battle ended alert: {e}")
 
     def update_battle_participants(self, battle_id: int, kill: LiveKillmail):
         """
@@ -1421,18 +1656,27 @@ class ZKillboardLiveService:
                     cur.execute("""
                         UPDATE battles
                         SET status = 'ended',
-                            ended_at = last_kill_at + INTERVAL '30 minutes'
+                            ended_at = last_kill_at + INTERVAL '30 minutes',
+                            duration_minutes = EXTRACT(EPOCH FROM (last_kill_at - started_at)) / 60
                         WHERE status = 'active'
                           AND last_kill_at < NOW() - INTERVAL '30 minutes'
-                        RETURNING battle_id, solar_system_id, total_kills, total_isk_destroyed
+                        RETURNING battle_id, solar_system_id, total_kills, total_isk_destroyed, duration_minutes
                     """)
 
                     finalized = cur.fetchall()
                     conn.commit()
 
                     if finalized:
-                        for battle_id, system_id, kills, isk in finalized:
-                            print(f"Battle {battle_id} in system {system_id} ended: {kills} kills, {isk/1_000_000:.1f}M ISK destroyed")
+                        for battle_id, system_id, kills, isk, duration in finalized:
+                            print(f"[BATTLE] Battle {battle_id} in system {system_id} ended: {kills} kills, {isk/1_000_000:.1f}M ISK, {duration:.0f} min")
+
+                            # Send final battle alert
+                            final_stats = {
+                                'total_kills': kills,
+                                'total_isk': isk,
+                                'duration_minutes': int(duration or 0)
+                            }
+                            asyncio.create_task(self.send_battle_ended_alert(battle_id, system_id, final_stats))
 
         except Exception as e:
             print(f"Error finalizing battles: {e}")
@@ -1571,69 +1815,16 @@ class ZKillboardLiveService:
         # ALLIANCE WAR TRACKING: Track long-term conflicts between alliances
         self.track_alliance_war(kill)
 
-        # Detect hotspot for alerts
+        # =====================================================
+        # OLD HOTSPOT ALERT SYSTEM - DISABLED
+        # Now using milestone-based battle alerts instead
+        # =====================================================
+        # Detect hotspot for Redis storage (used by live map visualization)
         if hotspot:
             system_id = kill.solar_system_id
             now = time.time()
 
-            # Check if we have an active alert message for this system
-            alert_key = f"hotspot_alert:{system_id}"
-            alert_data_str = self.redis_client.get(alert_key)
-
-            if alert_data_str:
-                # We have an existing alert - UPDATE it
-                alert_data = json.loads(alert_data_str)
-                message_id = alert_data.get("message_id")
-                last_update = alert_data.get("last_update", 0)
-
-                # Only update if at least 30 seconds passed (avoid too frequent edits)
-                if now - last_update >= 30:
-                    alert_msg = await self.create_enhanced_alert(hotspot)
-                    if alert_msg and message_id:
-                        # Edit existing Telegram message
-                        success = await telegram_service.edit_message(message_id, alert_msg)
-                        if success:
-                            # Update Redis with new data
-                            alert_data["last_update"] = now
-                            alert_data["kill_count"] = hotspot.get("kill_count", 0)
-                            self.redis_client.setex(alert_key, 900, json.dumps(alert_data))  # 15min TTL
-                            print(f"Alert updated for system {system_id} (kills: {hotspot.get('kill_count', 0)})")
-                        else:
-                            print(f"Failed to edit message {message_id} for system {system_id}")
-                else:
-                    print(f"Hotspot active in {system_id}, but update suppressed (last update: {now - last_update:.0f}s ago)")
-            else:
-                # No existing alert - SEND NEW
-                alert_msg = await self.create_enhanced_alert(hotspot)
-                if alert_msg:
-                    message_id = await telegram_service.send_alert(alert_msg)
-                    if message_id:
-                        # Store message_id in Redis for future updates
-                        alert_data = {
-                            "message_id": message_id,
-                            "system_id": system_id,
-                            "first_sent": now,
-                            "last_update": now,
-                            "kill_count": hotspot.get("kill_count", 0)
-                        }
-                        self.redis_client.setex(alert_key, 900, json.dumps(alert_data))  # 15min TTL
-                        print(f"New alert sent for system {system_id} (message_id: {message_id})")
-
-                    # Still use old cooldown system for Discord
-                    self.last_alert_sent[system_id] = now
-                    if WAR_DISCORD_ENABLED and DISCORD_WEBHOOK_URL:
-                        session = await self._get_session()
-                        try:
-                            async with session.post(
-                                DISCORD_WEBHOOK_URL,
-                                json={"content": alert_msg}
-                            ) as response:
-                                if response.status != 204:
-                                    print(f"Discord webhook failed: {response.status}")
-                        except Exception as e:
-                            print(f"Error sending Discord alert: {e}")
-
-            # Store hotspot alert (always, even if Discord alert suppressed)
+            # Store hotspot data for analytics (kept for compatibility)
             key = f"hotspot:{system_id}:{int(now)}"
             self.redis_client.setex(key, 3600, json.dumps(hotspot))  # 1h TTL
 
@@ -1705,7 +1896,8 @@ class ZKillboardLiveService:
                 await asyncio.sleep(300)  # Check every 5 minutes
                 if verbose:
                     print("[Finalizer] Checking for inactive hotspots...")
-                await self.finalize_inactive_hotspots()
+                # DISABLED: Old hotspot finalization - now using milestone-based battle alerts
+                # await self.finalize_inactive_hotspots()
             except Exception as e:
                 print(f"Error in hotspot finalizer: {e}")
 
