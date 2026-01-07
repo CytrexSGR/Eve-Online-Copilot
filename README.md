@@ -2,11 +2,27 @@
 
 Comprehensive intelligence and industry platform for EVE Online. Two frontends: public combat intelligence dashboard and internal production tools.
 
+## 🌐 Live Public Dashboard
+
+**[🚀 https://eve.infinimind-creations.com](https://eve.infinimind-creations.com)**
+
+Free real-time combat intelligence dashboard with:
+- 📊 **24-Hour Battle Reports** - Track combat activity across New Eden
+- 🗺️ **3D Galaxy Combat Map** - Interactive visualization of all battles
+- 💰 **War Profiteering** - Most destroyed items and market opportunities
+- ⚔️ **Alliance Wars** - Active conflicts and combat statistics
+- 🛣️ **Trade Route Safety** - Danger analysis for cargo routes
+
+**No login required. Updates daily from zKillboard + ESI.**
+
+---
+
 ![EVE Online](https://img.shields.io/badge/EVE-Online-orange)
 ![Python](https://img.shields.io/badge/Python-3.11+-blue)
 ![React](https://img.shields.io/badge/React-18-61DAFB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6)
 ![License](https://img.shields.io/badge/License-MIT-green)
+![Website](https://img.shields.io/website?url=https%3A%2F%2Feve.infinimind-creations.com&label=Live)
 
 ---
 
@@ -190,6 +206,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🔗 Links
 
+- **Live Dashboard:** https://eve.infinimind-creations.com
 - **GitHub Issues:** https://github.com/CytrexSGR/Eve-Online-Copilot/issues
 - **EVE Online:** https://www.eveonline.com
 
