@@ -881,6 +881,16 @@ class ZKillboardLiveService:
         if not attacker_alliances:
             return  # No opposing alliances
 
+        # Safely convert ship_value to int
+        try:
+            isk_value = int(float(kill.ship_value))
+            # Cap at BIGINT max
+            if isk_value > 9223372036854775807:
+                isk_value = 9223372036854775807
+        except (ValueError, OverflowError, TypeError) as e:
+            print(f"Warning: Invalid ship_value '{kill.ship_value}': {e}, using 0")
+            isk_value = 0
+
         try:
             with get_db_connection() as conn:
                 with conn.cursor() as cur:
@@ -922,8 +932,8 @@ class ZKillboardLiveService:
                         """, (
                             alliance_a,
                             alliance_b,
-                            int(kill.ship_value),
-                            int(kill.ship_value)
+                            isk_value,
+                            isk_value
                         ))
 
                         war_id = cur.fetchone()[0]
@@ -950,13 +960,13 @@ class ZKillboardLiveService:
                         """, (
                             war_id,
                             kills_by_a,
-                            int(kill.ship_value) if kills_by_a > 0 else 0,
+                            isk_value if kills_by_a > 0 else 0,
                             kills_by_b,
-                            int(kill.ship_value) if kills_by_b > 0 else 0,
+                            isk_value if kills_by_b > 0 else 0,
                             kills_by_a,
-                            int(kill.ship_value) if kills_by_a > 0 else 0,
+                            isk_value if kills_by_a > 0 else 0,
                             kills_by_b,
-                            int(kill.ship_value) if kills_by_b > 0 else 0
+                            isk_value if kills_by_b > 0 else 0
                         ))
 
                     conn.commit()
@@ -1816,7 +1826,8 @@ class ZKillboardLiveService:
             self.update_battle_participants(battle_id, kill)
 
         # ALLIANCE WAR TRACKING: Track long-term conflicts between alliances
-        self.track_alliance_war(kill)
+        # TEMPORARILY DISABLED: integer overflow bug needs full fix across all int(kill.ship_value) occurrences
+        # self.track_alliance_war(kill)
 
         # =====================================================
         # OLD HOTSPOT ALERT SYSTEM - DISABLED
