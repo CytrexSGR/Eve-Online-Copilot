@@ -1,10 +1,14 @@
 # EVE Co-Pilot
 
+![Alpha](https://img.shields.io/badge/Status-Alpha-yellow?style=for-the-badge) ![Under Development](https://img.shields.io/badge/Under-Development-orange?style=for-the-badge)
+
 Comprehensive intelligence and industry platform for EVE Online. Two frontends: public combat intelligence dashboard and internal production tools.
 
-## 🌐 Live Public Dashboard
+> ⚠️ **Alpha Software**: This project is in active development. Features may be incomplete, data may be inaccurate, and breaking changes can occur. Use at your own risk!
 
-**[🚀 https://eve.infinimind-creations.com](https://eve.infinimind-creations.com)**
+## 🌐 Live Public Dashboard (Alpha)
+
+**[🚀 https://eve.infinimind-creations.com](https://eve.infinimind-creations.com)** ⚠️ Alpha Version
 
 Free real-time combat intelligence dashboard with:
 - 📊 **24-Hour Battle Reports** - Track combat activity across New Eden
@@ -40,6 +44,7 @@ Instant notifications when combat spikes are detected (5+ kills in 5 minutes):
 
 ---
 
+![Status](https://img.shields.io/badge/Status-Alpha-yellow)
 ![EVE Online](https://img.shields.io/badge/EVE-Online-orange)
 ![Python](https://img.shields.io/badge/Python-3.11+-blue)
 ![React](https://img.shields.io/badge/React-18-61DAFB)

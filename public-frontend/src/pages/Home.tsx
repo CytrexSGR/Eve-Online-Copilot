@@ -99,6 +99,29 @@ export function Home() {
 
   return (
     <div>
+      {/* Alpha Warning Banner */}
+      <div style={{
+        background: 'linear-gradient(135deg, #ff6b00 0%, #ff9500 100%)',
+        color: 'white',
+        padding: '1rem 1.5rem',
+        borderRadius: '8px',
+        marginBottom: '1.5rem',
+        border: '2px solid rgba(255, 255, 255, 0.2)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '1rem'
+      }}>
+        <span style={{ fontSize: '2rem' }}>⚠️</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: '1.125rem', marginBottom: '0.25rem' }}>
+            Alpha Software
+          </div>
+          <div style={{ fontSize: '0.875rem', opacity: 0.95 }}>
+            This dashboard is in active development. Data may be incomplete or inaccurate. Features are subject to change.
+          </div>
+        </div>
+      </div>
+
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
