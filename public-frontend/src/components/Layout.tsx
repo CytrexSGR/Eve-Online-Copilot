@@ -68,15 +68,15 @@ export function Layout({ children }: LayoutProps) {
           }}>
             <div>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                © 2026 EVE Intelligence | Data from zKillboard & ESI
+                © 2026 Infinimind Creations | Data from zKillboard & ESI
               </p>
               <p style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem', marginTop: '0.5rem' }}>
                 EVE Online and the EVE logo are trademarks of CCP hf.
               </p>
             </div>
-            <div>
-              <a href="/privacy" style={{ marginRight: '1rem' }}>Privacy Policy</a>
-              <a href="/cookies">Cookie Policy</a>
+            <div style={{ display: 'flex', gap: '1.5rem' }}>
+              <Link to="/impressum" style={{ fontSize: '0.875rem' }}>Impressum</Link>
+              <Link to="/datenschutz" style={{ fontSize: '0.875rem' }}>Datenschutz</Link>
             </div>
           </div>
         </div>
