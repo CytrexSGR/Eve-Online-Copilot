@@ -1,0 +1,14 @@
+# EVE Intelligence - Robots.txt
+# https://eve.infinimind-creations.com
+
+User-agent: *
+Allow: /
+
+# Disallow stats (password protected)
+Disallow: /stats.html
+
+# Sitemap
+Sitemap: https://eve.infinimind-creations.com/sitemap.xml
+
+# Crawl-delay for polite crawlers
+Crawl-delay: 10
