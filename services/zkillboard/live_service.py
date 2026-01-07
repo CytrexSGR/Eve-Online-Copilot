@@ -620,6 +620,153 @@ class ZKillboardLiveService:
         except Exception as e:
             print(f"Error updating battle participants: {e}")
 
+    def track_alliance_war(self, kill: LiveKillmail):
+        """
+        Track alliance wars based on kill data.
+
+        Creates or updates alliance_wars records when alliances fight each other.
+        Also updates daily statistics for trend analysis.
+
+        Args:
+            kill: LiveKillmail with victim and attacker alliance data
+        """
+        if not kill.victim_alliance_id:
+            return  # No alliance war if victim has no alliance
+
+        victim_alliance = kill.victim_alliance_id
+        attacker_alliances = set(kill.attacker_alliances)
+
+        # Remove None values and victim alliance from attackers
+        attacker_alliances.discard(None)
+        attacker_alliances.discard(victim_alliance)
+
+        if not attacker_alliances:
+            return  # No opposing alliances
+
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    for attacker_alliance in attacker_alliances:
+                        # Ensure consistent ordering (smaller ID first)
+                        alliance_a = min(victim_alliance, attacker_alliance)
+                        alliance_b = max(victim_alliance, attacker_alliance)
+
+                        # Determine who killed whom
+                        if victim_alliance == alliance_a:
+                            # Alliance A was victim, B killed
+                            kills_by_a = 0
+                            kills_by_b = 1
+                        else:
+                            # Alliance B was victim, A killed
+                            kills_by_a = 1
+                            kills_by_b = 0
+
+                        # Create or update war record
+                        cur.execute("""
+                            INSERT INTO alliance_wars (
+                                alliance_a_id,
+                                alliance_b_id,
+                                first_kill_at,
+                                last_kill_at,
+                                total_kills,
+                                total_isk_destroyed,
+                                status
+                            ) VALUES (
+                                %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, %s, 'active'
+                            )
+                            ON CONFLICT (alliance_a_id, alliance_b_id)
+                            DO UPDATE SET
+                                last_kill_at = CURRENT_TIMESTAMP,
+                                total_kills = alliance_wars.total_kills + 1,
+                                total_isk_destroyed = alliance_wars.total_isk_destroyed + %s,
+                                status = 'active'
+                            RETURNING war_id
+                        """, (
+                            alliance_a,
+                            alliance_b,
+                            int(kill.ship_value),
+                            int(kill.ship_value)
+                        ))
+
+                        war_id = cur.fetchone()[0]
+
+                        # Update daily stats
+                        cur.execute("""
+                            INSERT INTO war_daily_stats (
+                                war_id,
+                                date,
+                                kills_by_a,
+                                isk_destroyed_by_a,
+                                kills_by_b,
+                                isk_destroyed_by_b,
+                                active_systems
+                            ) VALUES (
+                                %s, CURRENT_DATE, %s, %s, %s, %s, 1
+                            )
+                            ON CONFLICT (war_id, date)
+                            DO UPDATE SET
+                                kills_by_a = war_daily_stats.kills_by_a + %s,
+                                isk_destroyed_by_a = war_daily_stats.isk_destroyed_by_a + %s,
+                                kills_by_b = war_daily_stats.kills_by_b + %s,
+                                isk_destroyed_by_b = war_daily_stats.isk_destroyed_by_b + %s
+                        """, (
+                            war_id,
+                            kills_by_a,
+                            int(kill.ship_value) if kills_by_a > 0 else 0,
+                            kills_by_b,
+                            int(kill.ship_value) if kills_by_b > 0 else 0,
+                            kills_by_a,
+                            int(kill.ship_value) if kills_by_a > 0 else 0,
+                            kills_by_b,
+                            int(kill.ship_value) if kills_by_b > 0 else 0
+                        ))
+
+                    conn.commit()
+
+        except Exception as e:
+            print(f"Error tracking alliance war: {e}")
+
+    def finalize_dormant_wars(self):
+        """
+        Mark wars as dormant if no activity for 7+ days.
+        Mark wars as ended if no activity for 30+ days.
+        """
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Mark as dormant: no kills in 7 days
+                    cur.execute("""
+                        UPDATE alliance_wars
+                        SET status = 'dormant'
+                        WHERE status = 'active'
+                          AND last_kill_at < NOW() - INTERVAL '7 days'
+                        RETURNING war_id, alliance_a_id, alliance_b_id
+                    """)
+
+                    dormant = cur.fetchall()
+                    if dormant:
+                        for war_id, alliance_a, alliance_b in dormant:
+                            print(f"[WAR] War {war_id} ({alliance_a} vs {alliance_b}) marked dormant")
+
+                    # Mark as ended: no kills in 30 days
+                    cur.execute("""
+                        UPDATE alliance_wars
+                        SET status = 'ended'
+                        WHERE status = 'dormant'
+                          AND last_kill_at < NOW() - INTERVAL '30 days'
+                        RETURNING war_id, alliance_a_id, alliance_b_id
+                    """)
+
+                    ended = cur.fetchall()
+                    if ended:
+                        for war_id, alliance_a, alliance_b in ended:
+                            print(f"[WAR] War {war_id} ({alliance_a} vs {alliance_b}) ended")
+
+                    conn.commit()
+
+        except Exception as e:
+            print(f"Error finalizing wars: {e}")
+
     def store_live_kill(self, kill: LiveKillmail, zkb_data: Optional[Dict] = None, esi_killmail: Optional[Dict] = None):
         """
         Store killmail in Redis with 24h TTL AND PostgreSQL permanently.
@@ -1167,11 +1314,15 @@ class ZKillboardLiveService:
         Check for inactive hotspots and mark them as FINAL.
 
         Runs periodically to finalize hotspot alerts that haven't been updated in 10+ minutes.
+        Also finalizes inactive battles and dormant wars.
         """
         now = time.time()
 
         # Finalize inactive battles in PostgreSQL
         self.finalize_inactive_battles()
+
+        # Finalize dormant/ended alliance wars
+        self.finalize_dormant_wars()
 
         # Scan for active alert messages
         for key in self.redis_client.scan_iter("hotspot_alert:*"):
@@ -1288,6 +1439,9 @@ class ZKillboardLiveService:
         battle_id = self.create_or_update_battle(kill) if hotspot else self._update_existing_battle(kill)
         if battle_id:
             self.update_battle_participants(battle_id, kill)
+
+        # ALLIANCE WAR TRACKING: Track long-term conflicts between alliances
+        self.track_alliance_war(kill)
 
         # Detect hotspot for alerts
         if hotspot:
