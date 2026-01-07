@@ -169,6 +169,121 @@ Agent: [Detects 3+ tool plan → waits for approval if L1/L2, auto-executes if L
 | L2 (ASSISTED)  | ✅ Auto-Execute | ✅ Auto-Execute     | ❌ Approve            |
 | L3 (SUPERVISED) | ✅ Auto-Execute | ✅ Auto-Execute    | ✅ Auto-Execute       |
 
+## Public Intelligence Dashboard
+
+**Live Demo:** Access the public intelligence dashboard at your deployment URL
+
+A dedicated public-facing frontend showcasing real-time EVE Online combat intelligence and market analytics. Built with React 18, TypeScript, and Three.js for stunning 3D visualizations.
+
+### Features
+
+#### 📊 Battle Report (24h Intelligence)
+- **Combat Summary** - Total kills, ISK destroyed, peak activity hours
+- **Hot Zones** - Top 15 most active systems with danger levels
+- **Capital Kills** - Titans, Supercarriers, Carriers, Dreadnoughts, Force Auxiliaries
+- **High-Value Kills** - Top 20 most expensive losses (ranked by ISK)
+- **Danger Zones** - Systems with high industrial/freighter losses
+- **Ship Breakdown** - Combat losses by ship category
+- **Hourly Timeline** - 24-hour activity graph
+- **Regional Summary** - Combat activity by region
+
+#### 💰 War Profiteering
+- **Opportunity Value** - Total market value of destroyed items
+- **Top 20 Items** - Most destroyed items with market prices
+- **Supply Gaps** - Items with high demand and low market supply
+
+#### ⚔️ Alliance Wars
+- **Active Conflicts** - Ongoing wars between alliances
+- **War Statistics** - Kills, losses, efficiency ratings
+- **Combat Zones** - Systems where wars are fought
+
+#### 🚚 Trade Routes
+- **High-Value Routes** - Profitable trade corridors
+- **Risk Assessment** - Route danger based on recent kills
+- **Volume Analysis** - Trade activity metrics
+
+#### 🗺️ 3D Galaxy Combat Map
+- **Interactive 3D Visualization** - Explore the EVE Online galaxy in real-time
+- **Live Combat Hotspots** - See active combat zones update in real-time
+- **4 Combat Layers:**
+  - 🔴 Capital Kills (Titans, Supers, Carriers, Dreads)
+  - 🟠 Gank Activity (High-value kills in high-sec)
+  - 🟡 Hot Zones (High kill density systems)
+  - 🟢 All Combat (General combat activity)
+- **Age-Based Coloring** - Hotspots fade from white → yellow → orange over time
+- **System Labels** - Hover for system details and kill counts
+- **Live Updates** - Polls every 5 seconds for new combat data
+- **Filters** - Toggle combat layers on/off
+
+### Tech Stack
+
+**Backend APIs:**
+- **Main API** (Port 8000) - FastAPI backend with 115 MCP tools
+- **Public API** (Port 8001) - Dedicated public intelligence API with rate limiting
+
+**Frontend:**
+- React 18 / TypeScript 5
+- Three.js / React Three Fiber - 3D galaxy visualization
+- Vite - Lightning-fast development and builds
+- Axios - API client with automatic retries
+- Dark Mode - EVE Online aesthetic
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│           Public Intelligence Dashboard          │
+│              (React + TypeScript)                │
+│                  Port 5173                       │
+└────────────┬────────────────────┬────────────────┘
+             │                    │
+             │ /api/war/*         │ /api/reports/*
+             │                    │
+     ┌───────▼────────┐   ┌──────▼─────────┐
+     │   Main API     │   │   Public API   │
+     │   Port 8000    │   │   Port 8001    │
+     │                │   │                │
+     │ • War Room     │   │ • Battle       │
+     │ • Live         │   │   Reports      │
+     │   Hotspots     │   │ • War          │
+     │ • Killmail     │   │   Profiteering │
+     │   Stream       │   │ • Alliance     │
+     │                │   │   Wars         │
+     └────────────────┘   └────────────────┘
+```
+
+### Data Sources
+
+- **zKillboard WebSocket** - Real-time killmail stream
+- **EVE ESI API** - Official EVE Online API
+- **EVE Ref** - Historical killmail archives
+- **Redis** - Live hotspot caching (sub-second response times)
+- **PostgreSQL** - Combat analytics and historical data
+
+### Performance
+
+- **Sub-second API responses** - Redis caching for live data
+- **Code splitting** - Lazy-loaded pages (< 500KB initial bundle)
+- **Optimized 3D rendering** - 60 FPS galaxy visualization
+- **Auto-refresh** - Configurable polling intervals (5s-5min)
+- **Responsive design** - Works on desktop, tablet, and mobile
+
+### Running the Public Dashboard
+
+```bash
+# Start the public API (Port 8001)
+cd public_api
+uvicorn main:app --host 0.0.0.0 --port 8001
+
+# Start the frontend (Port 5173)
+cd public-frontend
+npm install
+npm run dev -- --host 0.0.0.0
+
+# Access
+http://localhost:5173
+```
+
 ## Tech Stack
 
 **Backend:**
@@ -320,12 +435,30 @@ eve_copilot/
 │
 ├── migrations/             # SQL migrations
 │
-└── frontend/               # React application
-    └── src/
-        ├── pages/          # 15 page components (lazy-loaded)
-        ├── components/     # Reusable components
-        ├── hooks/          # Custom hooks (keyboard shortcuts)
-        └── api.ts          # API client
+├── frontend/               # Main React application (Internal tools)
+│   └── src/
+│       ├── pages/          # 15 page components (lazy-loaded)
+│       ├── components/     # Reusable components
+│       ├── hooks/          # Custom hooks (keyboard shortcuts)
+│       └── api.ts          # API client
+│
+├── public-frontend/        # Public Intelligence Dashboard
+│   └── src/
+│       ├── pages/          # Public report pages
+│       │   ├── Home.tsx            # Dashboard overview
+│       │   ├── BattleReport.tsx    # 24h combat intelligence
+│       │   ├── BattleMap.tsx       # 3D galaxy map
+│       │   ├── WarProfiteering.tsx # Destroyed items market data
+│       │   ├── AllianceWars.tsx    # Active conflicts
+│       │   └── TradeRoutes.tsx     # Trade corridor analysis
+│       ├── components/     # 3D map, layout, refresh indicator
+│       ├── services/       # API client
+│       └── types/          # TypeScript definitions
+│
+└── public_api/             # Public API (Port 8001)
+    ├── main.py             # FastAPI application
+    ├── routers/            # Report endpoints
+    └── middleware/         # Rate limiting, security headers
 ```
 
 ## API Overview
