@@ -78,3 +78,9 @@ WAR_EVEREF_BASE_URL = "https://data.everef.net/killmails"
 WAR_DISCORD_ENABLED = False
 WAR_ALERT_DEMAND_SCORE_THRESHOLD = 2.0
 WAR_ALERT_MIN_GAP_UNITS = 50
+
+# Telegram Bot Configuration
+TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN"  # Get from @BotFather
+TELEGRAM_ALERTS_CHANNEL = "-100XXXXXXXXXXXXX"  # Channel ID for combat hotspot alerts
+TELEGRAM_REPORTS_CHANNEL = "-100XXXXXXXXXXXXX"  # Channel ID for scheduled reports
+TELEGRAM_ENABLED = False  # Set to True to enable Telegram notifications
