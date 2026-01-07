@@ -63,7 +63,7 @@ Edit `/home/cytrex/eve_copilot/config.py`:
 
 ```python
 # Telegram Bot Configuration
-TELEGRAM_BOT_TOKEN = "7389584961:AAEbKMknAZFPQbSTfLKip9PIrqPtUwjVfHE"
+TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"  # Get from @BotFather
 TELEGRAM_ALERTS_CHANNEL = "-1001234567890"  # Replace with your alerts channel ID
 TELEGRAM_REPORTS_CHANNEL = "-1002345678901"  # Replace with your reports channel ID
 TELEGRAM_ENABLED = True
