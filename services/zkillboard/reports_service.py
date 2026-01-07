@@ -600,7 +600,7 @@ class ZKillboardReportsService:
         Returns:
             Dict with top destroyed items and their market opportunity scores
         """
-        # Get destroyed items
+        # Get destroyed items from Redis
         items = []
         for key in self.redis_client.scan_iter("kill:item:*:destroyed"):
             parts = key.split(":")
@@ -617,45 +617,45 @@ class ZKillboardReportsService:
         if not items:
             return {"items": [], "total_items": 0, "total_opportunity_value": 0}
 
-        # Get item names and market prices from database
+        # Batch query for all items with price fallback logic
         item_data = []
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                for item in items[:50]:  # Check top 50 by quantity first
-                    item_id = item['item_type_id']
-                    quantity = item['quantity_destroyed']
+                # Create temporary table with destroyed items for efficient JOIN
+                item_ids = [item['item_type_id'] for item in items]
+                quantities = {item['item_type_id']: item['quantity_destroyed'] for item in items}
 
-                    # Get item name and category
-                    cur.execute(
-                        '''SELECT t."typeName", t."groupID", g."categoryID"
-                           FROM "invTypes" t
-                           JOIN "invGroups" g ON t."groupID" = g."groupID"
-                           WHERE t."typeID" = %s''',
-                        (item_id,)
-                    )
-                    row = cur.fetchone()
-                    if not row:
-                        continue
+                # Batch query with price fallback: Jita → Adjusted → Base
+                cur.execute(
+                    '''SELECT
+                        t."typeID",
+                        t."typeName",
+                        t."groupID",
+                        g."categoryID",
+                        COALESCE(mp.lowest_sell, mpc.adjusted_price, t."basePrice"::double precision, 0) as final_price
+                       FROM "invTypes" t
+                       JOIN "invGroups" g ON t."groupID" = g."groupID"
+                       LEFT JOIN market_prices mp ON t."typeID" = mp.type_id AND mp.region_id = 10000002
+                       LEFT JOIN market_prices_cache mpc ON t."typeID" = mpc.type_id
+                       WHERE t."typeID" = ANY(%s)''',
+                    (item_ids,)
+                )
 
-                    item_name = row[0]
-                    group_id = row[1]
-                    category_id = row[2]
+                for row in cur.fetchall():
+                    item_id = row[0]
+                    item_name = row[1]
+                    group_id = row[2]
+                    category_id = row[3]
+                    market_price = float(row[4]) if row[4] else 0
+                    quantity = quantities[item_id]
 
                     # Exclude raw materials, ore, ice, PI materials
                     # Category 4 = Material, 25 = Asteroid, 43 = Planetary Commodities
                     if category_id in (4, 25, 43):
                         continue
 
-                    # Get market price (average of Jita sell orders from our cache)
-                    cur.execute(
-                        'SELECT lowest_sell FROM market_prices WHERE type_id = %s AND region_id = 10000002 LIMIT 1',
-                        (item_id,)
-                    )
-                    price_row = cur.fetchone()
-                    market_price = price_row[0] if price_row else 0
-
                     # Skip items without valid market price
-                    if market_price is None or market_price <= 0:
+                    if market_price <= 0:
                         continue
 
                     # Calculate opportunity score
