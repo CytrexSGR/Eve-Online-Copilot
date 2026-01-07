@@ -747,14 +747,22 @@ class ZKillboardReportsService:
         war_data = []
         for alliance_pair, data in conflicts.items():
             total_kills = data["kills_by_a"] + data["kills_by_b"]
+            total_isk = data["isk_by_a"] + data["isk_by_b"]
 
-            # Only include conflicts with at least 3 mutual kills
-            if total_kills < 3:
+            # Only include significant conflicts (minimum 5 mutual kills)
+            if total_kills < 5:
                 continue
 
             # Calculate ratios
             kill_ratio_a = data["kills_by_a"] / max(data["kills_by_b"], 1)
             isk_efficiency_a = data["isk_by_a"] / max(data["isk_by_b"], 1)
+
+            # Calculate war intensity score (weighted by ISK, kills, and spread)
+            # ISK is normalized to billions for scoring
+            isk_score = (total_isk / 1e9) * 0.6  # 60% weight on ISK destroyed
+            kill_score = total_kills * 0.3       # 30% weight on kill count
+            system_score = len(data["systems"]) * 0.1  # 10% weight on conflict spread
+            war_score = isk_score + kill_score + system_score
 
             war_data.append({
                 "alliance_a_id": data["alliance_a"],
@@ -764,14 +772,16 @@ class ZKillboardReportsService:
                 "kills_by_b": data["kills_by_b"],
                 "isk_destroyed_by_a": data["isk_by_a"],
                 "isk_destroyed_by_b": data["isk_by_b"],
+                "total_isk_destroyed": total_isk,
                 "kill_ratio_a": kill_ratio_a,
                 "isk_efficiency_a": isk_efficiency_a,
                 "active_systems": len(data["systems"]),
+                "war_intensity_score": war_score,
                 "winner": "a" if kill_ratio_a > 1.2 else "b" if kill_ratio_a < 0.8 else "contested"
             })
 
-        # Sort by total activity
-        war_data.sort(key=lambda x: x['total_kills'], reverse=True)
+        # Sort by war intensity score (ISK-weighted activity)
+        war_data.sort(key=lambda x: x['war_intensity_score'], reverse=True)
 
         # Get alliance names from ESI
         if not self.session or self.session.closed:
