@@ -53,3 +53,16 @@ data/*.json
 data/cache/*
 !data/.gitkeep
 !data/cache/.gitkeep
+
+# Test scripts in root (not in tests/ directory)
+/test_*.py
+!tests/test_*.py
+!copilot_server/tests/
+
+# Pytest cache
+.pytest_cache/
+__pycache__/
+
+# Utility scripts
+/create_telegram_topics.py
+/get_telegram_channel_ids.py
