@@ -133,6 +133,36 @@ https://www.ssllabs.com/ssltest/analyze.html?d=eve.infinimind-creations.com
 - Ensure port 80 is accessible from the internet
 - Check Let's Encrypt logs: `/var/log/letsencrypt/letsencrypt.log`
 
+## Web Analytics (GoAccess)
+
+**Live Dashboard:** https://eve.infinimind-creations.com/stats.html
+
+GoAccess is installed and configured to provide real-time web analytics:
+
+**Features:**
+- Beautiful HTML dashboard with real-time metrics
+- Unique visitors, page views, bandwidth usage
+- Top pages, referring sites, browsers, operating systems
+- Geographic location data (with GeoIP)
+- HTTP status codes distribution
+- Real-time updates every 10 minutes via cron
+
+**Manual Update:**
+```bash
+echo 'Aug2012#' | sudo -S goaccess /var/log/nginx/access.log \
+  --log-format=COMBINED \
+  --output=/var/www/html/stats.html
+```
+
+**Automatic Updates:**
+- Cron job runs every 10 minutes: `/home/cytrex/eve_copilot/jobs/cron_goaccess_update.sh`
+- Logs: `/home/cytrex/eve_copilot/logs/goaccess_update.log`
+
+**Configuration:**
+- Nginx serves stats.html from `/var/www/html/`
+- Log format: COMBINED (nginx default)
+- Access restricted to HTTPS only
+
 ## Production Deployment
 
 For production deployment with systemd services, see [DEPLOYMENT.md](../docs/DEPLOYMENT.md).

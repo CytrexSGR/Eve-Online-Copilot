@@ -119,26 +119,45 @@ Add to cron for daily reports:
 0 0 * * * /usr/bin/python3 /home/cytrex/eve_copilot/scripts/analyze_traffic.py --days 1 > /home/cytrex/eve_copilot/logs/daily_traffic_$(date +\%Y\%m\%d).txt
 ```
 
-## Advanced Analytics (Optional)
+## Advanced Analytics with GoAccess ✅ INSTALLED
 
-For real-time dashboards, consider installing **GoAccess**:
+**Live Dashboard:** https://eve.infinimind-creations.com/stats.html
 
+GoAccess is now installed and configured to provide beautiful web analytics:
+
+**Features:**
+- ✅ Beautiful HTML dashboard with real-time metrics
+- ✅ Unique visitors, page views, bandwidth usage
+- ✅ Top pages, referring sites, browsers, operating systems
+- ✅ Geographic location data (with GeoIP)
+- ✅ HTTP status codes distribution
+- ✅ Automatic updates every 10 minutes via cron
+
+**Automatic Updates:**
 ```bash
-# Install GoAccess
-sudo apt install goaccess
+# Cron job runs every 10 minutes
+*/10 * * * * /home/cytrex/eve_copilot/jobs/cron_goaccess_update.sh
 
-# Generate real-time HTML report
-sudo goaccess /var/log/nginx/access.log \
-  --log-format=COMBINED \
-  --output=/var/www/html/stats.html \
-  --real-time-html
-
-# Access at: http://your-server/stats.html
+# View logs
+tail -f /home/cytrex/eve_copilot/logs/goaccess_update.log
 ```
 
-**GoAccess Features:**
-- Real-time updates
-- Beautiful HTML dashboard
-- Geolocation (with GeoIP)
-- No database required
-- Privacy-friendly (self-hosted)
+**Manual Update:**
+```bash
+# Generate static HTML report
+echo 'Aug2012#' | sudo -S goaccess /var/log/nginx/access.log \
+  --log-format=COMBINED \
+  --output=/var/www/html/stats.html
+```
+
+**Why Static Over Real-Time:**
+- Static HTML reports are lightweight and fast to load
+- No persistent GoAccess process needed
+- Updates every 10 minutes are sufficient for traffic patterns
+- Lower server resource usage
+
+**Privacy Benefits:**
+- Self-hosted analytics (no third-party services)
+- No cookies or client-side tracking
+- Only server-side log analysis
+- Full control over data retention
