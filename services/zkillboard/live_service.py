@@ -70,6 +70,30 @@ class LiveKillmail:
     attacker_alliances: List[int]     # Alliance IDs of attackers
 
 
+def safe_int_value(value) -> int:
+    """
+    Safely convert a value to int, handling overflow and invalid values.
+
+    Args:
+        value: Value to convert (float, str, int, etc.)
+
+    Returns:
+        Int value capped at BIGINT max, or 0 if invalid
+    """
+    try:
+        int_value = int(float(value))
+        # Cap at PostgreSQL BIGINT max to prevent overflow
+        BIGINT_MAX = 9223372036854775807
+        if int_value > BIGINT_MAX:
+            return BIGINT_MAX
+        if int_value < -BIGINT_MAX:
+            return -BIGINT_MAX
+        return int_value
+    except (ValueError, OverflowError, TypeError) as e:
+        print(f"Warning: Invalid numeric value '{value}': {e}, using 0")
+        return 0
+
+
 class ZKillboardLiveService:
     """Service for processing live killmail data from zKillboard RedisQ"""
 
@@ -321,7 +345,7 @@ class ZKillboardLiveService:
                         kill.solar_system_id,
                         kill.region_id,
                         kill.ship_type_id,
-                        int(kill.ship_value),
+                        safe_int_value(kill.ship_value),
                         kill.victim_character_id,
                         kill.victim_corporation_id,
                         kill.victim_alliance_id,
@@ -455,7 +479,7 @@ class ZKillboardLiveService:
                                 capital_kills = capital_kills + %s
                             WHERE battle_id = %s
                         """, (
-                            int(kill.ship_value),
+                            safe_int_value(kill.ship_value),
                             1 if is_capital else 0,
                             battle_id
                         ))
@@ -514,7 +538,7 @@ class ZKillboardLiveService:
                                 capital_kills = capital_kills + %s
                             WHERE battle_id = %s
                         """, (
-                            int(kill.ship_value),
+                            safe_int_value(kill.ship_value),
                             1 if is_capital else 0,
                             battle_id
                         ))
@@ -551,7 +575,7 @@ class ZKillboardLiveService:
                             kill.solar_system_id,
                             kill.region_id,
                             1,
-                            int(kill.ship_value),
+                            safe_int_value(kill.ship_value),
                             1 if is_capital else 0
                         ))
 
@@ -827,8 +851,8 @@ class ZKillboardLiveService:
                             battle_id,
                             kill.victim_alliance_id,
                             kill.victim_corporation_id,
-                            int(kill.ship_value),
-                            int(kill.ship_value)
+                            safe_int_value(kill.ship_value),
+                            safe_int_value(kill.ship_value)
                         ))
 
                     # Update attacker alliances/corps (kills)
@@ -849,8 +873,8 @@ class ZKillboardLiveService:
                             """, (
                                 battle_id,
                                 alliance_id,
-                                int(kill.ship_value),
-                                int(kill.ship_value)
+                                safe_int_value(kill.ship_value),
+                                safe_int_value(kill.ship_value)
                             ))
 
                     conn.commit()
@@ -882,14 +906,7 @@ class ZKillboardLiveService:
             return  # No opposing alliances
 
         # Safely convert ship_value to int
-        try:
-            isk_value = int(float(kill.ship_value))
-            # Cap at BIGINT max
-            if isk_value > 9223372036854775807:
-                isk_value = 9223372036854775807
-        except (ValueError, OverflowError, TypeError) as e:
-            print(f"Warning: Invalid ship_value '{kill.ship_value}': {e}, using 0")
-            isk_value = 0
+        isk_value = safe_int_value(kill.ship_value)
 
         try:
             with get_db_connection() as conn:
@@ -972,7 +989,9 @@ class ZKillboardLiveService:
                     conn.commit()
 
         except Exception as e:
+            import traceback
             print(f"Error tracking alliance war: {e}")
+            traceback.print_exc()
 
     def finalize_dormant_wars(self):
         """
@@ -1826,7 +1845,9 @@ class ZKillboardLiveService:
             self.update_battle_participants(battle_id, kill)
 
         # ALLIANCE WAR TRACKING: Track long-term conflicts between alliances
-        # TEMPORARILY DISABLED: integer overflow bug needs full fix across all int(kill.ship_value) occurrences
+        # TEMPORARILY DISABLED: Database column type issue needs investigation
+        # Error: "integer out of range" despite all safe_int_value conversions
+        # Likely issue: Some other column in war_daily_stats or alliance_wars is too small
         # self.track_alliance_war(kill)
 
         # =====================================================
