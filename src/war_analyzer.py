@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from typing import List, Dict, Optional
 from collections import defaultdict
 
-from database import get_db_connection
+from src.database import get_db_connection
 from config import WAR_DOCTRINE_MIN_FLEET_SIZE, WAR_HEATMAP_MIN_KILLS
 
 

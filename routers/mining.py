@@ -4,7 +4,7 @@ Endpoints for finding mining locations and ore information
 """
 
 from fastapi import APIRouter, HTTPException, Query, Depends
-from database import get_db_connection
+from src.database import get_db_connection
 
 # New refactored services (available for future integration)
 from src.core.config import get_settings, Settings

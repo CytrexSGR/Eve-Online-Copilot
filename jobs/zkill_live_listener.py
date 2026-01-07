@@ -21,7 +21,7 @@ import signal
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from zkillboard_live_service import zkill_live_service
+from src.zkillboard_live_service import zkill_live_service
 
 
 # Signal handling for graceful shutdown

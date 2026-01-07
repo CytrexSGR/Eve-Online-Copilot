@@ -17,9 +17,9 @@ from src.integrations.esi.client import ESIClient
 from src.services.character.service import CharacterService
 from src.services.auth.service import AuthService
 from src.services.auth.repository import AuthRepository
-from services import calculate_production_cost
-from database import get_db_connection, get_item_by_name
-from schemas import ProductionCostRequest, SimulationRequest
+from src.legacy_services import calculate_production_cost
+from src.database import get_db_connection, get_item_by_name
+from src.schemas import ProductionCostRequest, SimulationRequest
 
 router = APIRouter(tags=["Production"])
 

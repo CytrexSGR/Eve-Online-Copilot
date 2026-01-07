@@ -6,13 +6,13 @@ Endpoints for managing shopping lists and items
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import Optional, List
-from database import get_db_connection
+from src.database import get_db_connection
 from psycopg2.extras import RealDictCursor
 
 # Legacy service for complex operations (temporary until full migration)
-from shopping_service import shopping_service
-from route_service import route_service
-from transport_service import transport_service
+from src.shopping_service import shopping_service
+from src.route_service import route_service
+from src.transport_service import transport_service
 
 # New refactored services
 from src.core.config import get_settings, Settings

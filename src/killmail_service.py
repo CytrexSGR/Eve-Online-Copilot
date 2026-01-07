@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Tuple
 from collections import defaultdict
 from psycopg2.extras import execute_values
 
-from database import get_db_connection
+from src.database import get_db_connection
 from config import WAR_EVEREF_BASE_URL, WAR_DATA_RETENTION_DAYS
 
 

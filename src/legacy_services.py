@@ -3,14 +3,14 @@ EVE Co-Pilot Business Logic Services
 Core functions for production cost calculation and arbitrage finding
 """
 
-from database import (
+from src.database import (
     get_item_info,
     get_blueprint_materials,
     get_blueprint_info,
     get_items_by_group,
     get_group_by_name
 )
-from esi_client import esi_client
+from src.esi_client import esi_client
 from config import REGIONS
 
 

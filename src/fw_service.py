@@ -7,7 +7,7 @@ import requests
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 from psycopg2.extras import execute_values, RealDictCursor
-from database import get_db_connection
+from src.database import get_db_connection
 from config import ESI_BASE_URL, ESI_USER_AGENT
 import logging
 

@@ -5,7 +5,7 @@ Route calculation and navigation assistance.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
-from route_service import route_service, TRADE_HUB_SYSTEMS
+from src.route_service import route_service, TRADE_HUB_SYSTEMS
 
 
 # Tool Definitions

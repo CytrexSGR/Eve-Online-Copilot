@@ -6,7 +6,7 @@ Business logic for production chains, material calculations, and ME adjustments.
 
 from typing import Dict, List, Any, Optional
 from services.production.chain_repository import ProductionChainRepository
-from database import get_db_connection
+from src.database import get_db_connection
 
 
 class ProductionChainService:

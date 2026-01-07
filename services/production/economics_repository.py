@@ -6,7 +6,7 @@ Manages cost calculations, market prices, and profitability metrics.
 """
 
 from typing import List, Dict, Any, Optional
-from database import get_db_connection
+from src.database import get_db_connection
 
 
 class ProductionEconomicsRepository:

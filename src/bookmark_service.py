@@ -1,6 +1,6 @@
 """Bookmark Service for EVE Co-Pilot"""
 
-from database import get_db_connection
+from src.database import get_db_connection
 from psycopg2.extras import RealDictCursor
 from typing import Optional, List
 from datetime import datetime

@@ -5,7 +5,7 @@ Production planning, cost calculation, chains, economics, and workflow managemen
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
-from production_simulator import production_simulator
+from src.production_simulator import production_simulator
 from services.production.chain_service import ProductionChainService
 from services.production.economics_service import ProductionEconomicsService
 from services.production.workflow_service import ProductionWorkflowService

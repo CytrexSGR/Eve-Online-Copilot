@@ -26,11 +26,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import get_db_connection
-from market_service import market_service
-from production_simulator import ProductionSimulator
-from material_classifier import material_classifier
-from esi_client import esi_client
+from src.database import get_db_connection
+from src.market_service import market_service
+from src.production_simulator import ProductionSimulator
+from src.material_classifier import material_classifier
+from src.esi_client import esi_client
 from config import REGIONS
 
 # Region mapping für DB

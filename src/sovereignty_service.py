@@ -16,7 +16,7 @@ import requests
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from database import get_db_connection
+from src.database import get_db_connection
 from config import ESI_BASE_URL, ESI_USER_AGENT
 
 logging.basicConfig(level=logging.INFO)

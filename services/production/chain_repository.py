@@ -6,7 +6,7 @@ Manages material dependency graphs from finished products to raw materials.
 """
 
 from typing import List, Dict, Any, Optional
-from database import get_db_connection
+from src.database import get_db_connection
 
 
 class ProductionChainRepository:

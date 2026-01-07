@@ -5,7 +5,7 @@ Bookmark and bookmark list management.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
-from bookmark_service import bookmark_service
+from src.bookmark_service import bookmark_service
 
 
 # Tool Definitions

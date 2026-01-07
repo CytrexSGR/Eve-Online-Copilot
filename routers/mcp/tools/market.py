@@ -5,8 +5,8 @@ Market analysis, arbitrage, and price comparison tools.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
-from esi_client import esi_client
-from database import get_item_info
+from src.esi_client import esi_client
+from src.database import get_item_info
 from config import REGIONS
 
 

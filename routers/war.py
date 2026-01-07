@@ -7,12 +7,12 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional
 
 # Legacy services (temporary until full migration)
-from killmail_service import killmail_service as legacy_killmail_service
-from sovereignty_service import sovereignty_service as legacy_sovereignty_service
-from fw_service import fw_service as legacy_fw_service
-from war_analyzer import war_analyzer as legacy_war_analyzer
-from route_service import route_service
-from zkillboard_live_service import zkill_live_service
+from src.killmail_service import killmail_service as legacy_killmail_service
+from src.sovereignty_service import sovereignty_service as legacy_sovereignty_service
+from src.fw_service import fw_service as legacy_fw_service
+from src.war_analyzer import war_analyzer as legacy_war_analyzer
+from src.route_service import route_service
+from src.zkillboard_live_service import zkill_live_service
 from config import REGIONS
 
 # New refactored services

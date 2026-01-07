@@ -3,7 +3,7 @@ Character Capability Service for EVE Co-Pilot
 Manages ship capabilities and skill requirements
 """
 
-from database import get_db_connection
+from src.database import get_db_connection
 from psycopg2.extras import RealDictCursor
 from typing import Optional, List, Dict
 from datetime import datetime

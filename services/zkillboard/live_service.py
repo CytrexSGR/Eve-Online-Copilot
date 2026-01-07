@@ -22,9 +22,9 @@ import aiohttp
 import redis
 from dataclasses import dataclass, asdict
 
-from database import get_db_connection
+from src.database import get_db_connection
 from config import DISCORD_WEBHOOK_URL, WAR_DISCORD_ENABLED
-from telegram_service import telegram_service
+from src.telegram_service import telegram_service
 
 
 # Redis Configuration

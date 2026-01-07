@@ -4,8 +4,8 @@ Re-export functions from root services.py for backwards compatibility.
 import importlib.util
 import os
 
-# Load the root services.py module with a different name to avoid circular import
-services_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'services.py')
+# Load the src/legacy_services.py module with a different name to avoid circular import
+services_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src', 'legacy_services.py')
 spec = importlib.util.spec_from_file_location("_root_services", services_path)
 root_services = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(root_services)

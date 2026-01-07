@@ -14,9 +14,9 @@ import logging
 from datetime import datetime
 
 # Import modules from parent directory
-from auth import eve_auth
-from character import CharacterAPI
-from capability_service import capability_service, LOGISTICS_SHIP_GROUPS
+from src.auth import eve_auth
+from src.character import CharacterAPI
+from src.capability_service import capability_service, LOGISTICS_SHIP_GROUPS
 
 # Initialize character API
 character_api = CharacterAPI()

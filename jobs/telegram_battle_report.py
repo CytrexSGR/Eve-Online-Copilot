@@ -13,8 +13,8 @@ import asyncio
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from zkillboard_live_service import zkill_live_service
-from telegram_service import telegram_service
+from src.zkillboard_live_service import zkill_live_service
+from src.telegram_service import telegram_service
 
 
 def format_report_for_telegram(report: dict) -> str:

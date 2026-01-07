@@ -4,7 +4,7 @@ Categorizes materials by source and determines blueprint manufacturability
 """
 
 from typing import Dict, List, Set, Tuple
-from database import get_db_connection, get_item_info
+from src.database import get_db_connection, get_item_info
 
 
 # Material source categories

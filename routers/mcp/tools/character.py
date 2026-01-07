@@ -5,8 +5,8 @@ Character and corporation data access via EVE SSO.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
-from character import character_api
-from auth import eve_auth
+from src.character import character_api
+from src.auth import eve_auth
 
 
 # Tool Definitions

@@ -13,10 +13,10 @@ import logging
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
 import psycopg2
-from database import get_db_connection, get_item_info
-from esi_client import esi_client
+from src.database import get_db_connection, get_item_info
+from src.esi_client import esi_client
 from config import REGIONS
-import war_analyzer
+import src.war_analyzer
 
 logger = logging.getLogger(__name__)
 

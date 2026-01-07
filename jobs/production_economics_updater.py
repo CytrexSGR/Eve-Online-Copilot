@@ -12,7 +12,7 @@ Usage:
 import sys
 import argparse
 from typing import Dict, Optional
-from database import get_db_connection
+from src.database import get_db_connection
 from services.production.economics_repository import ProductionEconomicsRepository
 from services.production.chain_repository import ProductionChainRepository
 

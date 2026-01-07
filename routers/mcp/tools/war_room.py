@@ -5,11 +5,11 @@ Combat intelligence, sovereignty, faction warfare, and market demand analysis.
 
 from typing import Dict, Any, List
 from ..handlers import api_proxy
-from killmail_service import killmail_service
-from sovereignty_service import sovereignty_service
-from fw_service import fw_service
-from war_analyzer import war_analyzer
-from route_service import route_service
+from src.killmail_service import killmail_service
+from src.sovereignty_service import sovereignty_service
+from src.fw_service import fw_service
+from src.war_analyzer import war_analyzer
+from src.route_service import route_service
 
 
 # Tool Definitions

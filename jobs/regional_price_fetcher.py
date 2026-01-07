@@ -26,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import get_db_connection
+from src.database import get_db_connection
 from config import REGIONS, ESI_BASE_URL, ESI_USER_AGENT
 
 

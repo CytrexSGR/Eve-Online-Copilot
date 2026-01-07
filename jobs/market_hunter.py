@@ -28,12 +28,12 @@ from typing import List, Dict
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import get_db_connection
-from market_service import market_service
-from production_simulator import ProductionSimulator
-from notification_service import notification_service
-from material_classifier import material_classifier, MaterialSource
-from esi_client import esi_client
+from src.database import get_db_connection
+from src.market_service import market_service
+from src.production_simulator import ProductionSimulator
+from src.notification_service import notification_service
+from src.material_classifier import material_classifier, MaterialSource
+from src.esi_client import esi_client
 from config import (
     HUNTER_MIN_ROI,
     HUNTER_MIN_PROFIT,

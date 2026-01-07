@@ -11,12 +11,12 @@ from src.core.database import DatabasePool
 from src.core.exceptions import NotFoundError, ExternalAPIError, EVECopilotError
 from src.services.market.service import MarketService
 from src.services.market.repository import MarketRepository
-from esi_client import esi_client  # Use the legacy ESI client instance
-from services import find_arbitrage
-from database import get_item_info
-from schemas import ArbitrageRequest
-from route_service import route_service, TRADE_HUB_SYSTEMS
-from cargo_service import cargo_service
+from src.esi_client import esi_client  # Use the legacy ESI client instance
+from src.legacy_services import find_arbitrage
+from src.database import get_item_info
+from src.schemas import ArbitrageRequest
+from src.route_service import route_service, TRADE_HUB_SYSTEMS
+from src.cargo_service import cargo_service
 
 router = APIRouter(tags=["Market"])
 

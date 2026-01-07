@@ -5,7 +5,7 @@ Fetches character-specific data using authenticated ESI requests
 
 import requests
 from typing import Optional
-from auth import eve_auth
+from src.auth import eve_auth
 from config import ESI_BASE_URL, ESI_USER_AGENT
 
 

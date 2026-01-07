@@ -9,8 +9,8 @@ Supports two pricing modes:
 
 import math
 from typing import Dict, List, Tuple, Optional, Literal
-from database import get_db_connection, get_item_info, get_item_by_name
-from esi_client import esi_client
+from src.database import get_db_connection, get_item_info, get_item_by_name
+from src.esi_client import esi_client
 from config import REGIONS
 
 # Lazy import to avoid circular dependencies

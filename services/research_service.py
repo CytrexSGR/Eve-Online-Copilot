@@ -8,8 +8,8 @@ Provides skill analysis for EVE Online characters:
 """
 
 from typing import List, Dict, Any, Optional
-from database import get_db_connection
-import character
+from src.database import get_db_connection
+import src.character
 
 
 class ResearchService:

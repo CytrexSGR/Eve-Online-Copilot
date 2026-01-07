@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, date
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from killmail_service import killmail_service
+from src.killmail_service import killmail_service
 
 
 def parse_date_string(date_str: str) -> date:

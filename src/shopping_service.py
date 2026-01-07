@@ -3,7 +3,7 @@ Shopping List Service for EVE Co-Pilot
 Manages shopping lists with items, prices, and purchase tracking
 """
 
-from database import get_db_connection
+from src.database import get_db_connection
 from psycopg2.extras import RealDictCursor
 from typing import Optional, List
 from datetime import datetime

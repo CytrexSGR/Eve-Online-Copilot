@@ -5,7 +5,7 @@ Calculates cargo requirements and recommends ships
 
 from math import ceil
 from typing import List, Dict, Optional
-from database import get_db_connection
+from src.database import get_db_connection
 from psycopg2.extras import RealDictCursor
 
 

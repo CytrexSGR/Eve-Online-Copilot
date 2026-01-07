@@ -7,7 +7,7 @@ Business logic for cost calculations, profitability analysis, and ROI.
 from typing import Dict, List, Any, Optional
 from services.production.economics_repository import ProductionEconomicsRepository
 from services.production.chain_repository import ProductionChainRepository
-from database import get_db_connection
+from src.database import get_db_connection
 
 
 class ProductionEconomicsService:

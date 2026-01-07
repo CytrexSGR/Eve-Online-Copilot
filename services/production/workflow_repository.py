@@ -6,7 +6,7 @@ Manages job tracking, material requirements, and make-or-buy decisions.
 """
 
 from typing import List, Dict, Any, Optional
-from database import get_db_connection
+from src.database import get_db_connection
 
 
 class ProductionWorkflowRepository:

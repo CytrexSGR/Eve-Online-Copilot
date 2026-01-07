@@ -4,11 +4,11 @@ Calculates optimal transport options for shopping lists
 """
 
 from math import ceil
-from database import get_db_connection
+from src.database import get_db_connection
 from psycopg2.extras import RealDictCursor
 from typing import Optional, List, Dict
-from capability_service import capability_service
-from shopping_service import shopping_service
+from src.capability_service import capability_service
+from src.shopping_service import shopping_service
 
 # Flight time per jump by ship group (minutes)
 FLIGHT_TIME_PER_JUMP = {

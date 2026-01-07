@@ -5,7 +5,7 @@ Endpoints for finding profitable manufacturing opportunities
 
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List
-from database import get_db_connection
+from src.database import get_db_connection
 
 router = APIRouter(prefix="/api/hunter", tags=["Market Hunter"])
 

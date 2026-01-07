@@ -5,7 +5,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import get_db_connection
+from src.database import get_db_connection
 
 def populate_system_region_map():
     with get_db_connection() as conn:

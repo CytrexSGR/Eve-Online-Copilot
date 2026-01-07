@@ -6,7 +6,7 @@ Provides system context and reference information.
 from typing import Dict, Any, List
 from ..handlers import api_proxy
 from config import REGIONS
-from auth import eve_auth
+from src.auth import eve_auth
 
 
 # Tool Definitions

@@ -23,7 +23,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fw_service import fw_service
+from src.fw_service import fw_service
 
 
 def run_fw_tracker(verbose: bool = False):

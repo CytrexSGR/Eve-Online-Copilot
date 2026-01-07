@@ -14,7 +14,7 @@ Usage:
 import sys
 import argparse
 from typing import List, Dict, Set, Tuple
-from database import get_db_connection
+from src.database import get_db_connection
 from services.production.chain_repository import ProductionChainRepository
 
 

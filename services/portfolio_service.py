@@ -9,8 +9,8 @@ Provides aggregated views across multiple EVE Online characters:
 """
 
 from typing import List, Dict, Any
-from character import character_api
-from database import get_db_connection
+from src.character import character_api
+from src.database import get_db_connection
 
 
 class PortfolioService:

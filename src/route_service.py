@@ -3,7 +3,7 @@ Route calculation service using SDE jump data
 A* pathfinding algorithm with HighSec filtering
 """
 
-from database import get_db_connection
+from src.database import get_db_connection
 from psycopg2.extras import RealDictCursor
 from typing import List, Optional, Dict
 from heapq import heappush, heappop
