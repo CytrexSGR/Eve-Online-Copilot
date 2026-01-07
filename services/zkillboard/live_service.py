@@ -1845,10 +1845,7 @@ class ZKillboardLiveService:
             self.update_battle_participants(battle_id, kill)
 
         # ALLIANCE WAR TRACKING: Track long-term conflicts between alliances
-        # TEMPORARILY DISABLED: Database column type issue needs investigation
-        # Error: "integer out of range" despite all safe_int_value conversions
-        # Likely issue: Some other column in war_daily_stats or alliance_wars is too small
-        # self.track_alliance_war(kill)
+        self.track_alliance_war(kill)
 
         # =====================================================
         # OLD HOTSPOT ALERT SYSTEM - DISABLED
