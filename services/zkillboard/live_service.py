@@ -763,26 +763,73 @@ class ZKillboardLiveService:
 
         return alert
 
-    async def send_alert(self, message: str):
-        """Send alert to Discord and Telegram"""
-        # Send to Discord
-        if WAR_DISCORD_ENABLED and DISCORD_WEBHOOK_URL:
-            session = await self._get_session()
-            try:
-                async with session.post(
-                    DISCORD_WEBHOOK_URL,
-                    json={"content": message}
-                ) as response:
-                    if response.status != 204:
-                        print(f"Discord webhook failed: {response.status}")
-            except Exception as e:
-                print(f"Error sending Discord alert: {e}")
+    async def finalize_inactive_hotspots(self):
+        """
+        Check for inactive hotspots and mark them as FINAL.
 
-        # Send to Telegram
-        try:
-            await telegram_service.send_alert(message)
-        except Exception as e:
-            print(f"Error sending Telegram alert: {e}")
+        Runs periodically to finalize hotspot alerts that haven't been updated in 10+ minutes.
+        """
+        now = time.time()
+
+        # Scan for active alert messages
+        for key in self.redis_client.scan_iter("hotspot_alert:*"):
+            alert_data_str = self.redis_client.get(key)
+            if not alert_data_str:
+                continue
+
+            alert_data = json.loads(alert_data_str)
+            last_update = alert_data.get("last_update", 0)
+            message_id = alert_data.get("message_id")
+            system_id = alert_data.get("system_id")
+            kill_count = alert_data.get("kill_count", 0)
+
+            # If last update was more than 10 minutes ago, finalize it
+            time_since_update = now - last_update
+            if time_since_update >= 600:  # 10 minutes
+                # Get latest hotspot data
+                hotspot = self.detect_hotspot_by_system(system_id)
+                if hotspot:
+                    alert_msg = await self.create_enhanced_alert(hotspot)
+                    if alert_msg:
+                        # Add FINAL marker
+                        final_msg = f"{alert_msg}\n\n✅ **FINAL REPORT** - Hotspot ended"
+
+                        # Edit message one last time
+                        success = await telegram_service.edit_message(message_id, final_msg)
+                        if success:
+                            print(f"Hotspot finalized for system {system_id} (duration: {time_since_update/60:.1f}min)")
+
+                # Delete the alert tracking (don't send more updates)
+                self.redis_client.delete(key)
+
+    def detect_hotspot_by_system(self, system_id: int) -> Optional[Dict]:
+        """Get hotspot data for a specific system from in-memory tracking."""
+        now = time.time()
+        cutoff = now - HOTSPOT_WINDOW_SECONDS
+
+        if system_id in self.kill_timestamps:
+            recent_kills = [ts for ts in self.kill_timestamps[system_id] if ts >= cutoff]
+            if len(recent_kills) >= HOTSPOT_THRESHOLD_KILLS:
+                # Get latest kill data for this system
+                kill_ids = self.redis_client.zrevrange(
+                    f"kill:system:{system_id}:timeline",
+                    0,
+                    0
+                )
+                if kill_ids:
+                    kill_data = self.redis_client.get(f"kill:id:{kill_ids[0]}")
+                    if kill_data:
+                        kill = json.loads(kill_data)
+                        return {
+                            "solar_system_id": system_id,
+                            "region_id": kill.get("region_id"),
+                            "kill_count": len(recent_kills),
+                            "window_seconds": HOTSPOT_WINDOW_SECONDS,
+                            "timestamp": now,
+                            "latest_ship": kill.get("ship_type_id"),
+                            "latest_value": kill.get("ship_value", 0)
+                        }
+        return None
 
     async def process_live_kill(self, zkb_entry: Dict):
         """
@@ -832,21 +879,62 @@ class ZKillboardLiveService:
             system_id = kill.solar_system_id
             now = time.time()
 
-            # Check cooldown to prevent alert spam during long battles
-            last_alert = self.last_alert_sent.get(system_id, 0)
-            time_since_last_alert = now - last_alert
+            # Check if we have an active alert message for this system
+            alert_key = f"hotspot_alert:{system_id}"
+            alert_data_str = self.redis_client.get(alert_key)
 
-            if time_since_last_alert >= HOTSPOT_ALERT_COOLDOWN:
-                # Cooldown expired, send alert
+            if alert_data_str:
+                # We have an existing alert - UPDATE it
+                alert_data = json.loads(alert_data_str)
+                message_id = alert_data.get("message_id")
+                last_update = alert_data.get("last_update", 0)
+
+                # Only update if at least 30 seconds passed (avoid too frequent edits)
+                if now - last_update >= 30:
+                    alert_msg = await self.create_enhanced_alert(hotspot)
+                    if alert_msg and message_id:
+                        # Edit existing Telegram message
+                        success = await telegram_service.edit_message(message_id, alert_msg)
+                        if success:
+                            # Update Redis with new data
+                            alert_data["last_update"] = now
+                            alert_data["kill_count"] = hotspot.get("kill_count", 0)
+                            self.redis_client.setex(alert_key, 900, json.dumps(alert_data))  # 15min TTL
+                            print(f"Alert updated for system {system_id} (kills: {hotspot.get('kill_count', 0)})")
+                        else:
+                            print(f"Failed to edit message {message_id} for system {system_id}")
+                else:
+                    print(f"Hotspot active in {system_id}, but update suppressed (last update: {now - last_update:.0f}s ago)")
+            else:
+                # No existing alert - SEND NEW
                 alert_msg = await self.create_enhanced_alert(hotspot)
                 if alert_msg:
-                    await self.send_alert(alert_msg)
+                    message_id = await telegram_service.send_alert(alert_msg)
+                    if message_id:
+                        # Store message_id in Redis for future updates
+                        alert_data = {
+                            "message_id": message_id,
+                            "system_id": system_id,
+                            "first_sent": now,
+                            "last_update": now,
+                            "kill_count": hotspot.get("kill_count", 0)
+                        }
+                        self.redis_client.setex(alert_key, 900, json.dumps(alert_data))  # 15min TTL
+                        print(f"New alert sent for system {system_id} (message_id: {message_id})")
+
+                    # Still use old cooldown system for Discord
                     self.last_alert_sent[system_id] = now
-                    print(f"Alert sent for system {system_id} (cooldown: {HOTSPOT_ALERT_COOLDOWN}s)")
-            else:
-                # Still in cooldown
-                remaining = HOTSPOT_ALERT_COOLDOWN - time_since_last_alert
-                print(f"Hotspot detected in system {system_id}, but alert suppressed (cooldown: {remaining:.0f}s remaining)")
+                    if WAR_DISCORD_ENABLED and DISCORD_WEBHOOK_URL:
+                        session = await self._get_session()
+                        try:
+                            async with session.post(
+                                DISCORD_WEBHOOK_URL,
+                                json={"content": alert_msg}
+                            ) as response:
+                                if response.status != 204:
+                                    print(f"Discord webhook failed: {response.status}")
+                        except Exception as e:
+                            print(f"Error sending Discord alert: {e}")
 
             # Store hotspot alert (always, even if Discord alert suppressed)
             key = f"hotspot:{system_id}:{int(now)}"
@@ -906,6 +994,24 @@ class ZKillboardLiveService:
         except Exception:
             return f"Ship {type_id}"
 
+    async def finalize_hotspots_loop(self, verbose: bool = False):
+        """
+        Background task that periodically checks and finalizes inactive hotspots.
+
+        Runs every 5 minutes.
+        """
+        if verbose:
+            print("Starting hotspot finalizer background task...")
+
+        while self.running:
+            try:
+                await asyncio.sleep(300)  # Check every 5 minutes
+                if verbose:
+                    print("[Finalizer] Checking for inactive hotspots...")
+                await self.finalize_inactive_hotspots()
+            except Exception as e:
+                print(f"Error in hotspot finalizer: {e}")
+
     async def listen_zkillboard(self, verbose: bool = False):
         """
         Main loop: continuously poll zkillboard API and process new kills.
@@ -921,6 +1027,9 @@ class ZKillboardLiveService:
 
         kill_count = 0
         poll_count = 0
+
+        # Start background hotspot finalizer task
+        finalizer_task = asyncio.create_task(self.finalize_hotspots_loop(verbose))
 
         try:
             while self.running:

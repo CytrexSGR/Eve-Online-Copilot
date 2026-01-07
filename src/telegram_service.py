@@ -68,7 +68,7 @@ class TelegramService:
             print(f"Error sending Telegram message: {e}")
             return False
 
-    async def send_alert(self, message: str) -> bool:
+    async def send_alert(self, message: str) -> Optional[int]:
         """
         Send alert to the alerts channel.
 
@@ -76,13 +76,77 @@ class TelegramService:
             message: Alert message (Markdown formatted)
 
         Returns:
-            True if sent successfully
+            Message ID if sent successfully, None otherwise
         """
+        if not self.alerts_channel:
+            print("Alerts channel not configured")
+            return None
+
+        url = f"{self.base_url}/sendMessage"
+        payload = {
+            "chat_id": self.alerts_channel,
+            "text": message,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        if result.get("ok"):
+                            return result.get("result", {}).get("message_id")
+                    else:
+                        error_text = await response.text()
+                        print(f"Telegram API error ({response.status}): {error_text}")
+                        return None
+
+        except Exception as e:
+            print(f"Error sending Telegram alert: {e}")
+            return None
+
+    async def edit_message(self, message_id: int, new_text: str) -> bool:
+        """
+        Edit an existing message in the alerts channel.
+
+        Args:
+            message_id: ID of the message to edit
+            new_text: New text for the message (Markdown formatted)
+
+        Returns:
+            True if edited successfully, False otherwise
+        """
+        if not self.enabled:
+            print("Telegram is disabled")
+            return False
+
         if not self.alerts_channel:
             print("Alerts channel not configured")
             return False
 
-        return await self.send_message(self.alerts_channel, message)
+        url = f"{self.base_url}/editMessageText"
+        payload = {
+            "chat_id": self.alerts_channel,
+            "message_id": message_id,
+            "text": new_text,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as response:
+                    if response.status == 200:
+                        return True
+                    else:
+                        error_text = await response.text()
+                        print(f"Telegram edit error ({response.status}): {error_text}")
+                        return False
+
+        except Exception as e:
+            print(f"Error editing Telegram message: {e}")
+            return False
 
     async def send_report(self, message: str) -> bool:
         """
