@@ -261,13 +261,382 @@ class ZKillboardLiveService:
             print(f"Error parsing killmail: {e}")
             return None
 
-    def store_live_kill(self, kill: LiveKillmail):
+    def store_persistent_kill(self, kill: LiveKillmail, zkb_data: Dict, esi_killmail: Dict):
         """
-        Store killmail in Redis with 24h TTL.
+        Store killmail permanently in PostgreSQL.
+
+        Writes to:
+        - killmails table (core data)
+        - killmail_items table (destroyed/dropped items)
+        - killmail_attackers table (attacker details)
+
+        Args:
+            kill: Parsed killmail data
+            zkb_data: zkillboard metadata (points, npc, awox flags)
+            esi_killmail: Full ESI killmail data (for attacker details)
+        """
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Determine if victim ship is a capital
+                    is_capital = self._is_capital_ship(kill.ship_type_id)
+
+                    # Find final blow attacker
+                    final_blow_char_id = None
+                    final_blow_corp_id = None
+                    final_blow_alliance_id = None
+                    attackers = esi_killmail.get("attackers", [])
+                    for attacker in attackers:
+                        if attacker.get("final_blow", False):
+                            final_blow_char_id = attacker.get("character_id")
+                            final_blow_corp_id = attacker.get("corporation_id")
+                            final_blow_alliance_id = attacker.get("alliance_id")
+                            break
+
+                    # 1. Insert main killmail record
+                    cur.execute("""
+                        INSERT INTO killmails (
+                            killmail_id, killmail_time, solar_system_id, region_id,
+                            ship_type_id, ship_value,
+                            victim_character_id, victim_corporation_id, victim_alliance_id,
+                            attacker_count,
+                            final_blow_character_id, final_blow_corporation_id, final_blow_alliance_id,
+                            is_solo, is_npc, is_capital,
+                            zkb_points, zkb_npc, zkb_awox,
+                            processed_at
+                        ) VALUES (
+                            %s, %s, %s, %s,
+                            %s, %s,
+                            %s, %s, %s,
+                            %s,
+                            %s, %s, %s,
+                            %s, %s, %s,
+                            %s, %s, %s,
+                            CURRENT_TIMESTAMP
+                        )
+                        ON CONFLICT (killmail_id) DO NOTHING
+                    """, (
+                        kill.killmail_id,
+                        kill.killmail_time,
+                        kill.solar_system_id,
+                        kill.region_id,
+                        kill.ship_type_id,
+                        int(kill.ship_value),
+                        kill.victim_character_id,
+                        kill.victim_corporation_id,
+                        kill.victim_alliance_id,
+                        kill.attacker_count,
+                        final_blow_char_id,
+                        final_blow_corp_id,
+                        final_blow_alliance_id,
+                        kill.is_solo,
+                        kill.is_npc,
+                        is_capital,
+                        zkb_data.get("points"),
+                        zkb_data.get("npc", False),
+                        zkb_data.get("awox", False)
+                    ))
+
+                    # 2. Insert destroyed items
+                    for item in kill.destroyed_items:
+                        cur.execute("""
+                            INSERT INTO killmail_items (
+                                killmail_id, item_type_id, quantity, was_destroyed
+                            ) VALUES (%s, %s, %s, %s)
+                        """, (
+                            kill.killmail_id,
+                            item['item_type_id'],
+                            item['quantity'],
+                            True
+                        ))
+
+                    # 3. Insert dropped items
+                    for item in kill.dropped_items:
+                        cur.execute("""
+                            INSERT INTO killmail_items (
+                                killmail_id, item_type_id, quantity, was_destroyed
+                            ) VALUES (%s, %s, %s, %s)
+                        """, (
+                            kill.killmail_id,
+                            item['item_type_id'],
+                            item['quantity'],
+                            False
+                        ))
+
+                    # 4. Insert attacker details
+                    for attacker in attackers:
+                        cur.execute("""
+                            INSERT INTO killmail_attackers (
+                                killmail_id,
+                                character_id,
+                                corporation_id,
+                                alliance_id,
+                                ship_type_id,
+                                weapon_type_id,
+                                damage_done,
+                                is_final_blow
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (
+                            kill.killmail_id,
+                            attacker.get("character_id"),
+                            attacker.get("corporation_id"),
+                            attacker.get("alliance_id"),
+                            attacker.get("ship_type_id"),
+                            attacker.get("weapon_type_id"),
+                            attacker.get("damage_done", 0),
+                            attacker.get("final_blow", False)
+                        ))
+
+                    conn.commit()
+
+        except Exception as e:
+            print(f"Error storing killmail {kill.killmail_id} to PostgreSQL: {e}")
+
+    def _is_capital_ship(self, ship_type_id: int) -> bool:
+        """
+        Check if a ship is a capital ship.
+
+        Capital ship groups: Titan, Supercarrier, Carrier, Dreadnought, Force Auxiliary, Rorqual
+        """
+        capital_groups = [30, 659, 547, 485, 1538, 941]  # Group IDs for capital ships
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        'SELECT "groupID" FROM "invTypes" WHERE "typeID" = %s',
+                        (ship_type_id,)
+                    )
+                    result = cur.fetchone()
+                    if result:
+                        group_id = result[0]
+                        return group_id in capital_groups
+        except Exception:
+            pass
+        return False
+
+    def _update_existing_battle(self, kill: LiveKillmail) -> Optional[int]:
+        """
+        Update an existing active battle (if one exists) without creating a new one.
+
+        This is used for kills that don't trigger hotspot detection but occur
+        in systems with active battles.
+
+        Args:
+            kill: LiveKillmail to add to existing battle
+
+        Returns:
+            battle_id if battle was updated, None if no active battle exists
+        """
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Check for active battle
+                    cur.execute("""
+                        SELECT battle_id
+                        FROM battles
+                        WHERE solar_system_id = %s
+                          AND status = 'active'
+                          AND last_kill_at > NOW() - INTERVAL '30 minutes'
+                        ORDER BY battle_id DESC
+                        LIMIT 1
+                    """, (kill.solar_system_id,))
+
+                    result = cur.fetchone()
+
+                    if result:
+                        battle_id = result[0]
+                        is_capital = self._is_capital_ship(kill.ship_type_id)
+
+                        cur.execute("""
+                            UPDATE battles
+                            SET last_kill_at = CURRENT_TIMESTAMP,
+                                total_kills = total_kills + 1,
+                                total_isk_destroyed = total_isk_destroyed + %s,
+                                capital_kills = capital_kills + %s
+                            WHERE battle_id = %s
+                        """, (
+                            int(kill.ship_value),
+                            1 if is_capital else 0,
+                            battle_id
+                        ))
+
+                        conn.commit()
+                        return battle_id
+
+                    return None
+
+        except Exception as e:
+            print(f"Error updating existing battle: {e}")
+            return None
+
+    def create_or_update_battle(self, kill: LiveKillmail) -> Optional[int]:
+        """
+        Create a new battle or update existing battle in a system.
+
+        A battle is a sustained combat engagement in a single system.
+        Battles are created when hotspots are detected and updated with each kill.
+
+        Args:
+            kill: LiveKillmail that triggered the battle detection
+
+        Returns:
+            battle_id if battle was created/updated, None otherwise
+        """
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Check if there's an active battle in this system
+                    # Battle is considered active if last kill was within 30 minutes
+                    cur.execute("""
+                        SELECT battle_id, total_kills, total_isk_destroyed, capital_kills
+                        FROM battles
+                        WHERE solar_system_id = %s
+                          AND status = 'active'
+                          AND last_kill_at > NOW() - INTERVAL '30 minutes'
+                        ORDER BY battle_id DESC
+                        LIMIT 1
+                    """, (kill.solar_system_id,))
+
+                    result = cur.fetchone()
+
+                    if result:
+                        # Update existing battle
+                        battle_id, total_kills, total_isk, capital_kills = result
+                        is_capital = self._is_capital_ship(kill.ship_type_id)
+
+                        print(f"[BATTLE] Updating battle {battle_id} in system {kill.solar_system_id} (was {total_kills} kills)")
+
+                        cur.execute("""
+                            UPDATE battles
+                            SET last_kill_at = CURRENT_TIMESTAMP,
+                                total_kills = total_kills + 1,
+                                total_isk_destroyed = total_isk_destroyed + %s,
+                                capital_kills = capital_kills + %s
+                            WHERE battle_id = %s
+                        """, (
+                            int(kill.ship_value),
+                            1 if is_capital else 0,
+                            battle_id
+                        ))
+
+                        conn.commit()
+                        print(f"[BATTLE] Battle {battle_id} updated to {total_kills + 1} kills")
+                        return battle_id
+                    else:
+                        # Create new battle
+                        is_capital = self._is_capital_ship(kill.ship_type_id)
+
+                        print(f"[BATTLE] Creating new battle in system {kill.solar_system_id}")
+
+                        cur.execute("""
+                            INSERT INTO battles (
+                                solar_system_id,
+                                region_id,
+                                started_at,
+                                last_kill_at,
+                                total_kills,
+                                total_isk_destroyed,
+                                capital_kills,
+                                status
+                            ) VALUES (
+                                %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, %s, %s, 'active'
+                            )
+                            RETURNING battle_id
+                        """, (
+                            kill.solar_system_id,
+                            kill.region_id,
+                            1,
+                            int(kill.ship_value),
+                            1 if is_capital else 0
+                        ))
+
+                        battle_id = cur.fetchone()[0]
+                        conn.commit()
+                        print(f"[BATTLE] Battle {battle_id} created in system {kill.solar_system_id}")
+                        return battle_id
+
+        except Exception as e:
+            print(f"Error creating/updating battle: {e}")
+            return None
+
+    def update_battle_participants(self, battle_id: int, kill: LiveKillmail):
+        """
+        Update battle participants (alliances and corps involved).
+
+        Tracks kills and losses for each alliance/corp in a battle.
+
+        Args:
+            battle_id: Battle ID to update
+            kill: LiveKillmail with victim and attacker data
+        """
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Update victim alliance/corp (losses)
+                    if kill.victim_alliance_id:
+                        cur.execute("""
+                            INSERT INTO battle_participants (
+                                battle_id, alliance_id, corporation_id,
+                                kills, losses, isk_destroyed, isk_lost
+                            ) VALUES (
+                                %s, %s, %s, 0, 1, 0, %s
+                            )
+                            ON CONFLICT (battle_id, alliance_id, corporation_id)
+                            DO UPDATE SET
+                                losses = battle_participants.losses + 1,
+                                isk_lost = battle_participants.isk_lost + %s
+                        """, (
+                            battle_id,
+                            kill.victim_alliance_id,
+                            kill.victim_corporation_id,
+                            int(kill.ship_value),
+                            int(kill.ship_value)
+                        ))
+
+                    # Update attacker alliances/corps (kills)
+                    attacker_alliances = set(kill.attacker_alliances)
+                    for alliance_id in attacker_alliances:
+                        if alliance_id:
+                            cur.execute("""
+                                INSERT INTO battle_participants (
+                                    battle_id, alliance_id, corporation_id,
+                                    kills, losses, isk_destroyed, isk_lost
+                                ) VALUES (
+                                    %s, %s, NULL, 1, 0, %s, 0
+                                )
+                                ON CONFLICT (battle_id, alliance_id, corporation_id)
+                                DO UPDATE SET
+                                    kills = battle_participants.kills + 1,
+                                    isk_destroyed = battle_participants.isk_destroyed + %s
+                            """, (
+                                battle_id,
+                                alliance_id,
+                                int(kill.ship_value),
+                                int(kill.ship_value)
+                            ))
+
+                    conn.commit()
+
+        except Exception as e:
+            print(f"Error updating battle participants: {e}")
+
+    def store_live_kill(self, kill: LiveKillmail, zkb_data: Optional[Dict] = None, esi_killmail: Optional[Dict] = None):
+        """
+        Store killmail in Redis with 24h TTL AND PostgreSQL permanently.
         Multiple storage patterns for different query types.
+
+        Args:
+            kill: Parsed killmail data
+            zkb_data: Optional zkillboard metadata for PostgreSQL storage
+            esi_killmail: Optional full ESI killmail data for detailed attacker storage
         """
         timestamp = int(time.time())
 
+        # PERSISTENT STORAGE: Write to PostgreSQL
+        if zkb_data and esi_killmail:
+            self.store_persistent_kill(kill, zkb_data, esi_killmail)
+
+        # TEMPORARY STORAGE: Redis for real-time queries
         # 1. Store full killmail by ID
         key_by_id = f"kill:id:{kill.killmail_id}"
         self.redis_client.setex(
@@ -763,6 +1132,36 @@ class ZKillboardLiveService:
 
         return alert
 
+    def finalize_inactive_battles(self):
+        """
+        Mark battles as ended if they've been inactive for 30+ minutes.
+
+        A battle is considered inactive if no kills have occurred in the system
+        for 30 minutes.
+        """
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Find active battles with no recent kills
+                    cur.execute("""
+                        UPDATE battles
+                        SET status = 'ended',
+                            ended_at = last_kill_at + INTERVAL '30 minutes'
+                        WHERE status = 'active'
+                          AND last_kill_at < NOW() - INTERVAL '30 minutes'
+                        RETURNING battle_id, solar_system_id, total_kills, total_isk_destroyed
+                    """)
+
+                    finalized = cur.fetchall()
+                    conn.commit()
+
+                    if finalized:
+                        for battle_id, system_id, kills, isk in finalized:
+                            print(f"Battle {battle_id} in system {system_id} ended: {kills} kills, {isk/1_000_000:.1f}M ISK destroyed")
+
+        except Exception as e:
+            print(f"Error finalizing battles: {e}")
+
     async def finalize_inactive_hotspots(self):
         """
         Check for inactive hotspots and mark them as FINAL.
@@ -770,6 +1169,9 @@ class ZKillboardLiveService:
         Runs periodically to finalize hotspot alerts that haven't been updated in 10+ minutes.
         """
         now = time.time()
+
+        # Finalize inactive battles in PostgreSQL
+        self.finalize_inactive_battles()
 
         # Scan for active alert messages
         for key in self.redis_client.scan_iter("hotspot_alert:*"):
@@ -870,11 +1272,24 @@ class ZKillboardLiveService:
         if len(self.processed_kills) > 1000:
             self.processed_kills = set(list(self.processed_kills)[-1000:])
 
-        # Store
-        self.store_live_kill(kill)
+        # Store (both Redis and PostgreSQL)
+        self.store_live_kill(
+            kill,
+            zkb_data=zkb_entry.get("zkb", {}),
+            esi_killmail=killmail
+        )
 
-        # Detect hotspot
+        # BATTLE TRACKING: Track all kills in active combat zones
+        # Step 1: Check if hotspot detected (5+ kills in 5 min) - creates new battles
         hotspot = self.detect_hotspot(kill)
+
+        # Step 2: Always check if there's an active battle in this system
+        # This ensures all kills during a battle are counted, not just hotspot triggers
+        battle_id = self.create_or_update_battle(kill) if hotspot else self._update_existing_battle(kill)
+        if battle_id:
+            self.update_battle_participants(battle_id, kill)
+
+        # Detect hotspot for alerts
         if hotspot:
             system_id = kill.solar_system_id
             now = time.time()
