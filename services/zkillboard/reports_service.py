@@ -625,9 +625,12 @@ class ZKillboardReportsService:
                     item_id = item['item_type_id']
                     quantity = item['quantity_destroyed']
 
-                    # Get item name
+                    # Get item name and category
                     cur.execute(
-                        'SELECT "typeName", "groupID" FROM "invTypes" WHERE "typeID" = %s',
+                        '''SELECT t."typeName", t."groupID", g."categoryID"
+                           FROM "invTypes" t
+                           JOIN "invGroups" g ON t."groupID" = g."groupID"
+                           WHERE t."typeID" = %s''',
                         (item_id,)
                     )
                     row = cur.fetchone()
@@ -636,6 +639,12 @@ class ZKillboardReportsService:
 
                     item_name = row[0]
                     group_id = row[1]
+                    category_id = row[2]
+
+                    # Exclude raw materials, ore, ice, PI materials
+                    # Category 4 = Material, 25 = Asteroid, 43 = Planetary Commodities
+                    if category_id in (4, 25, 43):
+                        continue
 
                     # Get market price (average of Jita sell orders from our cache)
                     cur.execute(
