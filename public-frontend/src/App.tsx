@@ -6,6 +6,7 @@ import { BattleMap } from './pages/BattleMap';
 import { WarProfiteering } from './pages/WarProfiteering';
 import { AllianceWars } from './pages/AllianceWars';
 import { TradeRoutes } from './pages/TradeRoutes';
+import { NotFound } from './pages/NotFound';
 import './App.css';
 
 function App() {
@@ -21,7 +22,7 @@ function App() {
           <Route path="/trade-routes" element={<TradeRoutes />} />
           <Route path="/privacy" element={<div>Privacy Policy (Coming Soon)</div>} />
           <Route path="/cookies" element={<div>Cookie Policy (Coming Soon)</div>} />
-          <Route path="*" element={<div>404 - Not Found</div>} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Layout>
     </BrowserRouter>
