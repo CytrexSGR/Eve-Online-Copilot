@@ -67,6 +67,43 @@ class ZKillboardReportsService:
                 result = cur.fetchone()
                 return float(result[0]) if result else 0.0
 
+    def get_ship_class(self, ship_type_id: int) -> Optional[str]:
+        """
+        Get ship class from ship_type_id using EVE SDE.
+
+        Returns: 'capital', 'battleship', 'cruiser', 'frigate', 'destroyer', 'industrial', or None
+        """
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    'SELECT "groupID" FROM "invTypes" WHERE "typeID" = %s',
+                    (ship_type_id,)
+                )
+                result = cur.fetchone()
+                if not result:
+                    return None
+
+                group_id = result[0]
+
+                # Classify based on group
+                if group_id in SHIP_CATEGORIES.get('titan', []) + SHIP_CATEGORIES.get('supercarrier', []) + \
+                             SHIP_CATEGORIES.get('carrier', []) + SHIP_CATEGORIES.get('dreadnought', []) + \
+                             SHIP_CATEGORIES.get('force_auxiliary', []):
+                    return 'capital'
+                elif group_id in SHIP_CATEGORIES.get('battleship', []) + SHIP_CATEGORIES.get('battlecruiser', []):
+                    return 'battleship'
+                elif group_id in SHIP_CATEGORIES.get('cruiser', []):
+                    return 'cruiser'
+                elif group_id in SHIP_CATEGORIES.get('frigate', []):
+                    return 'frigate'
+                elif group_id in SHIP_CATEGORIES.get('destroyer', []):
+                    return 'destroyer'
+                elif group_id in SHIP_CATEGORIES.get('freighter', []) + SHIP_CATEGORIES.get('industrial', []) + \
+                             SHIP_CATEGORIES.get('exhumer', []):
+                    return 'industrial'
+                else:
+                    return 'other'
+
     def get_system_location_info(self, system_id: int) -> Dict:
         """Get full location info for a system"""
         with get_db_connection() as conn:
@@ -711,11 +748,15 @@ class ZKillboardReportsService:
             return {"wars": [], "total_wars": 0}
 
         # Build alliance vs alliance conflict matrix
-        conflicts = {}  # (alliance_a, alliance_b) -> {kills, isk, systems}
+        conflicts = {}  # (alliance_a, alliance_b) -> {kills, isk, systems, ship_classes, timeline, etc}
 
         for kill in kills:
             victim_alliance = kill.get('victim_alliance_id')
             attacker_alliances = kill.get('attacker_alliances', [])
+            ship_value = kill.get('ship_value', 0)
+            ship_type_id = kill.get('ship_type_id')
+            system_id = kill.get('solar_system_id')
+            killmail_time = kill.get('killmail_time')
 
             for attacker_alliance in set(attacker_alliances):  # Unique attackers per kill
                 if attacker_alliance and victim_alliance and attacker_alliance != victim_alliance:
@@ -730,18 +771,61 @@ class ZKillboardReportsService:
                             "kills_by_b": 0,
                             "isk_by_a": 0,
                             "isk_by_b": 0,
-                            "systems": set()
+                            "systems": {},  # system_id -> kill count
+                            "ship_classes_a": {"capital": 0, "battleship": 0, "cruiser": 0, "frigate": 0, "destroyer": 0, "industrial": 0, "other": 0},
+                            "ship_classes_b": {"capital": 0, "battleship": 0, "cruiser": 0, "frigate": 0, "destroyer": 0, "industrial": 0, "other": 0},
+                            "hourly_activity": {},  # hour (0-23) -> kill count
+                            "biggest_loss_a": {"ship_type_id": None, "value": 0},
+                            "biggest_loss_b": {"ship_type_id": None, "value": 0},
+                            "kills_timeline": []  # List of (timestamp, value) for tracking
                         }
 
                     # Determine who killed who
-                    if attacker_alliance == alliance_pair[0]:
+                    is_a_killed = (attacker_alliance == alliance_pair[0])
+
+                    if is_a_killed:
                         conflicts[alliance_pair]["kills_by_a"] += 1
-                        conflicts[alliance_pair]["isk_by_a"] += kill.get('ship_value', 0)
+                        conflicts[alliance_pair]["isk_by_a"] += ship_value
+
+                        # Track biggest loss for B (victim)
+                        if ship_value > conflicts[alliance_pair]["biggest_loss_b"]["value"]:
+                            conflicts[alliance_pair]["biggest_loss_b"]["value"] = ship_value
+                            conflicts[alliance_pair]["biggest_loss_b"]["ship_type_id"] = ship_type_id
+
+                        # Track ship class destroyed (B's loss)
+                        ship_class = self.get_ship_class(ship_type_id)
+                        if ship_class:
+                            conflicts[alliance_pair]["ship_classes_b"][ship_class] += 1
                     else:
                         conflicts[alliance_pair]["kills_by_b"] += 1
-                        conflicts[alliance_pair]["isk_by_b"] += kill.get('ship_value', 0)
+                        conflicts[alliance_pair]["isk_by_b"] += ship_value
 
-                    conflicts[alliance_pair]["systems"].add(kill.get('solar_system_id'))
+                        # Track biggest loss for A (victim)
+                        if ship_value > conflicts[alliance_pair]["biggest_loss_a"]["value"]:
+                            conflicts[alliance_pair]["biggest_loss_a"]["value"] = ship_value
+                            conflicts[alliance_pair]["biggest_loss_a"]["ship_type_id"] = ship_type_id
+
+                        # Track ship class destroyed (A's loss)
+                        ship_class = self.get_ship_class(ship_type_id)
+                        if ship_class:
+                            conflicts[alliance_pair]["ship_classes_a"][ship_class] += 1
+
+                    # Track system hotspots
+                    if system_id:
+                        if system_id not in conflicts[alliance_pair]["systems"]:
+                            conflicts[alliance_pair]["systems"][system_id] = 0
+                        conflicts[alliance_pair]["systems"][system_id] += 1
+
+                    # Track hourly activity
+                    if killmail_time:
+                        try:
+                            dt = datetime.fromisoformat(killmail_time.replace('Z', '+00:00'))
+                            hour = dt.hour
+                            if hour not in conflicts[alliance_pair]["hourly_activity"]:
+                                conflicts[alliance_pair]["hourly_activity"][hour] = 0
+                            conflicts[alliance_pair]["hourly_activity"][hour] += 1
+                        except:
+                            pass
 
         # Calculate metrics
         war_data = []
@@ -783,6 +867,29 @@ class ZKillboardReportsService:
             else:
                 overall_winner = "contested"
 
+            # Get top 5 system hotspots (sorted by kill count)
+            top_systems = sorted(data["systems"].items(), key=lambda x: x[1], reverse=True)[:5]
+            system_hotspots = []
+            for system_id, kill_count in top_systems:
+                system_info = self.get_system_location_info(system_id)
+                system_hotspots.append({
+                    "system_id": system_id,
+                    "system_name": system_info.get("system_name", f"System {system_id}"),
+                    "kills": kill_count,
+                    "security": system_info.get("security", 0.0),
+                    "region_name": system_info.get("region_name", "Unknown")
+                })
+
+            # Determine peak activity hours (top 3 hours)
+            if data["hourly_activity"]:
+                peak_hours = sorted(data["hourly_activity"].items(), key=lambda x: x[1], reverse=True)[:3]
+                peak_hours_list = [hour for hour, count in peak_hours]
+            else:
+                peak_hours_list = []
+
+            # Calculate average kill value
+            avg_kill_value = total_isk / total_kills if total_kills > 0 else 0
+
             war_data.append({
                 "alliance_a_id": data["alliance_a"],
                 "alliance_b_id": data["alliance_b"],
@@ -799,7 +906,19 @@ class ZKillboardReportsService:
                 "war_intensity_score": war_score,
                 "tactical_winner": tactical_winner,
                 "economic_winner": economic_winner,
-                "winner": overall_winner
+                "winner": overall_winner,
+                # NEW: Ship Class Analysis
+                "ship_classes_a": data["ship_classes_a"],
+                "ship_classes_b": data["ship_classes_b"],
+                # NEW: System Hotspots
+                "system_hotspots": system_hotspots,
+                # NEW: Activity Timeline
+                "hourly_activity": data["hourly_activity"],
+                "peak_hours": peak_hours_list,
+                # NEW: Economic Metrics
+                "avg_kill_value": avg_kill_value,
+                "biggest_loss_a": data["biggest_loss_a"],
+                "biggest_loss_b": data["biggest_loss_b"]
             })
 
         # Sort by war intensity score (ISK-weighted activity)

@@ -156,9 +156,19 @@ async def get_alliance_wars() -> Dict:
                 "alliance_2_isk_lost": war["isk_destroyed_by_a"],
                 "alliance_2_efficiency": war["isk_efficiency_b"],
                 "duration_days": 1,  # TODO: Calculate from killmail timestamps
-                "primary_regions": ["Unknown"],  # TODO: Get from system data
-                "active_systems": [],  # TODO: Get top systems from killmails
-                "winner": winner_name
+                "primary_regions": [war["system_hotspots"][0]["region_name"]] if war.get("system_hotspots") else ["Unknown"],
+                "active_systems": war.get("system_hotspots", []),
+                "winner": winner_name,
+                # NEW: Ship Class Analysis
+                "alliance_1_ship_classes": war.get("ship_classes_a", {}),
+                "alliance_2_ship_classes": war.get("ship_classes_b", {}),
+                # NEW: Activity Timeline
+                "hourly_activity": war.get("hourly_activity", {}),
+                "peak_hours": war.get("peak_hours", []),
+                # NEW: Economic Metrics
+                "avg_kill_value": war.get("avg_kill_value", 0),
+                "alliance_1_biggest_loss": war.get("biggest_loss_a", {"ship_type_id": None, "value": 0}),
+                "alliance_2_biggest_loss": war.get("biggest_loss_b", {"ship_type_id": None, "value": 0})
             })
 
         return {
