@@ -112,6 +112,21 @@ export interface WarProfiteering {
   }>;
 }
 
+export interface ShipClasses {
+  capital: number;
+  battleship: number;
+  cruiser: number;
+  frigate: number;
+  destroyer: number;
+  industrial: number;
+  other: number;
+}
+
+export interface BiggestLoss {
+  ship_type_id: number | null;
+  value: number;
+}
+
 export interface AllianceWars {
   period: string;
   global: {
@@ -141,8 +156,18 @@ export interface AllianceWars {
       system_id: number;
       system_name: string;
       kills: number;
+      security?: number;
+      region_name?: string;
     }>;
     winner: string | null;
+    // NEW: War Intelligence Fields
+    alliance_1_ship_classes?: ShipClasses;
+    alliance_2_ship_classes?: ShipClasses;
+    hourly_activity?: Record<number, number>;
+    peak_hours?: number[];
+    avg_kill_value?: number;
+    alliance_1_biggest_loss?: BiggestLoss;
+    alliance_2_biggest_loss?: BiggestLoss;
   }>;
   strategic_hotspots?: Array<{
     system_id: number;

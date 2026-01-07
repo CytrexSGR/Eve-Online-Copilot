@@ -9,6 +9,7 @@ export function AllianceWars() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [expandedWar, setExpandedWar] = useState<string | null>(null);
 
   const fetchReport = async () => {
     try {
@@ -28,6 +29,10 @@ export function AllianceWars() {
   }, []);
 
   useAutoRefresh(fetchReport, 60);
+
+  const toggleExpand = (warKey: string) => {
+    setExpandedWar(expandedWar === warKey ? null : warKey);
+  };
 
   if (loading) return <div className="skeleton" style={{ height: '500px' }} />;
   if (error) return <div className="card" style={{ background: 'var(--danger)', color: 'white' }}>{error}</div>;
@@ -81,43 +86,53 @@ export function AllianceWars() {
           Ongoing alliance wars ranked by intensity and strategic significance
         </p>
 
-        {report.conflicts.map((conflict) => (
-          <div
-            key={`${conflict.alliance_1_id}-${conflict.alliance_2_id}`}
-            className="card"
-            style={{
-              marginBottom: '1.5rem',
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border-color)'
-            }}
-          >
-            {/* Conflict Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <div>
-                <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>
-                  <span style={{ color: 'var(--accent-blue)' }}>{conflict.alliance_1_name}</span>
-                  {' vs '}
-                  <span style={{ color: 'var(--danger)' }}>{conflict.alliance_2_name}</span>
-                </h3>
-                <div style={{ display: 'flex', gap: '1rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                  <span>
-                    {conflict.primary_regions.join(', ')}
-                  </span>
-                  <span>•</span>
-                  <span>
-                    {conflict.duration_days} days
-                  </span>
+        {report.conflicts.map((conflict) => {
+          const warKey = `${conflict.alliance_1_id}-${conflict.alliance_2_id}`;
+          const isExpanded = expandedWar === warKey;
+
+          return (
+            <div
+              key={warKey}
+              className="card"
+              style={{
+                marginBottom: '1.5rem',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-color)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onClick={() => toggleExpand(warKey)}
+            >
+              {/* Conflict Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>
+                    <span style={{ color: 'var(--accent-blue)' }}>{conflict.alliance_1_name}</span>
+                    {' vs '}
+                    <span style={{ color: 'var(--danger)' }}>{conflict.alliance_2_name}</span>
+                    <span style={{ marginLeft: '0.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                      {isExpanded ? '▼' : '▶'}
+                    </span>
+                  </h3>
+                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                    <span>
+                      {conflict.primary_regions.join(', ')}
+                    </span>
+                    <span>•</span>
+                    <span>
+                      {conflict.duration_days} days
+                    </span>
+                  </div>
                 </div>
+                {conflict.winner && (
+                  <div style={{ textAlign: 'right' }}>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Winner</p>
+                    <p style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--success)' }}>
+                      {conflict.winner}
+                    </p>
+                  </div>
+                )}
               </div>
-              {conflict.winner && (
-                <div style={{ textAlign: 'right' }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Winner</p>
-                  <p style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--success)' }}>
-                    {conflict.winner}
-                  </p>
-                </div>
-              )}
-            </div>
 
             {/* Combat Statistics */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginTop: '1rem' }}>
@@ -213,8 +228,242 @@ export function AllianceWars() {
                 </div>
               </div>
             </div>
+
+            {/* EXPANDED DETAIL VIEW */}
+            {isExpanded && (
+              <div style={{
+                marginTop: '1.5rem',
+                paddingTop: '1.5rem',
+                borderTop: '2px solid var(--border-color)',
+                animation: 'fadeIn 0.3s ease-in-out'
+              }}>
+                <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem', color: 'var(--accent-purple)' }}>
+                  📊 Detailed War Intelligence
+                </h3>
+
+                {/* Economic Metrics */}
+                <div className="card" style={{ background: 'var(--bg-surface)', marginBottom: '1.5rem' }}>
+                  <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>💰 Economic Analysis</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                    <div>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Average Kill Value</p>
+                      <p style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'monospace', color: 'var(--warning)' }}>
+                        {((conflict.avg_kill_value || 0) / 1_000_000).toFixed(1)}M ISK
+                      </p>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Biggest Loss - {conflict.alliance_1_name}</p>
+                      <p style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'monospace', color: 'var(--danger)' }}>
+                        {((conflict.alliance_1_biggest_loss?.value || 0) / 1_000_000).toFixed(1)}M ISK
+                      </p>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Biggest Loss - {conflict.alliance_2_name}</p>
+                      <p style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'monospace', color: 'var(--danger)' }}>
+                        {((conflict.alliance_2_biggest_loss?.value || 0) / 1_000_000).toFixed(1)}M ISK
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Ship Class Analysis */}
+                <div className="card" style={{ background: 'var(--bg-surface)', marginBottom: '1.5rem' }}>
+                  <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>🚀 Ship Class Breakdown</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                    {/* Alliance 1 Ship Classes */}
+                    <div>
+                      <h5 style={{ fontSize: '0.875rem', color: 'var(--accent-blue)', marginBottom: '0.75rem' }}>
+                        {conflict.alliance_1_name} - Ships Destroyed
+                      </h5>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {Object.entries(conflict.alliance_1_ship_classes || {}).map(([shipClass, count]) => (
+                          count > 0 && (
+                            <div key={shipClass} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <div style={{
+                                width: '100px',
+                                fontSize: '0.75rem',
+                                textTransform: 'capitalize',
+                                color: 'var(--text-secondary)'
+                              }}>
+                                {shipClass === 'other' ? 'Other' : shipClass}
+                              </div>
+                              <div style={{
+                                flex: 1,
+                                height: '24px',
+                                background: 'var(--bg-elevated)',
+                                borderRadius: '4px',
+                                overflow: 'hidden'
+                              }}>
+                                <div style={{
+                                  height: '100%',
+                                  width: `${(count / Math.max(...Object.values(conflict.alliance_1_ship_classes || {}))) * 100}%`,
+                                  background: shipClass === 'capital' ? 'var(--danger)' :
+                                             shipClass === 'battleship' ? 'var(--warning)' :
+                                             shipClass === 'cruiser' ? 'var(--accent-blue)' :
+                                             shipClass === 'frigate' ? 'var(--success)' : 'var(--text-secondary)',
+                                  transition: 'width 0.3s ease'
+                                }}></div>
+                              </div>
+                              <div style={{
+                                width: '40px',
+                                textAlign: 'right',
+                                fontWeight: 600,
+                                fontSize: '0.875rem'
+                              }}>
+                                {count}
+                              </div>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Alliance 2 Ship Classes */}
+                    <div>
+                      <h5 style={{ fontSize: '0.875rem', color: 'var(--danger)', marginBottom: '0.75rem' }}>
+                        {conflict.alliance_2_name} - Ships Destroyed
+                      </h5>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {Object.entries(conflict.alliance_2_ship_classes || {}).map(([shipClass, count]) => (
+                          count > 0 && (
+                            <div key={shipClass} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <div style={{
+                                width: '100px',
+                                fontSize: '0.75rem',
+                                textTransform: 'capitalize',
+                                color: 'var(--text-secondary)'
+                              }}>
+                                {shipClass === 'other' ? 'Other' : shipClass}
+                              </div>
+                              <div style={{
+                                flex: 1,
+                                height: '24px',
+                                background: 'var(--bg-elevated)',
+                                borderRadius: '4px',
+                                overflow: 'hidden'
+                              }}>
+                                <div style={{
+                                  height: '100%',
+                                  width: `${(count / Math.max(...Object.values(conflict.alliance_2_ship_classes || {}))) * 100}%`,
+                                  background: shipClass === 'capital' ? 'var(--danger)' :
+                                             shipClass === 'battleship' ? 'var(--warning)' :
+                                             shipClass === 'cruiser' ? 'var(--accent-blue)' :
+                                             shipClass === 'frigate' ? 'var(--success)' : 'var(--text-secondary)',
+                                  transition: 'width 0.3s ease'
+                                }}></div>
+                              </div>
+                              <div style={{
+                                width: '40px',
+                                textAlign: 'right',
+                                fontWeight: 600,
+                                fontSize: '0.875rem'
+                              }}>
+                                {count}
+                              </div>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Activity Timeline */}
+                {conflict.hourly_activity && Object.keys(conflict.hourly_activity).length > 0 && (
+                  <div className="card" style={{ background: 'var(--bg-surface)', marginBottom: '1.5rem' }}>
+                    <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>⏰ Activity Timeline (24h)</h4>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '150px' }}>
+                      {Array.from({ length: 24 }, (_, hour) => {
+                        const kills = conflict.hourly_activity?.[hour] || 0;
+                        const maxKills = Math.max(...Object.values(conflict.hourly_activity || {}));
+                        const heightPercent = maxKills > 0 ? (kills / maxKills) * 100 : 0;
+                        const isPeak = conflict.peak_hours?.includes(hour);
+
+                        return (
+                          <div key={hour} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                            <div style={{
+                              width: '100%',
+                              height: '150px',
+                              display: 'flex',
+                              alignItems: 'flex-end'
+                            }}>
+                              <div style={{
+                                width: '100%',
+                                height: `${heightPercent}%`,
+                                background: isPeak ? 'var(--danger)' : 'var(--accent-blue)',
+                                borderRadius: '2px 2px 0 0',
+                                transition: 'height 0.3s ease',
+                                position: 'relative',
+                                cursor: 'help'
+                              }} title={`${hour}:00 - ${kills} kills`}>
+                              </div>
+                            </div>
+                            {hour % 3 === 0 && (
+                              <div style={{ fontSize: '0.625rem', color: 'var(--text-secondary)' }}>
+                                {hour}h
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: '1rem', fontSize: '0.875rem' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Peak Activity Hours: </span>
+                      <span style={{ fontWeight: 600, color: 'var(--danger)' }}>
+                        {conflict.peak_hours?.map(h => `${h}:00`).join(', ') || 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Detailed System Hotspots */}
+                {conflict.active_systems && conflict.active_systems.length > 0 && (
+                  <div className="card" style={{ background: 'var(--bg-surface)' }}>
+                    <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>🗺️ Combat Zones</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
+                      {conflict.active_systems.map((system: any) => (
+                        <div
+                          key={system.system_id}
+                          style={{
+                            padding: '1rem',
+                            background: 'var(--bg-elevated)',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                            <h5 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--warning)' }}>
+                              {system.system_name}
+                            </h5>
+                            <span style={{
+                              fontSize: '1.125rem',
+                              fontWeight: 700,
+                              color: 'var(--accent-blue)'
+                            }}>
+                              {system.kills}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            {system.region_name}
+                          </div>
+                          <div style={{
+                            marginTop: '0.5rem',
+                            fontSize: '0.75rem',
+                            color: system.security >= 0.5 ? 'var(--success)' :
+                                   system.security > 0 ? 'var(--warning)' : 'var(--danger)'
+                          }}>
+                            Security: {system.security?.toFixed(1) || 'Unknown'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Strategic Analysis */}
