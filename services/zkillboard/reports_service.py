@@ -720,12 +720,233 @@ class ZKillboardReportsService:
             "period": "24h"
         }
 
+    async def get_alliance_name(self, alliance_id: int) -> str:
+        """
+        Get alliance name from ESI API.
+
+        Args:
+            alliance_id: Alliance ID
+
+        Returns:
+            Alliance name or fallback string
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"https://esi.evetech.net/latest/alliances/{alliance_id}/"
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("name", f"Alliance {alliance_id}")
+        except Exception as e:
+            print(f"Error fetching alliance {alliance_id}: {e}")
+        return f"Alliance {alliance_id}"
+
+    async def get_alliance_war_tracker_postgres(self, limit: int = 10, days: int = 7) -> Dict:
+        """
+        Track active alliance wars using PostgreSQL persistent storage.
+
+        NEW VERSION: Reads from alliance_wars and war_daily_stats tables
+        instead of Redis (which had 24h TTL and data loss).
+
+        Args:
+            limit: Number of wars to return
+            days: How many days of history to analyze
+
+        Returns:
+            Dict with top alliance wars and their statistics
+        """
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Get active wars with statistics
+                    cur.execute("""
+                        SELECT
+                            w.war_id,
+                            w.alliance_a_id,
+                            w.alliance_b_id,
+                            w.first_kill_at,
+                            w.last_kill_at,
+                            w.total_kills,
+                            w.total_isk_destroyed,
+                            w.duration_days,
+                            w.status,
+                            -- Recent daily stats (last 7 days)
+                            COALESCE(SUM(wds.kills_by_a), 0) as recent_kills_a,
+                            COALESCE(SUM(wds.kills_by_b), 0) as recent_kills_b,
+                            COALESCE(SUM(wds.isk_destroyed_by_a), 0) as recent_isk_a,
+                            COALESCE(SUM(wds.isk_destroyed_by_b), 0) as recent_isk_b
+                        FROM alliance_wars w
+                        LEFT JOIN war_daily_stats wds ON wds.war_id = w.war_id
+                            AND wds.date >= CURRENT_DATE - INTERVAL '%s days'
+                        WHERE w.status IN ('active', 'dormant')
+                          AND w.total_kills >= 5
+                        GROUP BY w.war_id
+                        ORDER BY w.total_kills DESC, w.total_isk_destroyed DESC
+                        LIMIT %s
+                    """, (days, limit))
+
+                    wars = cur.fetchall()
+
+                    if not wars:
+                        return {"wars": [], "total_wars": 0}
+
+                    war_data = []
+                    for war in wars:
+                        war_id, alliance_a, alliance_b, first_kill, last_kill, total_kills, total_isk, duration, status, \
+                        recent_kills_a, recent_kills_b, recent_isk_a, recent_isk_b = war
+
+                        # Calculate metrics
+                        kill_ratio_a = recent_kills_a / max(recent_kills_b, 1)
+                        isk_efficiency_a = (recent_isk_a / (recent_isk_a + recent_isk_b)) * 100 if (recent_isk_a + recent_isk_b) > 0 else 50
+                        isk_efficiency_b = 100 - isk_efficiency_a
+
+                        # Determine winners
+                        tactical_winner = "a" if kill_ratio_a > 1.2 else "b" if kill_ratio_a < 0.8 else "contested"
+                        economic_winner = "a" if isk_efficiency_a > 60 else "b" if isk_efficiency_a < 40 else "contested"
+
+                        # Overall winner (weighted: 60% economic, 40% tactical)
+                        if isk_efficiency_a > 55 or (isk_efficiency_a > 45 and kill_ratio_a > 1.5):
+                            overall_winner = "a"
+                        elif isk_efficiency_a < 45 or (isk_efficiency_a < 55 and kill_ratio_a < 0.67):
+                            overall_winner = "b"
+                        else:
+                            overall_winner = "contested"
+
+                        # Get alliance names
+                        alliance_a_name = await self.get_alliance_name(alliance_a)
+                        alliance_b_name = await self.get_alliance_name(alliance_b)
+
+                        # Get system hotspots for this war
+                        cur.execute("""
+                            SELECT
+                                k.solar_system_id,
+                                COUNT(*) as kill_count
+                            FROM killmails k
+                            JOIN killmail_attackers ka ON ka.killmail_id = k.killmail_id
+                            WHERE k.killmail_time >= NOW() - INTERVAL '%s days'
+                              AND (
+                                  (k.victim_alliance_id = %s AND ka.alliance_id = %s) OR
+                                  (k.victim_alliance_id = %s AND ka.alliance_id = %s)
+                              )
+                            GROUP BY k.solar_system_id
+                            ORDER BY kill_count DESC
+                            LIMIT 5
+                        """, (days, alliance_a, alliance_b, alliance_b, alliance_a))
+
+                        system_hotspots = []
+                        for sys_id, kill_count in cur.fetchall():
+                            sys_info = self.get_system_location_info(sys_id)
+                            system_hotspots.append({
+                                "system_id": sys_id,
+                                "system_name": sys_info.get("system_name", f"System {sys_id}"),
+                                "kills": kill_count,
+                                "security": sys_info.get("security", 0.0),
+                                "region_name": sys_info.get("region_name", "Unknown")
+                            })
+
+                        # Get ship class breakdown
+                        cur.execute("""
+                            SELECT
+                                CASE
+                                    WHEN ig."groupID" IN (30, 659, 547, 485, 1538, 941) THEN 'capital'
+                                    WHEN ig."groupID" IN (27, 898, 900) THEN 'battleship'
+                                    WHEN ig."groupID" IN (26, 894, 906) THEN 'cruiser'
+                                    WHEN ig."groupID" IN (25, 324, 893, 1534) THEN 'frigate'
+                                    WHEN ig."groupID" IN (420, 541, 1305) THEN 'destroyer'
+                                    ELSE 'other'
+                                END as ship_class,
+                                CASE
+                                    WHEN k.victim_alliance_id = %s THEN 'a_loss'
+                                    WHEN k.victim_alliance_id = %s THEN 'b_loss'
+                                END as alliance_role,
+                                COUNT(*) as count
+                            FROM killmails k
+                            JOIN "invTypes" it ON it."typeID" = k.ship_type_id
+                            JOIN "invGroups" ig ON ig."groupID" = it."groupID"
+                            JOIN killmail_attackers ka ON ka.killmail_id = k.killmail_id
+                            WHERE k.killmail_time >= NOW() - INTERVAL '%s days'
+                              AND (
+                                  (k.victim_alliance_id = %s AND ka.alliance_id = %s) OR
+                                  (k.victim_alliance_id = %s AND ka.alliance_id = %s)
+                              )
+                            GROUP BY ship_class, alliance_role
+                        """, (alliance_a, alliance_b, days, alliance_a, alliance_b, alliance_b, alliance_a))
+
+                        ship_classes_a = {"capital": 0, "battleship": 0, "cruiser": 0, "frigate": 0, "destroyer": 0, "other": 0}
+                        ship_classes_b = {"capital": 0, "battleship": 0, "cruiser": 0, "frigate": 0, "destroyer": 0, "other": 0}
+
+                        for ship_class, role, count in cur.fetchall():
+                            if role == "a_loss":
+                                ship_classes_a[ship_class] = count
+                            elif role == "b_loss":
+                                ship_classes_b[ship_class] = count
+
+                        # Calculate war intensity score
+                        isk_score = (total_isk / 1e9) * 0.6
+                        kill_score = total_kills * 0.3
+                        system_score = len(system_hotspots) * 0.1
+                        war_score = isk_score + kill_score + system_score
+
+                        war_data.append({
+                            "war_id": war_id,
+                            "alliance_a_id": alliance_a,
+                            "alliance_a_name": alliance_a_name,
+                            "alliance_b_id": alliance_b,
+                            "alliance_b_name": alliance_b_name,
+                            "kills_by_a": int(recent_kills_a),
+                            "kills_by_b": int(recent_kills_b),
+                            "isk_by_a": int(recent_isk_a),
+                            "isk_by_b": int(recent_isk_b),
+                            "total_kills": total_kills,
+                            "total_isk": int(total_isk),
+                            "duration_days": duration if duration else 0,
+                            "status": status,
+                            "kill_ratio_a": round(kill_ratio_a, 2),
+                            "isk_efficiency_a": round(isk_efficiency_a, 1),
+                            "isk_efficiency_b": round(isk_efficiency_b, 1),
+                            "tactical_winner": tactical_winner,
+                            "economic_winner": economic_winner,
+                            "overall_winner": overall_winner,
+                            "war_score": round(war_score, 2),
+                            "system_hotspots": system_hotspots,
+                            "ship_classes_a": ship_classes_a,
+                            "ship_classes_b": ship_classes_b,
+                            "first_kill_at": first_kill.isoformat() if first_kill else None,
+                            "last_kill_at": last_kill.isoformat() if last_kill else None
+                        })
+
+                    return {
+                        "wars": war_data,
+                        "total_wars": len(war_data),
+                        "analysis_period_days": days
+                    }
+
+        except Exception as e:
+            print(f"Error getting alliance wars from PostgreSQL: {e}")
+            return {"wars": [], "total_wars": 0, "error": str(e)}
+
     async def get_alliance_war_tracker(self, limit: int = 5) -> Dict:
         """
         Track active alliance wars with kill/death ratios and ISK efficiency.
 
-        Identifies top alliance conflicts based on mutual kills and analyzes
-        who is winning economically and numerically.
+        NEW: This method now uses PostgreSQL persistent storage instead of Redis.
+        Redirects to get_alliance_war_tracker_postgres() for accurate historical data.
+
+        Args:
+            limit: Number of wars to return
+
+        Returns:
+            Dict with top alliance wars and their statistics
+        """
+        # Redirect to PostgreSQL-based method (7 days history)
+        return await self.get_alliance_war_tracker_postgres(limit=limit, days=7)
+
+    async def get_alliance_war_tracker_redis_legacy(self, limit: int = 5) -> Dict:
+        """
+        LEGACY: Track active alliance wars using Redis (24h TTL data).
+
+        This method is kept for reference but is deprecated in favor of
+        get_alliance_war_tracker_postgres() which uses permanent storage.
 
         Args:
             limit: Number of wars to return
