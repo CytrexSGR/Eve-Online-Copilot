@@ -755,7 +755,10 @@ class ZKillboardReportsService:
 
             # Calculate ratios
             kill_ratio_a = data["kills_by_a"] / max(data["kills_by_b"], 1)
-            isk_efficiency_a = data["isk_by_a"] / max(data["isk_by_b"], 1)
+
+            # Calculate ISK efficiency (percentage of total ISK destroyed by alliance A)
+            isk_efficiency_a = (data["isk_by_a"] / (data["isk_by_a"] + data["isk_by_b"])) * 100 if (data["isk_by_a"] + data["isk_by_b"]) > 0 else 50
+            isk_efficiency_b = (data["isk_by_b"] / (data["isk_by_a"] + data["isk_by_b"])) * 100 if (data["isk_by_a"] + data["isk_by_b"]) > 0 else 50
 
             # Calculate war intensity score (weighted by ISK, kills, and spread)
             # ISK is normalized to billions for scoring
@@ -763,6 +766,22 @@ class ZKillboardReportsService:
             kill_score = total_kills * 0.3       # 30% weight on kill count
             system_score = len(data["systems"]) * 0.1  # 10% weight on conflict spread
             war_score = isk_score + kill_score + system_score
+
+            # Determine winner based on combined metrics
+            # Tactical winner: more kills
+            tactical_winner = "a" if kill_ratio_a > 1.2 else "b" if kill_ratio_a < 0.8 else "contested"
+            # Economic winner: higher ISK efficiency
+            economic_winner = "a" if isk_efficiency_a > 60 else "b" if isk_efficiency_a < 40 else "contested"
+
+            # Overall winner: weighted combination (60% economic, 40% tactical)
+            # A wins if: ISK efficiency > 55% OR (ISK efficiency > 45% AND kill ratio > 1.5)
+            # B wins if: ISK efficiency < 45% OR (ISK efficiency < 55% AND kill ratio < 0.67)
+            if isk_efficiency_a > 55 or (isk_efficiency_a > 45 and kill_ratio_a > 1.5):
+                overall_winner = "a"
+            elif isk_efficiency_a < 45 or (isk_efficiency_a < 55 and kill_ratio_a < 0.67):
+                overall_winner = "b"
+            else:
+                overall_winner = "contested"
 
             war_data.append({
                 "alliance_a_id": data["alliance_a"],
@@ -775,9 +794,12 @@ class ZKillboardReportsService:
                 "total_isk_destroyed": total_isk,
                 "kill_ratio_a": kill_ratio_a,
                 "isk_efficiency_a": isk_efficiency_a,
+                "isk_efficiency_b": isk_efficiency_b,
                 "active_systems": len(data["systems"]),
                 "war_intensity_score": war_score,
-                "winner": "a" if kill_ratio_a > 1.2 else "b" if kill_ratio_a < 0.8 else "contested"
+                "tactical_winner": tactical_winner,
+                "economic_winner": economic_winner,
+                "winner": overall_winner
             })
 
         # Sort by war intensity score (ISK-weighted activity)

@@ -131,6 +131,15 @@ async def get_alliance_wars() -> Dict:
         # Transform wars to conflicts with correct field names
         conflicts = []
         for war in wars_data.get("wars", []):
+            # Determine winner name
+            winner_name = None
+            if war.get("winner") == "a":
+                winner_name = war["alliance_a_name"]
+            elif war.get("winner") == "b":
+                winner_name = war["alliance_b_name"]
+            elif war.get("winner") == "contested":
+                winner_name = "Contested"
+
             conflicts.append({
                 "alliance_1_id": war["alliance_a_id"],
                 "alliance_1_name": war["alliance_a_name"],
@@ -145,11 +154,11 @@ async def get_alliance_wars() -> Dict:
                 "alliance_2_losses": war["kills_by_a"],
                 "alliance_2_isk_destroyed": war["isk_destroyed_by_b"],
                 "alliance_2_isk_lost": war["isk_destroyed_by_a"],
-                "alliance_2_efficiency": 100 - war["isk_efficiency_a"] if war["isk_efficiency_a"] <= 100 else 0,
+                "alliance_2_efficiency": war["isk_efficiency_b"],
                 "duration_days": 1,  # TODO: Calculate from killmail timestamps
                 "primary_regions": ["Unknown"],  # TODO: Get from system data
                 "active_systems": [],  # TODO: Get top systems from killmails
-                "winner": war["alliance_a_name"] if war["winner"] == "a" else war["alliance_b_name"] if war["winner"] == "b" else None
+                "winner": winner_name
             })
 
         return {
