@@ -643,30 +643,36 @@ class ZKillboardLiveService:
 
             with get_db_connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT
-                            last_milestone_notified,
-                            telegram_message_id,
-                            total_isk_destroyed
-                        FROM battles
-                        WHERE battle_id = %s
-                    """, (battle_id,))
-
-                    row = cur.fetchone()
-                    if not row:
-                        return
-
-                    last_milestone, message_id, total_isk = row
-
-                    # Find next milestone to notify
+                    # ATOMIC: Try to claim this milestone (prevents race conditions)
+                    # Find the next milestone that should be notified
                     next_milestone = None
                     for milestone in MILESTONES:
-                        if current_kills >= milestone and milestone > last_milestone:
+                        if current_kills >= milestone:
                             next_milestone = milestone
-                            break
+                        else:
+                            break  # Stop at first unreached milestone
 
                     if not next_milestone:
                         return  # No milestone reached
+
+                    # Atomically update last_milestone_notified ONLY if it hasn't been updated yet
+                    # This prevents duplicate alerts from concurrent kills
+                    cur.execute("""
+                        UPDATE battles
+                        SET last_milestone_notified = %s
+                        WHERE battle_id = %s
+                          AND last_milestone_notified < %s
+                        RETURNING telegram_message_id, total_isk_destroyed, last_milestone_notified
+                    """, (next_milestone, battle_id, next_milestone))
+
+                    row = cur.fetchone()
+                    if not row:
+                        return  # Milestone already claimed by another task
+
+                    message_id, total_isk, _ = row
+                    conn.commit()
+
+                    # Successfully claimed milestone - now send alert
 
                     # Get system info
                     cur.execute("""
@@ -713,20 +719,17 @@ class ZKillboardLiveService:
                         if success:
                             print(f"[ALERT] Milestone alert updated for battle {battle_id} ({next_milestone} kills)")
                     else:
-                        # Send new message (fallback)
-                        message_id = await telegram_service.send_alert(alert_msg)
-                        if message_id:
+                        # Send new message (fallback if no previous message)
+                        new_message_id = await telegram_service.send_alert(alert_msg)
+                        if new_message_id:
                             print(f"[ALERT] Milestone alert sent for battle {battle_id} ({next_milestone} kills)")
-
-                    # Update milestone tracking
-                    if message_id:
-                        cur.execute("""
-                            UPDATE battles
-                            SET last_milestone_notified = %s,
-                                telegram_message_id = %s
-                            WHERE battle_id = %s
-                        """, (next_milestone, message_id, battle_id))
-                        conn.commit()
+                            # Update telegram_message_id for future edits
+                            cur.execute("""
+                                UPDATE battles
+                                SET telegram_message_id = %s
+                                WHERE battle_id = %s
+                            """, (new_message_id, battle_id))
+                            conn.commit()
 
         except Exception as e:
             print(f"Error checking milestone alert: {e}")
