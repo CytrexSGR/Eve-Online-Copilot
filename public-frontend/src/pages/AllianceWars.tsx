@@ -273,7 +273,7 @@ export function AllianceWars() {
                     {/* Alliance 1 Ship Classes */}
                     <div>
                       <h5 style={{ fontSize: '0.875rem', color: 'var(--accent-blue)', marginBottom: '0.75rem' }}>
-                        {conflict.alliance_1_name} - Ships Destroyed
+                        {conflict.alliance_1_name} - Ships Lost
                       </h5>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         {Object.entries(conflict.alliance_1_ship_classes || {}).map(([shipClass, count]) => (
@@ -321,7 +321,7 @@ export function AllianceWars() {
                     {/* Alliance 2 Ship Classes */}
                     <div>
                       <h5 style={{ fontSize: '0.875rem', color: 'var(--danger)', marginBottom: '0.75rem' }}>
-                        {conflict.alliance_2_name} - Ships Destroyed
+                        {conflict.alliance_2_name} - Ships Lost
                       </h5>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         {Object.entries(conflict.alliance_2_ship_classes || {}).map(([shipClass, count]) => (
