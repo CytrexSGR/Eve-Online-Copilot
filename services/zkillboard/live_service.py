@@ -547,6 +547,9 @@ class ZKillboardLiveService:
                         new_kill_count = total_kills + 1
                         print(f"[BATTLE] Battle {battle_id} updated to {new_kill_count} kills")
 
+                        # Check if initial alert threshold reached (only sent once atomically)
+                        asyncio.create_task(self.send_initial_battle_alert(battle_id, kill.solar_system_id))
+
                         # Check if milestone reached
                         asyncio.create_task(self.check_and_send_milestone_alert(battle_id, new_kill_count, kill.solar_system_id))
 
@@ -594,7 +597,11 @@ class ZKillboardLiveService:
 
     async def send_initial_battle_alert(self, battle_id: int, system_id: int):
         """
-        Send initial "New Battle" alert when battle starts.
+        Send initial "New Battle" alert when battle reaches threshold.
+
+        Alert sent when:
+        - Battle has ≥5 kills (sustained combat) OR
+        - Battle total ISK ≥500M (high-value engagement)
 
         Args:
             battle_id: Battle ID
@@ -619,17 +626,39 @@ class ZKillboardLiveService:
                     """, (battle_id,))
 
                     row = cur.fetchone()
-                    if not row or row[5]:  # Skip if alert already sent
+                    if not row:
                         return
 
-                    kills, isk_destroyed, system_name, region_name, security, _ = row
+                    kills, isk_destroyed, system_name, region_name, security, initial_alert_sent = row
+
+                    # SMART THRESHOLD: Only alert if significant activity
+                    # - ≥5 kills (sustained combat) OR
+                    # - ≥500M ISK destroyed (high-value target)
+                    if kills < 5 and isk_destroyed < 500_000_000:
+                        return  # Below threshold, wait for more activity
+
+                    # ATOMIC: Try to claim the initial alert (prevent duplicates)
+                    cur.execute("""
+                        UPDATE battles
+                        SET initial_alert_sent = TRUE
+                        WHERE battle_id = %s
+                          AND initial_alert_sent = FALSE
+                        RETURNING telegram_message_id
+                    """, (battle_id,))
+
+                    result = cur.fetchone()
+                    if not result:
+                        return  # Alert already claimed by another task
+
+                    conn.commit()
 
                     # Create initial alert message
+                    isk_b = isk_destroyed / 1_000_000_000
                     alert_msg = f"""⚠️ **NEW BATTLE DETECTED**
 
 📍 **Location:** {system_name} ({security:.1f}) - {region_name}
 🆕 **Status:** Battle just started
-💀 **Current:** {kills} kills, {isk_destroyed / 1_000_000:.1f}M ISK
+💀 **Current:** {kills} kills, {isk_b:.1f}B ISK
 
 ⚔️ Combat has begun - monitoring engagement"""
 
@@ -640,15 +669,73 @@ class ZKillboardLiveService:
                         cur.execute("""
                             UPDATE battles
                             SET telegram_message_id = %s,
-                                initial_alert_sent = TRUE,
                                 last_milestone_notified = 0
                             WHERE battle_id = %s
                         """, (message_id, battle_id))
                         conn.commit()
-                        print(f"[ALERT] Initial battle alert sent for battle {battle_id} (message_id: {message_id})")
+                        print(f"[ALERT] Initial battle alert sent for battle {battle_id} (message_id: {message_id}, {kills} kills, {isk_b:.1f}B ISK)")
 
         except Exception as e:
             print(f"Error sending initial battle alert: {e}")
+
+    async def send_high_value_kill_alert(self, kill: 'LiveKillmail'):
+        """
+        Send immediate alert for high-value kills (≥2B ISK).
+
+        Alerts for expensive ships regardless of battle status:
+        - Freighters, Jump Freighters
+        - Rorquals, Titans, Supercarriers
+        - Any ship worth ≥2B ISK
+
+        Args:
+            kill: LiveKillmail with ship and victim data
+        """
+        try:
+            ship_value = safe_int_value(kill.ship_value)
+
+            # Threshold: 2B ISK
+            if ship_value < 2_000_000_000:
+                return
+
+            # Get system info
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            ms."solarSystemName",
+                            mr."regionName",
+                            ms.security,
+                            it."typeName"
+                        FROM "mapSolarSystems" ms
+                        JOIN "mapRegions" mr ON mr."regionID" = ms."regionID"
+                        LEFT JOIN "invTypes" it ON it."typeID" = %s
+                        WHERE ms."solarSystemID" = %s
+                    """, (kill.ship_type_id, kill.solar_system_id))
+
+                    row = cur.fetchone()
+                    if not row:
+                        return
+
+                    system_name, region_name, security, ship_type_name = row
+
+            isk_b = ship_value / 1_000_000_000
+
+            # Create high-value kill alert
+            alert_msg = f"""💰 **HIGH VALUE KILL DETECTED**
+
+📍 **Location:** {system_name} ({security:.1f}) - {region_name}
+🚢 **Ship:** {ship_type_name or f"Type {kill.ship_type_id}"}
+💀 **Value:** {isk_b:.2f}B ISK
+
+⚠️ High-value target destroyed - opportunity for market profiteering"""
+
+            # Send to Telegram (no message_id tracking needed, one-off alert)
+            message_id = await telegram_service.send_alert(alert_msg)
+            if message_id:
+                print(f"[ALERT] High-value kill alert sent: {ship_type_name} ({isk_b:.2f}B ISK) in {system_name}")
+
+        except Exception as e:
+            print(f"Error sending high-value kill alert: {e}")
 
     async def check_and_send_milestone_alert(self, battle_id: int, current_kills: int, system_id: int):
         """
@@ -1846,6 +1933,9 @@ class ZKillboardLiveService:
 
         # ALLIANCE WAR TRACKING: Track long-term conflicts between alliances
         self.track_alliance_war(kill)
+
+        # HIGH-VALUE KILL ALERTS: Alert on expensive kills (≥2B ISK)
+        asyncio.create_task(self.send_high_value_kill_alert(kill))
 
         # =====================================================
         # OLD HOTSPOT ALERT SYSTEM - DISABLED
