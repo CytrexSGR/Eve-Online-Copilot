@@ -459,6 +459,83 @@ async def get_live_kills(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/system/{system_id}/kills")
+async def get_system_kills(
+    system_id: int,
+    limit: int = Query(500, ge=1, le=1000, description="Max results"),
+    hours: int = Query(24, ge=1, le=168, description="Hours to look back")
+):
+    """
+    Get recent killmails for a system from database (historical data).
+
+    Unlike /live/kills which uses RedisQ stream, this endpoint queries
+    the killmails table for reliable historical data.
+
+    Args:
+        system_id: Solar system ID
+        limit: Maximum number of kills to return
+        hours: How many hours back to search
+
+    Returns:
+        List of killmails with full details
+    """
+    try:
+        from src.database import get_db_connection
+        from datetime import datetime, timedelta
+
+        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT
+                        killmail_id,
+                        killmail_time,
+                        solar_system_id,
+                        ship_type_id,
+                        ship_value,
+                        victim_character_id,
+                        victim_corporation_id,
+                        victim_alliance_id,
+                        attacker_count,
+                        is_solo,
+                        is_npc
+                    FROM killmails
+                    WHERE solar_system_id = %s
+                      AND killmail_time >= %s
+                    ORDER BY killmail_time DESC
+                    LIMIT %s
+                """, (system_id, cutoff_time, limit))
+
+                rows = cur.fetchall()
+
+                kills = []
+                for row in rows:
+                    kills.append({
+                        "killmail_id": row[0],
+                        "killmail_time": row[1].isoformat() + "Z",
+                        "solar_system_id": row[2],
+                        "ship_type_id": row[3],
+                        "ship_value": row[4] or 0,
+                        "victim_character_id": row[5],
+                        "victim_corporation_id": row[6],
+                        "victim_alliance_id": row[7],
+                        "attacker_count": row[8] or 1,
+                        "is_solo": row[9] or False,
+                        "is_npc": row[10] or False
+                    })
+
+        return {
+            "kills": kills,
+            "count": len(kills),
+            "system_id": system_id,
+            "hours": hours
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch system kills: {str(e)}")
+
+
 @router.get("/live/hotspots")
 async def get_live_hotspots():
     """
