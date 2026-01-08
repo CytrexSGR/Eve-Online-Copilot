@@ -628,6 +628,114 @@ async def get_battle_kills(
         raise HTTPException(status_code=500, detail=f"Failed to fetch battle kills: {str(e)}")
 
 
+@router.get("/battle/{battle_id}/ship-classes")
+async def get_battle_ship_classes(
+    battle_id: int,
+    group_by: str = Query(default="category", pattern="^(category|role|both)$")
+):
+    """
+    Get ship class breakdown for kills in a specific battle.
+
+    Unlike /system/{system_id}/ship-classes which analyzes time windows,
+    this endpoint analyzes only kills that occurred during the battle timeframe.
+
+    Args:
+        battle_id: Battle ID
+        group_by: Grouping mode - "category", "role", or "both" (default: category)
+
+    Returns:
+        Ship class breakdown for kills during this battle
+    """
+    try:
+        from src.database import get_db_connection
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Get battle timeframe
+                cur.execute("""
+                    SELECT solar_system_id, started_at, COALESCE(ended_at, last_kill_at) as end_time
+                    FROM battles
+                    WHERE battle_id = %s
+                """, (battle_id,))
+
+                battle_row = cur.fetchone()
+                if not battle_row:
+                    raise HTTPException(status_code=404, detail=f"Battle {battle_id} not found")
+
+                system_id, started_at, end_time = battle_row
+
+                # Get ship class breakdown for battle timeframe
+                if group_by == "category":
+                    cur.execute("""
+                        SELECT
+                            ship_category,
+                            COUNT(*) as count
+                        FROM killmails
+                        WHERE solar_system_id = %s
+                            AND killmail_time >= %s
+                            AND killmail_time <= %s
+                            AND ship_category IS NOT NULL
+                        GROUP BY ship_category
+                        ORDER BY count DESC
+                    """, (system_id, started_at, end_time))
+                elif group_by == "role":
+                    cur.execute("""
+                        SELECT
+                            ship_role,
+                            COUNT(*) as count
+                        FROM killmails
+                        WHERE solar_system_id = %s
+                            AND killmail_time >= %s
+                            AND killmail_time <= %s
+                            AND ship_role IS NOT NULL
+                        GROUP BY ship_role
+                        ORDER BY count DESC
+                    """, (system_id, started_at, end_time))
+                else:  # both
+                    cur.execute("""
+                        SELECT
+                            ship_category || ':' || ship_role as combined,
+                            COUNT(*) as count
+                        FROM killmails
+                        WHERE solar_system_id = %s
+                            AND killmail_time >= %s
+                            AND killmail_time <= %s
+                            AND ship_category IS NOT NULL
+                            AND ship_role IS NOT NULL
+                        GROUP BY ship_category, ship_role
+                        ORDER BY count DESC
+                    """, (system_id, started_at, end_time))
+
+                rows = cur.fetchall()
+                breakdown = {row[0]: row[1] for row in rows}
+
+                # Get total kills
+                cur.execute("""
+                    SELECT COUNT(*)
+                    FROM killmails
+                    WHERE solar_system_id = %s
+                        AND killmail_time >= %s
+                        AND killmail_time <= %s
+                """, (system_id, started_at, end_time))
+
+                total_kills = cur.fetchone()[0]
+
+                return {
+                    "battle_id": battle_id,
+                    "system_id": system_id,
+                    "started_at": started_at.isoformat() + "Z",
+                    "end_time": end_time.isoformat() + "Z",
+                    "total_kills": total_kills,
+                    "group_by": group_by,
+                    "breakdown": breakdown
+                }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch battle ship classes: {str(e)}")
+
+
 @router.get("/live/hotspots")
 async def get_live_hotspots():
     """
