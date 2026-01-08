@@ -4,6 +4,9 @@ import { RefreshIndicator } from '../components/RefreshIndicator';
 import { BattleMapPreviewLazy } from '../components/BattleMapPreviewLazy';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { useAllReports } from '../hooks/useReports';
+import BattleStatsCards from '../components/BattleStatsCards';
+import LiveBattles from '../components/LiveBattles';
+import TelegramMirror from '../components/TelegramMirror';
 
 export function Home() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
@@ -106,6 +109,19 @@ export function Home() {
           </p>
         </div>
         <RefreshIndicator lastUpdated={lastUpdated} autoRefreshSeconds={60} />
+      </div>
+
+      {/* Live Battle Intelligence */}
+      <BattleStatsCards />
+
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '2fr 1fr',
+        gap: '1.5rem',
+        marginBottom: '2rem'
+      }}>
+        <LiveBattles />
+        <TelegramMirror />
       </div>
 
       {/* Battle Report Summary */}

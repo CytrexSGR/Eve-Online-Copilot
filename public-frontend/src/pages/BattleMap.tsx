@@ -1,8 +1,24 @@
 import { useState, useEffect, useMemo } from 'react';
 import { EveMap3D, useMapControl } from 'eve-map-3d';
 import type { SolarSystem, Stargate, Region } from 'eve-map-3d';
-import { reportsApi } from '../services/api';
+import { reportsApi, battleApi } from '../services/api';
 import type { BattleReport, HotZone, HighValueKill, DangerZone } from '../types/reports';
+
+interface ActiveBattle {
+  battle_id: number;
+  system_id: number;
+  system_name: string;
+  region_name: string;
+  security: number;
+  total_kills: number;
+  total_isk_destroyed: number;
+  last_milestone: number;
+  started_at: string;
+  last_kill_at: string;
+  duration_minutes: number;
+  telegram_sent: boolean;
+  intensity: 'extreme' | 'high' | 'moderate' | 'low';
+}
 
 /**
  * BattleMap Page - Full-screen 3D Galaxy Map with Combat Data Overlays
@@ -36,8 +52,9 @@ export function BattleMap() {
   const [reportLoading, setReportLoading] = useState(true);
   const [reportError, setReportError] = useState<string | null>(null);
 
-  // Filter state (default: only Hot Zones enabled)
+  // Filter state (default: Active Battles and Hot Zones enabled)
   const [filters, setFilters] = useState({
+    activeBattles: true,
     liveHotspots: true,
     hotZones: true,
     capitalKills: false,
@@ -48,6 +65,9 @@ export function BattleMap() {
   // Live hotspots state
   const [liveHotspots, setLiveHotspots] = useState<any[]>([]);
 
+  // Active battles state
+  const [activeBattles, setActiveBattles] = useState<ActiveBattle[]>([]);
+
   // Selected system state for info panel
   const [selectedSystem, setSelectedSystem] = useState<{
     systemId: number;
@@ -55,6 +75,7 @@ export function BattleMap() {
     regionName: string;
     securityStatus: number;
     data: {
+      activeBattle?: ActiveBattle;
       hotZone?: HotZone;
       capitalKills?: number;
       dangerZone?: DangerZone;
@@ -137,6 +158,40 @@ export function BattleMap() {
     };
 
     loadBattleReport();
+  }, []);
+
+  // Load active battles
+  useEffect(() => {
+    const fetchActiveBattles = async () => {
+      try {
+        console.log('[BattleMap] Fetching active battles from:', '/api/war/battles/active');
+        const data = await battleApi.getActiveBattles(50);
+        console.log('[BattleMap] Raw API response:', data);
+        console.log(`[BattleMap] Battles array:`, data.battles);
+        console.log(`[BattleMap] Loaded ${data.battles?.length || 0} active battles`);
+
+        if (data.battles && data.battles.length > 0) {
+          console.log('[BattleMap] First battle:', data.battles[0]);
+          setActiveBattles(data.battles);
+        } else {
+          console.warn('[BattleMap] No battles in response!');
+          setActiveBattles([]);
+        }
+      } catch (err) {
+        console.error('[BattleMap] Failed to fetch active battles:', err);
+        if (err instanceof Error) {
+          console.error('[BattleMap] Error details:', err.message, err.stack);
+        }
+      }
+    };
+
+    // Initial fetch
+    fetchActiveBattles();
+
+    // Poll every 30 seconds
+    const interval = setInterval(fetchActiveBattles, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Poll live hotspots every 10 seconds
@@ -222,8 +277,6 @@ export function BattleMap() {
 
   // Build systemRenderConfigs based on active filters
   const systemRenderConfigs = useMemo(() => {
-    if (!battleReport || !systemLookups) return [];
-
     const configs: Array<{
       systemId: number;
       color: string;
@@ -232,12 +285,58 @@ export function BattleMap() {
       opacity: number;
     }> = [];
 
-    const { hotZoneMap, capitalKillsMap, dangerZoneMap, highValueKillsMap } = systemLookups;
+    // Get system lookups if available (may be null during loading)
+    const hotZoneMap = systemLookups?.hotZoneMap;
+    const capitalKillsMap = systemLookups?.capitalKillsMap;
+    const dangerZoneMap = systemLookups?.dangerZoneMap;
+    const highValueKillsMap = systemLookups?.highValueKillsMap;
 
     // Track which systems already rendered (for priority management)
     const renderedSystems = new Set<number>();
 
-    // Priority 0: LIVE HOTSPOTS (highest priority - pulsing white/yellow)
+    // Priority 0: ACTIVE BATTLES (highest priority - intensity-based colors)
+    if (filters.activeBattles && activeBattles.length > 0) {
+      console.log(`[BattleMap] Rendering ${activeBattles.length} active battles`, {
+        filter: filters.activeBattles,
+        count: activeBattles.length,
+        firstBattle: activeBattles[0]
+      });
+      activeBattles.forEach(battle => {
+        let color = '#00ff00';
+        let size = 6.0;
+
+        switch (battle.intensity) {
+          case 'extreme':
+            color = '#ff0066'; // Bright pink/red for extreme intensity
+            size = 8.0;
+            break;
+          case 'high':
+            color = '#ff6600'; // Orange for high intensity
+            size = 7.0;
+            break;
+          case 'moderate':
+            color = '#ffcc00'; // Yellow for moderate
+            size = 6.0;
+            break;
+          case 'low':
+            color = '#00ff00'; // Green for low intensity
+            size = 5.0;
+            break;
+        }
+
+        configs.push({
+          systemId: battle.system_id,
+          color,
+          size,
+          highlighted: true,
+          opacity: 1.0,
+        });
+
+        renderedSystems.add(battle.system_id);
+      });
+    }
+
+    // Priority 1: LIVE HOTSPOTS (second priority - pulsing white/yellow)
     if (filters.liveHotspots && liveHotspots.length > 0) {
       console.log(`[BattleMap] Rendering ${liveHotspots.length} LIVE hotspots`);
       liveHotspots.forEach(hotspot => {
@@ -271,19 +370,19 @@ export function BattleMap() {
       });
     }
 
-    // Collect all unique system IDs across all enabled filters
+    // Collect all unique system IDs across all enabled filters (only if data is available)
     const allSystemIds = new Set<number>();
 
-    if (filters.hotZones) {
+    if (filters.hotZones && hotZoneMap) {
       hotZoneMap.forEach((_, systemId) => allSystemIds.add(systemId));
     }
-    if (filters.capitalKills) {
+    if (filters.capitalKills && capitalKillsMap) {
       capitalKillsMap.forEach((_, systemId) => allSystemIds.add(systemId));
     }
-    if (filters.dangerZones) {
+    if (filters.dangerZones && dangerZoneMap) {
       dangerZoneMap.forEach((_, systemId) => allSystemIds.add(systemId));
     }
-    if (filters.highValueKills) {
+    if (filters.highValueKills && highValueKillsMap) {
       highValueKillsMap.forEach((_, systemId) => allSystemIds.add(systemId));
     }
 
@@ -299,25 +398,25 @@ export function BattleMap() {
       let color = '#ffffff';
       let size = 3.0;
 
-      // Priority 1: Capital Kills (bright purple - highest priority)
-      if (filters.capitalKills && capitalKillsMap.has(systemId)) {
+      // Priority 2: Capital Kills (bright purple)
+      if (filters.capitalKills && capitalKillsMap && capitalKillsMap.has(systemId)) {
         color = '#d946ef'; // bright purple/magenta
         size = 5.0; // Very large for capital kills
       }
-      // Priority 2: Hot Zones (bright red/orange)
-      else if (filters.hotZones && hotZoneMap.has(systemId)) {
+      // Priority 3: Hot Zones (bright red/orange)
+      else if (filters.hotZones && hotZoneMap && battleReport && hotZoneMap.has(systemId)) {
         const index = battleReport.hot_zones.findIndex(z => z.system_id === systemId);
         const isTopThree = index < 3;
         color = isTopThree ? '#ff0000' : '#ff6600'; // Bright red/orange
         size = isTopThree ? 4.5 : 3.5; // Much larger
       }
-      // Priority 3: High-Value Kills (bright cyan)
-      else if (filters.highValueKills && highValueKillsMap.has(systemId)) {
+      // Priority 4: High-Value Kills (bright cyan)
+      else if (filters.highValueKills && highValueKillsMap && highValueKillsMap.has(systemId)) {
         color = '#00ffff'; // bright cyan
         size = 4.0; // Larger
       }
-      // Priority 4: Danger Zones (bright yellow)
-      else if (filters.dangerZones && dangerZoneMap.has(systemId)) {
+      // Priority 5: Danger Zones (bright yellow)
+      else if (filters.dangerZones && dangerZoneMap && dangerZoneMap.has(systemId)) {
         color = '#ffaa00'; // bright yellow/orange
         size = 3.5; // Larger
       }
@@ -332,11 +431,12 @@ export function BattleMap() {
     });
 
     return configs;
-  }, [battleReport, systemLookups, filters, liveHotspots.length]);
+  }, [battleReport, systemLookups, filters, liveHotspots, activeBattles]);
 
   // Update map with new render configs when filters change
   useEffect(() => {
-    if (systems.length > 0 && systemRenderConfigs.length > 0) {
+    if (systems.length > 0) {
+      console.log(`[BattleMap] Updating map with ${systemRenderConfigs.length} system configs`);
       mapControl.setConfig({
         systemRenderConfigs,
       });
@@ -346,12 +446,16 @@ export function BattleMap() {
 
   // Handle system click - show info panel
   const handleSystemClick = (systemId: number) => {
-    if (!battleReport || !systemLookups || !systems.length) return;
+    if (!systems.length) return;
 
     const system = systems.find(s => s._key === systemId);
     if (!system) return;
 
-    const { hotZoneMap, capitalKillsMap, dangerZoneMap, highValueKillsMap } = systemLookups;
+    // Get lookups if available (may be null during loading)
+    const hotZoneMap = systemLookups?.hotZoneMap;
+    const capitalKillsMap = systemLookups?.capitalKillsMap;
+    const dangerZoneMap = systemLookups?.dangerZoneMap;
+    const highValueKillsMap = systemLookups?.highValueKillsMap;
 
     // Get system name (handle both string and object formats)
     const systemName = typeof system.name === 'string' ? system.name : system.name['en'] || system.name['zh'] || 'Unknown';
@@ -362,16 +466,20 @@ export function BattleMap() {
       ? (typeof region.name === 'string' ? region.name : region.name['en'] || region.name['zh'] || 'Unknown')
       : 'Unknown';
 
+    // Find active battle in this system
+    const activeBattle = activeBattles.find(b => b.system_id === systemId);
+
     setSelectedSystem({
       systemId,
       systemName,
       regionName,
       securityStatus: system.securityStatus || 0,
       data: {
-        hotZone: hotZoneMap.get(systemId),
-        capitalKills: capitalKillsMap.get(systemId),
-        dangerZone: dangerZoneMap.get(systemId),
-        highValueKills: highValueKillsMap.get(systemId),
+        activeBattle,
+        hotZone: hotZoneMap?.get(systemId),
+        capitalKills: capitalKillsMap?.get(systemId),
+        dangerZone: dangerZoneMap?.get(systemId),
+        highValueKills: highValueKillsMap?.get(systemId),
       },
     });
   };
@@ -388,6 +496,7 @@ export function BattleMap() {
   const filterCounts = useMemo(() => {
     if (!battleReport || !systemLookups) {
       return {
+        activeBattles: activeBattles.length,
         liveHotspots: liveHotspots.length,
         hotZones: 0,
         capitalKills: 0,
@@ -397,23 +506,42 @@ export function BattleMap() {
     }
 
     return {
+      activeBattles: activeBattles.length,
       liveHotspots: liveHotspots.length,
       hotZones: battleReport.hot_zones.length,
       capitalKills: systemLookups.capitalKillsMap.size,
       dangerZones: systemLookups.dangerZoneMap.size,
       highValueKills: systemLookups.highValueKillsMap.size,
     };
-  }, [battleReport, systemLookups, liveHotspots.length]);
+  }, [battleReport, systemLookups, liveHotspots.length, activeBattles.length]);
 
-  // Loading state
-  if (mapLoading || reportLoading) {
+  // Loading state - only block on map loading, show UI while battle data loads
+  if (mapLoading) {
     return (
       <div style={{ height: 'calc(100vh - 120px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
           <div className="skeleton" style={{ height: '40px', width: '300px', margin: '0 auto 1rem' }} />
-          <p style={{ color: 'var(--text-secondary)' }}>
-            {mapLoading ? 'Loading galaxy map...' : 'Loading battle data...'}
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', marginBottom: '0.5rem' }}>
+            Loading galaxy map data...
           </p>
+          <p style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>
+            8,437 solar systems • ~7.7 MB
+          </p>
+          <div style={{
+            width: '300px',
+            height: '4px',
+            background: 'var(--bg-elevated)',
+            borderRadius: '2px',
+            margin: '1rem auto',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              height: '100%',
+              background: 'var(--accent-blue)',
+              animation: 'loading-bar 2s ease-in-out infinite',
+              width: '40%'
+            }} />
+          </div>
         </div>
       </div>
     );
@@ -453,8 +581,73 @@ export function BattleMap() {
           Toggle combat data overlays on the map
         </p>
 
+        {/* Loading indicator for battle data */}
+        {reportLoading && (
+          <div style={{
+            padding: '1rem',
+            background: 'var(--bg-elevated)',
+            borderRadius: '6px',
+            marginBottom: '1rem',
+            textAlign: 'center'
+          }}>
+            <div className="skeleton" style={{ height: '20px', width: '80%', margin: '0 auto 0.5rem' }} />
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              Loading battle data...
+            </p>
+          </div>
+        )}
+
         {/* Filter Checkboxes */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Active Battles */}
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            cursor: 'pointer',
+            padding: '0.75rem',
+            background: filters.activeBattles ? 'var(--bg-elevated)' : 'transparent',
+            borderRadius: '6px',
+            border: '1px solid',
+            borderColor: filters.activeBattles ? '#ff0066' : 'var(--border-color)',
+            transition: 'all 0.2s',
+          }}>
+            <input
+              type="checkbox"
+              checked={filters.activeBattles}
+              onChange={() => toggleFilter('activeBattles')}
+              style={{
+                marginRight: '0.75rem',
+                width: '18px',
+                height: '18px',
+                cursor: 'pointer',
+                accentColor: '#ff0066',
+              }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginBottom: '0.25rem',
+              }}>
+                <div style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  background: '#ff0066',
+                  boxShadow: '0 0 12px #ff0066',
+                }} />
+                <span style={{ fontWeight: 700, color: '#ff0066' }}>Active Battles ⚔️</span>
+              </div>
+              <div style={{
+                fontSize: '0.75rem',
+                color: 'var(--text-secondary)',
+              }}>
+                {filterCounts.activeBattles} ongoing
+              </div>
+            </div>
+          </label>
+
           {/* LIVE Hotspots */}
           <label style={{
             display: 'flex',
@@ -830,6 +1023,77 @@ export function BattleMap() {
 
           {/* Combat data sections */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Active Battle data */}
+            {selectedSystem.data.activeBattle && (
+              <div style={{
+                padding: '1rem',
+                background: 'rgba(255, 0, 102, 0.1)',
+                border: '1px solid #ff0066',
+                borderRadius: '6px',
+              }}>
+                <h3 style={{
+                  fontSize: '1rem',
+                  marginBottom: '0.75rem',
+                  color: '#ff0066',
+                }}>
+                  ⚔️ Active Battle
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      Intensity
+                    </div>
+                    <div style={{
+                      fontSize: '1rem',
+                      fontWeight: 700,
+                      color:
+                        selectedSystem.data.activeBattle.intensity === 'extreme' ? '#ff0066' :
+                        selectedSystem.data.activeBattle.intensity === 'high' ? '#ff6600' :
+                        selectedSystem.data.activeBattle.intensity === 'moderate' ? '#ffcc00' :
+                        '#00ff00',
+                      textTransform: 'uppercase'
+                    }}>
+                      {selectedSystem.data.activeBattle.intensity}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      Total Kills
+                    </div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>
+                      {selectedSystem.data.activeBattle.total_kills.toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      ISK Destroyed
+                    </div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--danger)' }}>
+                      {(selectedSystem.data.activeBattle.total_isk_destroyed / 1_000_000_000).toFixed(1)}B
+                    </div>
+                  </div>
+                  {selectedSystem.data.activeBattle.last_milestone > 0 && (
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        Last Milestone
+                      </div>
+                      <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--warning)' }}>
+                        {selectedSystem.data.activeBattle.last_milestone} kills
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      Duration
+                    </div>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>
+                      {Math.floor(selectedSystem.data.activeBattle.duration_minutes / 60)}h {selectedSystem.data.activeBattle.duration_minutes % 60}m
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Hot Zone data */}
             {selectedSystem.data.hotZone && (
               <div style={{
@@ -996,7 +1260,8 @@ export function BattleMap() {
             )}
 
             {/* No data message */}
-            {!selectedSystem.data.hotZone &&
+            {!selectedSystem.data.activeBattle &&
+             !selectedSystem.data.hotZone &&
              !selectedSystem.data.capitalKills &&
              !selectedSystem.data.dangerZone &&
              (!selectedSystem.data.highValueKills || selectedSystem.data.highValueKills.length === 0) && (
@@ -1022,6 +1287,18 @@ export function BattleMap() {
           to {
             transform: translateX(0);
             opacity: 1;
+          }
+        }
+
+        @keyframes loading-bar {
+          0% {
+            transform: translateX(-100%);
+          }
+          50% {
+            transform: translateX(250%);
+          }
+          100% {
+            transform: translateX(-100%);
           }
         }
       `}</style>

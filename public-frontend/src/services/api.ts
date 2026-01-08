@@ -52,4 +52,17 @@ export const reportsApi = {
   }
 };
 
+// Battle API for live battle tracking and Telegram alerts
+export const battleApi = {
+  getActiveBattles: async (limit = 10) => {
+    const { data } = await api.get('/war/battles/active', { params: { limit } });
+    return data;
+  },
+
+  getRecentTelegramAlerts: async (limit = 5) => {
+    const { data } = await api.get('/war/telegram/recent', { params: { limit } });
+    return data;
+  }
+};
+
 export default api;
