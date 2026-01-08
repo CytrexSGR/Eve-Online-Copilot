@@ -11,6 +11,7 @@ export function BattleReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [show3DMap, setShow3DMap] = useState(false);
 
   const fetchReport = async () => {
     try {
@@ -92,7 +93,27 @@ export function BattleReport() {
           <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
             Interactive 3D map showing combat hot zones across New Eden
           </p>
-          <BattleMapPreview hotZones={report.hot_zones} />
+          {!show3DMap ? (
+            <div className="card" style={{ background: 'var(--bg-elevated)', padding: '3rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🗺️</div>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+                3D Galaxy Map (loads ~8MB of map data)
+              </p>
+              <button
+                onClick={() => setShow3DMap(true)}
+                className="btn btn-primary"
+                style={{
+                  padding: '0.75rem 2rem',
+                  fontSize: '1rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Load 3D Map
+              </button>
+            </div>
+          ) : (
+            <BattleMapPreview hotZones={report.hot_zones} />
+          )}
         </div>
       )}
 
