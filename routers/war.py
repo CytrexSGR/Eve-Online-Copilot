@@ -536,6 +536,98 @@ async def get_system_kills(
         raise HTTPException(status_code=500, detail=f"Failed to fetch system kills: {str(e)}")
 
 
+@router.get("/battle/{battle_id}/kills")
+async def get_battle_kills(
+    battle_id: int,
+    limit: int = Query(500, ge=1, le=1000, description="Max results")
+):
+    """
+    Get killmails for a specific battle (only within battle timeframe).
+
+    Unlike /system/{system_id}/kills which gets all kills in a time window,
+    this endpoint returns only kills that occurred during the battle period
+    (between started_at and last_kill_at/ended_at).
+
+    Args:
+        battle_id: Battle ID
+        limit: Maximum number of kills to return
+
+    Returns:
+        List of killmails that occurred during this battle
+    """
+    try:
+        from src.database import get_db_connection
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Get battle timeframe
+                cur.execute("""
+                    SELECT solar_system_id, started_at, COALESCE(ended_at, last_kill_at) as end_time
+                    FROM battles
+                    WHERE battle_id = %s
+                """, (battle_id,))
+
+                battle_row = cur.fetchone()
+                if not battle_row:
+                    raise HTTPException(status_code=404, detail=f"Battle {battle_id} not found")
+
+                system_id, started_at, end_time = battle_row
+
+                # Get killmails within battle timeframe
+                cur.execute("""
+                    SELECT
+                        killmail_id,
+                        killmail_time,
+                        solar_system_id,
+                        ship_type_id,
+                        ship_value,
+                        victim_character_id,
+                        victim_corporation_id,
+                        victim_alliance_id,
+                        attacker_count,
+                        is_solo,
+                        is_npc
+                    FROM killmails
+                    WHERE solar_system_id = %s
+                      AND killmail_time >= %s
+                      AND killmail_time <= %s
+                    ORDER BY killmail_time DESC
+                    LIMIT %s
+                """, (system_id, started_at, end_time, limit))
+
+                rows = cur.fetchall()
+
+                kills = []
+                for row in rows:
+                    kills.append({
+                        "killmail_id": row[0],
+                        "killmail_time": row[1].isoformat() + "Z",
+                        "solar_system_id": row[2],
+                        "ship_type_id": row[3],
+                        "ship_value": row[4] or 0,
+                        "victim_character_id": row[5],
+                        "victim_corporation_id": row[6],
+                        "victim_alliance_id": row[7],
+                        "attacker_count": row[8] or 1,
+                        "is_solo": row[9] or False,
+                        "is_npc": row[10] or False
+                    })
+
+        return {
+            "kills": kills,
+            "count": len(kills),
+            "battle_id": battle_id,
+            "system_id": system_id,
+            "started_at": started_at.isoformat() + "Z",
+            "end_time": end_time.isoformat() + "Z"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch battle kills: {str(e)}")
+
+
 @router.get("/live/hotspots")
 async def get_live_hotspots():
     """
