@@ -447,7 +447,20 @@ export function BattleDetail() {
 
             {/* Recent Killmails Table */}
             <div className="card" style={{ background: 'var(--bg-primary)', marginBottom: '1.5rem' }}>
-              <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>🔴 Recent Killmails</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h4 style={{ fontSize: '1rem', margin: 0 }}>🔴 Recent Killmails</h4>
+                {recentKills.length > 0 && recentKills.length < battle.total_kills && (
+                  <div style={{
+                    fontSize: '0.75rem',
+                    color: 'var(--text-secondary)',
+                    padding: '0.25rem 0.75rem',
+                    background: 'var(--bg-elevated)',
+                    borderRadius: '4px'
+                  }}>
+                    Showing {recentKills.length} of {battle.total_kills} kills with detailed data
+                  </div>
+                )}
+              </div>
 
               {recentKills.length === 0 ? (
                 <div style={{
@@ -456,7 +469,10 @@ export function BattleDetail() {
                   color: 'var(--text-secondary)'
                 }}>
                   <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📭</div>
-                  <p>No recent kills available</p>
+                  <p>No detailed killmail data available</p>
+                  <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>
+                    Battle has {battle.total_kills} kills but no detailed killmails in database
+                  </p>
                 </div>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
