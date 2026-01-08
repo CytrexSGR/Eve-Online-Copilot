@@ -24,6 +24,9 @@ interface ActiveBattle {
 export function BattleMap() {
   const navigate = useNavigate();
 
+  // Map view toggle state
+  const [mapView, setMapView] = useState<'3d' | 'ectmap'>('ectmap');
+
   // Map data state
   const [systems, setSystems] = useState<SolarSystem[]>([]);
   const [stargates, setStargates] = useState<Stargate[]>([]);
@@ -583,21 +586,73 @@ export function BattleMap() {
         </div>
       </div>
 
-      {/* 3D Galaxy Map */}
+      {/* Galaxy Map with View Toggle */}
       <div className="card" style={{ padding: 0, marginBottom: '1.5rem' }}>
         <div style={{ padding: '1.5rem 1.5rem 0.5rem' }}>
-          <h2>🌌 Galaxy Combat Map - Real-Time</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <h2>🌌 Galaxy Combat Map - Real-Time</h2>
+            {/* View Toggle */}
+            <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--bg-primary)', padding: '0.25rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+              <button
+                onClick={() => setMapView('ectmap')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: mapView === 'ectmap' ? 'var(--accent-blue)' : 'transparent',
+                  color: mapView === 'ectmap' ? 'white' : 'var(--text-primary)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: mapView === 'ectmap' ? 600 : 400,
+                  fontSize: '0.875rem',
+                  transition: 'all 0.2s',
+                }}
+              >
+                🗺️ Full Map (ectmap)
+              </button>
+              <button
+                onClick={() => setMapView('3d')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: mapView === '3d' ? 'var(--accent-blue)' : 'transparent',
+                  color: mapView === '3d' ? 'white' : 'var(--text-primary)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: mapView === '3d' ? 600 : 400,
+                  fontSize: '0.875rem',
+                  transition: 'all 0.2s',
+                }}
+              >
+                🌌 3D View
+              </button>
+            </div>
+          </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Interactive 3D visualization of active battles across New Eden
+            {mapView === 'ectmap'
+              ? 'Complete EVE Online universe map with all systems, regions, and routes'
+              : 'Interactive 3D visualization of active battles across New Eden'}
           </p>
         </div>
-        <div style={{ height: '500px' }}>
-          <EveMap3D
-            systems={systems}
-            stargates={stargates}
-            regions={regions}
-            mapControl={mapControl}
-          />
+        <div style={{ height: '700px' }}>
+          {mapView === 'ectmap' ? (
+            <iframe
+              src="http://localhost:3001"
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                display: 'block'
+              }}
+              title="EVE Online Universe Map (ectmap)"
+            />
+          ) : (
+            <EveMap3D
+              systems={systems}
+              stargates={stargates}
+              regions={regions}
+              mapControl={mapControl}
+            />
+          )}
         </div>
       </div>
 
