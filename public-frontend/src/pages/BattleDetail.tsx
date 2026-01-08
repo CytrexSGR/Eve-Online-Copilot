@@ -74,7 +74,7 @@ export function BattleDetail() {
 
           try {
             const [killsData, dangerData, shipClassData] = await Promise.all([
-              battleApi.getLiveKills(foundBattle.system_id, 50),
+              battleApi.getLiveKills(foundBattle.system_id, 500),
               battleApi.getSystemDanger(foundBattle.system_id),
               battleApi.getSystemShipClasses(foundBattle.system_id, 24)
             ]);
@@ -325,13 +325,13 @@ export function BattleDetail() {
                   </p>
                 </div>
                 <div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Solo Kills</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Solo Kills (Recent {recentKills.length})</p>
                   <p style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent-blue)' }}>
                     {soloKills}
                   </p>
                 </div>
                 <div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Fleet Kills</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Fleet Kills (Recent {recentKills.length})</p>
                   <p style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--danger)' }}>
                     {fleetKills}
                   </p>
