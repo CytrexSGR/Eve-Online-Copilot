@@ -50,6 +50,10 @@ export function BattleMap2D() {
   // Map view toggle state
   const [mapView, setMapView] = useState<'battles' | 'ectmap'>('ectmap');
 
+  // Overlay state for ectmap
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [showBattleOverlay, setShowBattleOverlay] = useState(true);
+
   const [systems, setSystems] = useState<MapSystem[]>([]);
   const [battles, setBattles] = useState<ActiveBattle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -192,6 +196,81 @@ export function BattleMap2D() {
       ctx.stroke();
     });
   }, [systems, battles, viewport, worldToScreen]);
+
+  // Draw battle overlay on ectmap
+  useEffect(() => {
+    if (mapView !== 'ectmap' || !showBattleOverlay) return;
+
+    const canvas = overlayCanvasRef.current;
+    if (!canvas || battles.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set canvas size
+    canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+    canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+    // Clear canvas (transparent)
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // EVE Universe bounds (approximate for all K-space systems)
+    const EVE_MIN_X = -4.5e17;
+    const EVE_MAX_X = 4.5e17;
+    const EVE_MIN_Z = -4e17;
+    const EVE_MAX_Z = 4e17;
+    const EVE_WIDTH = EVE_MAX_X - EVE_MIN_X;
+    const EVE_HEIGHT = EVE_MAX_Z - EVE_MIN_Z;
+
+    // Transform EVE coordinates to canvas pixels
+    const eveToCanvas = (eveX: number, eveZ: number) => {
+      const normX = (eveX - EVE_MIN_X) / EVE_WIDTH;
+      const normZ = (eveZ - EVE_MIN_Z) / EVE_HEIGHT;
+
+      return {
+        x: normX * canvas.offsetWidth,
+        y: normZ * canvas.offsetHeight
+      };
+    };
+
+    // Draw battles
+    battles.forEach(battle => {
+      const { x, y } = eveToCanvas(battle.x, battle.z);
+
+      // Size based on intensity and kills
+      let size = 4;
+      if (battle.intensity === 'moderate') size = 6;
+      else if (battle.intensity === 'high') size = 8;
+      else if (battle.intensity === 'extreme') size = 10;
+
+      // Color based on intensity
+      let color = '#3fb950'; // low
+      if (battle.intensity === 'moderate') color = '#58a6ff';
+      else if (battle.intensity === 'high') color = '#d29922';
+      else if (battle.intensity === 'extreme') color = '#f85149';
+
+      // Draw glow
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, size * 2);
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x, y, size * 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Draw main circle
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Draw border
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    });
+  }, [battles, mapView, showBattleOverlay]);
 
   // Mouse move handler for tooltips
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -366,21 +445,61 @@ export function BattleMap2D() {
             </div>
           </div>
         )}
+
+        {mapView === 'ectmap' && (
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '1rem' }}>
+            <button
+              onClick={() => setShowBattleOverlay(!showBattleOverlay)}
+              style={{
+                padding: '0.5rem 1rem',
+                background: showBattleOverlay ? 'var(--accent-blue)' : 'var(--bg-elevated)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: showBattleOverlay ? 'white' : 'var(--text-primary)',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: showBattleOverlay ? 600 : 400
+              }}
+            >
+              ⚔️ Battle Overlay {showBattleOverlay ? 'ON' : 'OFF'}
+            </button>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+              Showing {battles.length} active battles
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Map Display - Conditional */}
       <div className="card" style={{ padding: 0, position: 'relative', overflow: 'hidden' }}>
         {mapView === 'ectmap' ? (
-          <iframe
-            src="http://192.168.178.108:3001"
-            style={{
-              width: '100%',
-              height: '700px',
-              border: 'none',
-              display: 'block'
-            }}
-            title="EVE Online Universe Map (ectmap)"
-          />
+          <>
+            <iframe
+              src="http://192.168.178.108:3001"
+              style={{
+                width: '100%',
+                height: '700px',
+                border: 'none',
+                display: 'block'
+              }}
+              title="EVE Online Universe Map (ectmap)"
+            />
+            {/* Battle Overlay Canvas */}
+            {showBattleOverlay && (
+              <canvas
+                ref={overlayCanvasRef}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '700px',
+                  pointerEvents: 'none',
+                  zIndex: 10
+                }}
+              />
+            )}
+          </>
         ) : (
           <canvas
             ref={canvasRef}
