@@ -76,7 +76,7 @@ export function BattleDetail() {
             const [killsData, dangerData, shipClassData] = await Promise.all([
               battleApi.getBattleKills(foundBattle.battle_id, 500),
               battleApi.getSystemDanger(foundBattle.system_id),
-              battleApi.getSystemShipClasses(foundBattle.system_id, 24)
+              battleApi.getBattleShipClasses(foundBattle.battle_id, 'category')
             ]);
             setRecentKills(killsData.kills || []);
             setSystemDanger(dangerData);
@@ -344,7 +344,7 @@ export function BattleDetail() {
               <div className="card" style={{ background: 'var(--bg-primary)', marginBottom: '1.5rem' }}>
                 <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>🚀 Ship Class Breakdown</h4>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                  Analysis of {shipClasses.total_kills} kills in the last {shipClasses.hours} hours
+                  Analysis of {shipClasses.total_kills} {shipClasses.total_kills === 1 ? 'kill' : 'kills'} during battle
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {Object.entries(shipClasses.breakdown)

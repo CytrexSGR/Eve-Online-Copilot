@@ -79,6 +79,13 @@ export const battleApi = {
     return data;
   },
 
+  getBattleShipClasses: async (battleId: number, groupBy = 'category') => {
+    const { data } = await api.get(`/war/battle/${battleId}/ship-classes`, {
+      params: { group_by: groupBy }
+    });
+    return data;
+  },
+
   getSystemDanger: async (systemId: number) => {
     const { data } = await api.get(`/war/system/${systemId}/danger`);
     return data;
