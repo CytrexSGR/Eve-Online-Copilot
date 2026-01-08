@@ -34,15 +34,15 @@ export function TradeRoutes() {
   if (!report) return null;
 
   const getDangerColor = (score: number) => {
-    if (score >= 8) return 'var(--danger)';
-    if (score >= 5) return 'var(--warning)';
+    if (score >= 80) return 'var(--danger)';
+    if (score >= 50) return 'var(--warning)';
     return 'var(--success)';
   };
 
   const getDangerLabel = (score: number) => {
-    if (score >= 8) return 'EXTREME';
-    if (score >= 5) return 'HIGH';
-    if (score >= 3) return 'MODERATE';
+    if (score >= 80) return 'EXTREME';
+    if (score >= 50) return 'HIGH';
+    if (score >= 30) return 'MODERATE';
     return 'LOW';
   };
 
@@ -75,7 +75,7 @@ export function TradeRoutes() {
           <div>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Average Danger Score</p>
             <p style={{ fontSize: '2.5rem', fontWeight: 700, color: getDangerColor(report.global.avg_danger_score) }}>
-              {report.global.avg_danger_score.toFixed(1)}/10
+              {report.global.avg_danger_score.toFixed(1)}/100
             </p>
           </div>
           <div>
@@ -120,7 +120,7 @@ export function TradeRoutes() {
                 fontWeight: 700,
                 fontSize: '1.25rem'
               }}>
-                {getDangerLabel(route.danger_score)} ({route.danger_score.toFixed(1)}/10)
+                {getDangerLabel(route.danger_score)} ({route.danger_score.toFixed(1)}/100)
               </div>
             </div>
           </div>
@@ -175,7 +175,7 @@ export function TradeRoutes() {
                           background: getDangerColor(system.danger_score),
                           color: 'white'
                         }}>
-                          {system.danger_score.toFixed(1)}/10
+                          {system.danger_score.toFixed(1)}/100
                         </span>
                       </td>
                       <td style={{ padding: '0.75rem', textAlign: 'right', color: 'var(--accent-blue)', fontWeight: 600 }}>
@@ -212,7 +212,7 @@ export function TradeRoutes() {
             <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
               Recommendations
             </h4>
-            {route.danger_score >= 7 ? (
+            {route.danger_score >= 70 ? (
               <div style={{ color: 'var(--danger)' }}>
                 <p style={{ marginBottom: '0.5rem' }}>
                   ⚠️ <strong>EXTREME DANGER:</strong> This route is extremely hazardous. Consider:
@@ -224,7 +224,7 @@ export function TradeRoutes() {
                   <li>Using a scout to check ahead</li>
                 </ul>
               </div>
-            ) : route.danger_score >= 4 ? (
+            ) : route.danger_score >= 40 ? (
               <div style={{ color: 'var(--warning)' }}>
                 <p style={{ marginBottom: '0.5rem' }}>
                   ⚠️ <strong>HIGH RISK:</strong> Exercise caution on this route:
