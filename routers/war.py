@@ -722,7 +722,7 @@ async def get_live_hotspots():
 
 
 @router.get("/battles/active")
-async def get_active_battles(limit: int = Query(default=10, ge=1, le=50)):
+async def get_active_battles(limit: int = Query(default=10, ge=1, le=1000)):
     """
     Get currently active battles with real-time statistics.
 
@@ -734,7 +734,7 @@ async def get_active_battles(limit: int = Query(default=10, ge=1, le=50)):
     - Telegram notification status
 
     Args:
-        limit: Maximum number of battles to return (default: 10, max: 50)
+        limit: Maximum number of battles to return (default: 10, max: 1000)
 
     Returns:
         {
