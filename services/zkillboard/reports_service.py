@@ -824,17 +824,59 @@ class ZKillboardReportsService:
                         alliance_a_name = await self.get_alliance_name(alliance_a)
                         alliance_b_name = await self.get_alliance_name(alliance_b)
 
-                        # Get system hotspots for this war
+                        # Count actual ship losses (not multi-alliance inflated stats)
+                        cur.execute("""
+                            SELECT
+                                COUNT(*) FILTER (WHERE k.victim_alliance_id = %s) as alliance_a_losses,
+                                COUNT(*) FILTER (WHERE k.victim_alliance_id = %s) as alliance_b_losses,
+                                COALESCE(SUM(k.ship_value) FILTER (WHERE k.victim_alliance_id = %s), 0) as alliance_a_isk_lost,
+                                COALESCE(SUM(k.ship_value) FILTER (WHERE k.victim_alliance_id = %s), 0) as alliance_b_isk_lost
+                            FROM killmails k
+                            WHERE k.killmail_time >= NOW() - INTERVAL '%s days'
+                              AND (
+                                  (k.victim_alliance_id = %s AND EXISTS (
+                                      SELECT 1 FROM killmail_attackers ka
+                                      WHERE ka.killmail_id = k.killmail_id
+                                      AND ka.alliance_id = %s
+                                  ))
+                                  OR
+                                  (k.victim_alliance_id = %s AND EXISTS (
+                                      SELECT 1 FROM killmail_attackers ka
+                                      WHERE ka.killmail_id = k.killmail_id
+                                      AND ka.alliance_id = %s
+                                  ))
+                              )
+                        """, (alliance_a, alliance_b, alliance_a, alliance_b, days,
+                              alliance_a, alliance_b, alliance_b, alliance_a))
+
+                        actual_result = cur.fetchone()
+                        actual_losses_a, actual_losses_b, actual_isk_lost_a, actual_isk_lost_b = actual_result
+
+                        # Use actual counts instead of war_daily_stats
+                        recent_kills_a = actual_losses_b  # Alliance A killed B's ships
+                        recent_kills_b = actual_losses_a  # Alliance B killed A's ships
+                        recent_isk_a = actual_isk_lost_b  # ISK destroyed by A
+                        recent_isk_b = actual_isk_lost_a  # ISK destroyed by B
+
+                        # Get system hotspots for this war (count each ship once)
                         cur.execute("""
                             SELECT
                                 k.solar_system_id,
                                 COUNT(*) as kill_count
                             FROM killmails k
-                            JOIN killmail_attackers ka ON ka.killmail_id = k.killmail_id
                             WHERE k.killmail_time >= NOW() - INTERVAL '%s days'
                               AND (
-                                  (k.victim_alliance_id = %s AND ka.alliance_id = %s) OR
-                                  (k.victim_alliance_id = %s AND ka.alliance_id = %s)
+                                  (k.victim_alliance_id = %s AND EXISTS (
+                                      SELECT 1 FROM killmail_attackers ka
+                                      WHERE ka.killmail_id = k.killmail_id
+                                      AND ka.alliance_id = %s
+                                  ))
+                                  OR
+                                  (k.victim_alliance_id = %s AND EXISTS (
+                                      SELECT 1 FROM killmail_attackers ka
+                                      WHERE ka.killmail_id = k.killmail_id
+                                      AND ka.alliance_id = %s
+                                  ))
                               )
                             GROUP BY k.solar_system_id
                             ORDER BY kill_count DESC
@@ -852,7 +894,7 @@ class ZKillboardReportsService:
                                 "region_name": sys_info.get("region_name", "Unknown")
                             })
 
-                        # Get ship class breakdown
+                        # Get ship class breakdown (count each kill once, not per attacker)
                         cur.execute("""
                             SELECT
                                 CASE
@@ -868,22 +910,27 @@ class ZKillboardReportsService:
                                     WHEN ig."groupID" IN (28, 463) THEN 'industrial'
                                     ELSE 'other'
                                 END as ship_class,
-                                CASE
-                                    WHEN k.victim_alliance_id = %s THEN 'a_loss'
-                                    WHEN k.victim_alliance_id = %s THEN 'b_loss'
-                                END as alliance_role,
+                                k.victim_alliance_id,
                                 COUNT(*) as count
                             FROM killmails k
-                            JOIN "invTypes" it ON it."typeID" = k.ship_type_id
-                            JOIN "invGroups" ig ON ig."groupID" = it."groupID"
-                            JOIN killmail_attackers ka ON ka.killmail_id = k.killmail_id
+                            LEFT JOIN "invTypes" it ON it."typeID" = k.ship_type_id
+                            LEFT JOIN "invGroups" ig ON ig."groupID" = it."groupID"
                             WHERE k.killmail_time >= NOW() - INTERVAL '%s days'
                               AND (
-                                  (k.victim_alliance_id = %s AND ka.alliance_id = %s) OR
-                                  (k.victim_alliance_id = %s AND ka.alliance_id = %s)
+                                  (k.victim_alliance_id = %s AND EXISTS (
+                                      SELECT 1 FROM killmail_attackers ka
+                                      WHERE ka.killmail_id = k.killmail_id
+                                      AND ka.alliance_id = %s
+                                  ))
+                                  OR
+                                  (k.victim_alliance_id = %s AND EXISTS (
+                                      SELECT 1 FROM killmail_attackers ka
+                                      WHERE ka.killmail_id = k.killmail_id
+                                      AND ka.alliance_id = %s
+                                  ))
                               )
-                            GROUP BY ship_class, alliance_role
-                        """, (alliance_a, alliance_b, days, alliance_a, alliance_b, alliance_b, alliance_a))
+                            GROUP BY ship_class, k.victim_alliance_id
+                        """, (days, alliance_a, alliance_b, alliance_b, alliance_a))
 
                         ship_classes_a = {
                             "capital": 0, "battleship": 0, "battlecruiser": 0, "cruiser": 0,
@@ -896,10 +943,10 @@ class ZKillboardReportsService:
                             "mining": 0, "capsule": 0, "other": 0
                         }
 
-                        for ship_class, role, count in cur.fetchall():
-                            if role == "a_loss":
+                        for ship_class, victim_alliance_id, count in cur.fetchall():
+                            if victim_alliance_id == alliance_a:
                                 ship_classes_a[ship_class] = count
-                            elif role == "b_loss":
+                            elif victim_alliance_id == alliance_b:
                                 ship_classes_b[ship_class] = count
 
                         # Calculate war intensity score
