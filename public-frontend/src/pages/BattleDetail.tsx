@@ -66,7 +66,7 @@ export function BattleDetail() {
         setLoading(true);
         setError(null);
 
-        const data = await battleApi.getActiveBattles(50);
+        const data = await battleApi.getActiveBattles(1000);
         const foundBattle = data.battles?.find((b: ActiveBattle) => b.battle_id === parseInt(id || '0'));
 
         if (foundBattle) {
