@@ -62,6 +62,23 @@ export const battleApi = {
   getRecentTelegramAlerts: async (limit = 5) => {
     const { data } = await api.get('/war/telegram/recent', { params: { limit } });
     return data;
+  },
+
+  getLiveKills: async (systemId: number, limit = 20) => {
+    const { data } = await api.get('/war/live/kills', { params: { system_id: systemId, limit } });
+    return data;
+  },
+
+  getSystemDanger: async (systemId: number) => {
+    const { data } = await api.get(`/war/system/${systemId}/danger`);
+    return data;
+  },
+
+  getSystemShipClasses: async (systemId: number, hours = 24, groupBy = 'category') => {
+    const { data } = await api.get(`/war/system/${systemId}/ship-classes`, {
+      params: { hours, group_by: groupBy }
+    });
+    return data;
   }
 };
 

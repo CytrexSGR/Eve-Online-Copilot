@@ -9,6 +9,7 @@ import './App.css';
 // Lazy load pages to reduce initial bundle size
 const BattleReport = lazy(() => import('./pages/BattleReport').then(m => ({ default: m.BattleReport })));
 const BattleMap = lazy(() => import('./pages/BattleMap').then(m => ({ default: m.BattleMap })));
+const BattleDetail = lazy(() => import('./pages/BattleDetail').then(m => ({ default: m.BattleDetail })));
 const WarProfiteering = lazy(() => import('./pages/WarProfiteering').then(m => ({ default: m.WarProfiteering })));
 const AllianceWars = lazy(() => import('./pages/AllianceWars').then(m => ({ default: m.AllianceWars })));
 const TradeRoutes = lazy(() => import('./pages/TradeRoutes').then(m => ({ default: m.TradeRoutes })));
@@ -39,6 +40,7 @@ function App() {
               <Route path="/" element={<Home />} />
               <Route path="/battle-report" element={<BattleReport />} />
               <Route path="/battle-map" element={<BattleMap />} />
+              <Route path="/battle/:id" element={<BattleDetail />} />
               <Route path="/war-profiteering" element={<WarProfiteering />} />
               <Route path="/alliance-wars" element={<AllianceWars />} />
               <Route path="/trade-routes" element={<TradeRoutes />} />

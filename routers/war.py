@@ -932,3 +932,125 @@ async def get_recent_telegram_alerts(limit: int = Query(default=5, ge=1, le=20))
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch telegram alerts: {str(e)}")
+
+
+@router.get("/system/{system_id}/ship-classes")
+async def get_system_ship_classes(
+    system_id: int,
+    hours: int = Query(default=24, ge=1, le=168),
+    group_by: str = Query(default="category", pattern="^(category|role|both)$")
+):
+    """
+    Get ship class breakdown for kills in a system using official EVE classification.
+
+    Analyzes recent killmails with official EVE ship categories and roles.
+    Useful for battle analysis, doctrine detection, and fleet composition insights.
+
+    Args:
+        system_id: Solar system ID
+        hours: Hours to look back (default: 24, max: 168/7 days)
+        group_by: Grouping mode - "category", "role", or "both" (default: category)
+
+    Returns (group_by="category"):
+        {
+            "system_id": 30000142,
+            "hours": 24,
+            "total_kills": 150,
+            "group_by": "category",
+            "breakdown": {
+                "frigate": 45,
+                "cruiser": 30,
+                "battleship": 20,
+                "destroyer": 15,
+                "dreadnought": 2,
+                "industrial": 10,
+                "capsule": 28
+            }
+        }
+
+    Returns (group_by="role"):
+        {
+            "breakdown": {
+                "standard": 80,
+                "assault": 25,
+                "logistics": 15,
+                "heavy_assault": 20,
+                "interceptor": 10
+            }
+        }
+
+    Returns (group_by="both"):
+        {
+            "breakdown": {
+                "frigate:assault": 25,
+                "cruiser:heavy_assault": 20,
+                "cruiser:logistics": 15,
+                "frigate:interceptor": 10
+            }
+        }
+    """
+    try:
+        from src.database import get_db_connection
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                if group_by == "category":
+                    # Group by ship category only
+                    cur.execute("""
+                        SELECT
+                            ship_category,
+                            COUNT(*) as count
+                        FROM killmails
+                        WHERE solar_system_id = %s
+                            AND killmail_time >= NOW() - INTERVAL '%s hours'
+                            AND ship_category IS NOT NULL
+                        GROUP BY ship_category
+                        ORDER BY count DESC
+                    """, (system_id, hours))
+                elif group_by == "role":
+                    # Group by ship role only
+                    cur.execute("""
+                        SELECT
+                            ship_role,
+                            COUNT(*) as count
+                        FROM killmails
+                        WHERE solar_system_id = %s
+                            AND killmail_time >= NOW() - INTERVAL '%s hours'
+                            AND ship_role IS NOT NULL
+                        GROUP BY ship_role
+                        ORDER BY count DESC
+                    """, (system_id, hours))
+                else:  # both
+                    # Group by category:role combination
+                    cur.execute("""
+                        SELECT
+                            ship_category || ':' || ship_role as ship_class,
+                            COUNT(*) as count
+                        FROM killmails
+                        WHERE solar_system_id = %s
+                            AND killmail_time >= NOW() - INTERVAL '%s hours'
+                            AND ship_category IS NOT NULL
+                            AND ship_role IS NOT NULL
+                        GROUP BY ship_category, ship_role
+                        ORDER BY count DESC
+                    """, (system_id, hours))
+
+                rows = cur.fetchall()
+
+                # Build breakdown dict
+                breakdown = {}
+                total_kills = 0
+                for key, count in rows:
+                    breakdown[key] = count
+                    total_kills += count
+
+                return {
+                    "system_id": system_id,
+                    "hours": hours,
+                    "total_kills": total_kills,
+                    "group_by": group_by,
+                    "breakdown": breakdown
+                }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get ship class breakdown: {str(e)}")
