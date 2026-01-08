@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { RefreshIndicator } from '../components/RefreshIndicator';
-import { BattleMapPreviewLazy } from '../components/BattleMapPreviewLazy';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { useAllReports } from '../hooks/useReports';
 import BattleStatsCards from '../components/BattleStatsCards';
@@ -172,51 +171,6 @@ export function Home() {
           </>
         )}
       </div>
-
-      {/* 3D Galaxy Map with ALL combat layers */}
-      {battleReport && (
-        <div className="card" style={{ padding: 0, marginBottom: '2rem' }}>
-          <div style={{ padding: '1.5rem 1.5rem 0.5rem' }}>
-            <h2>🌌 Galaxy Combat Map - Live Intelligence</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.875rem' }}>
-              Interactive 3D visualization of all combat activity across New Eden
-            </p>
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{
-                  width: '12px',
-                  height: '12px',
-                  borderRadius: '50%',
-                  background: '#ffffff',
-                  boxShadow: '0 0 8px #ffffff',
-                  animation: 'pulse 2s ease-in-out infinite'
-                }} />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>LIVE Hotspots ⚡</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#d946ef' }} />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Capital Kills</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#ff0000' }} />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Hot Zones</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#00ffff' }} />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>High-Value Kills</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#ffaa00' }} />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Danger Zones</span>
-              </div>
-            </div>
-          </div>
-          <BattleMapPreviewLazy
-            battleReport={battleReport}
-            showAllLayers={true}
-          />
-        </div>
-      )}
 
       {/* War Profiteering Summary */}
       <div className="card">
