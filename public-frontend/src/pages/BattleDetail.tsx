@@ -74,7 +74,7 @@ export function BattleDetail() {
 
           try {
             const [killsData, dangerData, shipClassData] = await Promise.all([
-              battleApi.getSystemKills(foundBattle.system_id, 500, 24),
+              battleApi.getBattleKills(foundBattle.battle_id, 500),
               battleApi.getSystemDanger(foundBattle.system_id),
               battleApi.getSystemShipClasses(foundBattle.system_id, 24)
             ]);
@@ -319,19 +319,19 @@ export function BattleDetail() {
                   </p>
                 </div>
                 <div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Biggest Kill (Recent)</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Biggest Kill</p>
                   <p style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'monospace', color: 'var(--danger)' }}>
                     {formatISK(biggestKill)} ISK
                   </p>
                 </div>
                 <div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Solo Kills (Recent {recentKills.length})</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Solo Kills</p>
                   <p style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent-blue)' }}>
                     {soloKills}
                   </p>
                 </div>
                 <div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Fleet Kills (Recent {recentKills.length})</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Fleet Kills</p>
                   <p style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--danger)' }}>
                     {fleetKills}
                   </p>
@@ -445,11 +445,11 @@ export function BattleDetail() {
               </div>
             )}
 
-            {/* Recent Killmails Table */}
+            {/* Battle Killmails Table */}
             <div className="card" style={{ background: 'var(--bg-primary)', marginBottom: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h4 style={{ fontSize: '1rem', margin: 0 }}>🔴 Recent Killmails</h4>
-                {recentKills.length > 0 && recentKills.length < battle.total_kills && (
+                <h4 style={{ fontSize: '1rem', margin: 0 }}>🔴 Battle Killmails</h4>
+                {recentKills.length > 0 && (
                   <div style={{
                     fontSize: '0.75rem',
                     color: 'var(--text-secondary)',
@@ -457,7 +457,7 @@ export function BattleDetail() {
                     background: 'var(--bg-elevated)',
                     borderRadius: '4px'
                   }}>
-                    Showing {recentKills.length} of {battle.total_kills} kills with detailed data
+                    {recentKills.length} {recentKills.length === 1 ? 'kill' : 'kills'} during battle
                   </div>
                 )}
               </div>

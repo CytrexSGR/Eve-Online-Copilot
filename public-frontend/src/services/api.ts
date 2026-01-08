@@ -74,6 +74,11 @@ export const battleApi = {
     return data;
   },
 
+  getBattleKills: async (battleId: number, limit = 500) => {
+    const { data } = await api.get(`/war/battle/${battleId}/kills`, { params: { limit } });
+    return data;
+  },
+
   getSystemDanger: async (systemId: number) => {
     const { data } = await api.get(`/war/system/${systemId}/danger`);
     return data;
