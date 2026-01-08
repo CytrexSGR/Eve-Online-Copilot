@@ -1054,3 +1054,70 @@ async def get_system_ship_classes(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get ship class breakdown: {str(e)}")
+
+
+@router.get("/map/systems")
+async def get_map_systems():
+    """
+    Get all solar system positions for 2D map rendering.
+
+    Returns system coordinates (x, z for 2D), region info, and security status.
+    Used by Canvas 2D Battle Map for fast rendering.
+
+    Returns:
+        {
+            "systems": [
+                {
+                    "system_id": 30000142,
+                    "system_name": "Jita",
+                    "region_id": 10000002,
+                    "region_name": "The Forge",
+                    "x": -129064861735.0,
+                    "z": 117469227060.0,
+                    "security": 0.95
+                }
+            ],
+            "total": 8437
+        }
+    """
+    try:
+        from src.database import get_db_connection
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT
+                        ms."solarSystemID",
+                        ms."solarSystemName",
+                        ms."regionID",
+                        mr."regionName",
+                        ms.x,
+                        ms.z,
+                        ms.security
+                    FROM "mapSolarSystems" ms
+                    JOIN "mapRegions" mr ON mr."regionID" = ms."regionID"
+                    ORDER BY ms."solarSystemID"
+                """)
+
+                rows = cur.fetchall()
+
+                systems = []
+                for row in rows:
+                    system_id, system_name, region_id, region_name, x, z, security = row
+                    systems.append({
+                        "system_id": system_id,
+                        "system_name": system_name,
+                        "region_id": region_id,
+                        "region_name": region_name,
+                        "x": float(x),
+                        "z": float(z),
+                        "security": float(security) if security else 0.0
+                    })
+
+                return {
+                    "systems": systems,
+                    "total": len(systems)
+                }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get map systems: {str(e)}")

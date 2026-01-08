@@ -79,6 +79,11 @@ export const battleApi = {
       params: { hours, group_by: groupBy }
     });
     return data;
+  },
+
+  getMapSystems: async () => {
+    const { data } = await api.get('/war/map/systems');
+    return data;
   }
 };
 
