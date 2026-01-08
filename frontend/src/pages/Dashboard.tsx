@@ -2,6 +2,9 @@ import OpportunitiesTable from '../components/dashboard/OpportunitiesTable';
 import CharacterOverview from '../components/dashboard/CharacterOverview';
 import WarRoomAlerts from '../components/dashboard/WarRoomAlerts';
 import ActiveProjects from '../components/dashboard/ActiveProjects';
+import BattleStatsCards from '../components/dashboard/BattleStatsCards';
+import LiveBattles from '../components/dashboard/LiveBattles';
+import TelegramMirror from '../components/dashboard/TelegramMirror';
 import { useOpportunities } from '../hooks/dashboard/useOpportunities';
 import './Dashboard.css';
 
@@ -10,10 +13,13 @@ import './Dashboard.css';
  *
  * Layout (70/30 split):
  * - Main Content (70%):
+ *   - BattleStatsCards (top) - Live battle statistics in card format
  *   - OpportunitiesTable (75%) - Top profitable actions in table format
  *   - CharacterOverview (25%) - 3 character cards with stats
  * - Sidebar (30%):
- *   - WarRoomAlerts (top) - Combat intel and alerts
+ *   - LiveBattles (top) - Active battles with real-time updates
+ *   - TelegramMirror (middle) - Recent Telegram alerts
+ *   - WarRoomAlerts (middle) - Combat intel and alerts
  *   - ActiveProjects (bottom) - Shopping lists and active tasks
  */
 export default function Dashboard() {
@@ -22,6 +28,7 @@ export default function Dashboard() {
   return (
     <div className="dashboard">
       <div className="dashboard-main">
+        <BattleStatsCards />
         <OpportunitiesTable
           opportunities={opportunities}
           loading={isLoading}
@@ -30,6 +37,8 @@ export default function Dashboard() {
       </div>
 
       <aside className="dashboard-sidebar">
+        <LiveBattles />
+        <TelegramMirror />
         <WarRoomAlerts />
         <ActiveProjects />
       </aside>

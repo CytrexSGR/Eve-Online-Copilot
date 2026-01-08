@@ -719,3 +719,216 @@ async def get_live_hotspots():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch live hotspots: {str(e)}")
+
+
+@router.get("/battles/active")
+async def get_active_battles(limit: int = Query(default=10, ge=1, le=50)):
+    """
+    Get currently active battles with real-time statistics.
+
+    Returns battles that are currently ongoing (status='active') with:
+    - System and region information
+    - Kill counts and ISK destroyed
+    - Last milestone reached
+    - Time since battle started
+    - Telegram notification status
+
+    Args:
+        limit: Maximum number of battles to return (default: 10, max: 50)
+
+    Returns:
+        {
+            "battles": [
+                {
+                    "battle_id": 337,
+                    "system_id": 30000142,
+                    "system_name": "Jita",
+                    "region_name": "The Forge",
+                    "security": 0.95,
+                    "total_kills": 1046,
+                    "total_isk_destroyed": 611727396086,
+                    "last_milestone": 500,
+                    "started_at": "2026-01-08T04:32:15Z",
+                    "last_kill_at": "2026-01-08T06:47:23Z",
+                    "duration_minutes": 135,
+                    "telegram_sent": true,
+                    "intensity": "extreme"
+                }
+            ],
+            "total_active": 5
+        }
+    """
+    try:
+        from src.database import get_db_connection
+        from datetime import datetime
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Get active battles with system/region info
+                cur.execute("""
+                    SELECT
+                        b.battle_id,
+                        b.solar_system_id,
+                        ms."solarSystemName",
+                        mr."regionName",
+                        ms.security,
+                        b.total_kills,
+                        b.total_isk_destroyed,
+                        b.last_milestone_notified,
+                        b.started_at,
+                        b.last_kill_at,
+                        b.telegram_message_id,
+                        EXTRACT(EPOCH FROM (b.last_kill_at - b.started_at)) / 60 as duration_minutes
+                    FROM battles b
+                    JOIN "mapSolarSystems" ms ON ms."solarSystemID" = b.solar_system_id
+                    JOIN "mapRegions" mr ON mr."regionID" = ms."regionID"
+                    WHERE b.status = 'active'
+                    ORDER BY b.total_kills DESC, b.total_isk_destroyed DESC
+                    LIMIT %s
+                """, (limit,))
+
+                rows = cur.fetchall()
+
+                # Get total count
+                cur.execute("SELECT COUNT(*) FROM battles WHERE status = 'active'")
+                total_active = cur.fetchone()[0]
+
+                battles = []
+                for row in rows:
+                    (battle_id, system_id, system_name, region_name, security,
+                     total_kills, total_isk, last_milestone, started_at, last_kill_at,
+                     telegram_message_id, duration_minutes) = row
+
+                    # Determine intensity
+                    if total_kills >= 100 or total_isk >= 50_000_000_000:
+                        intensity = "extreme"
+                    elif total_kills >= 50 or total_isk >= 20_000_000_000:
+                        intensity = "high"
+                    elif total_kills >= 10:
+                        intensity = "moderate"
+                    else:
+                        intensity = "low"
+
+                    battles.append({
+                        "battle_id": battle_id,
+                        "system_id": system_id,
+                        "system_name": system_name,
+                        "region_name": region_name,
+                        "security": float(security) if security else 0.0,
+                        "total_kills": total_kills,
+                        "total_isk_destroyed": int(total_isk),
+                        "last_milestone": last_milestone or 0,
+                        "started_at": started_at.isoformat() + "Z" if started_at else None,
+                        "last_kill_at": last_kill_at.isoformat() + "Z" if last_kill_at else None,
+                        "duration_minutes": int(duration_minutes) if duration_minutes else 0,
+                        "telegram_sent": telegram_message_id is not None,
+                        "intensity": intensity
+                    })
+
+                return {
+                    "battles": battles,
+                    "total_active": total_active
+                }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch active battles: {str(e)}")
+
+
+@router.get("/telegram/recent")
+async def get_recent_telegram_alerts(limit: int = Query(default=5, ge=1, le=20)):
+    """
+    Get recent Telegram alerts sent for battles.
+
+    Returns the last N battles that had Telegram notifications sent,
+    showing what alerts were sent to the Telegram channel.
+
+    Args:
+        limit: Maximum number of alerts to return (default: 5, max: 20)
+
+    Returns:
+        {
+            "alerts": [
+                {
+                    "battle_id": 337,
+                    "system_name": "Jita",
+                    "region_name": "The Forge",
+                    "alert_type": "milestone",
+                    "milestone": 500,
+                    "total_kills": 1046,
+                    "total_isk_destroyed": 611727396086,
+                    "telegram_message_id": 1201,
+                    "sent_at": "2026-01-08T06:32:15Z",
+                    "status": "active"
+                }
+            ],
+            "total": 5
+        }
+    """
+    try:
+        from src.database import get_db_connection
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Get recent battles with Telegram messages
+                cur.execute("""
+                    SELECT
+                        b.battle_id,
+                        ms."solarSystemName",
+                        mr."regionName",
+                        ms.security,
+                        b.total_kills,
+                        b.total_isk_destroyed,
+                        b.last_milestone_notified,
+                        b.telegram_message_id,
+                        b.initial_alert_sent,
+                        b.last_kill_at,
+                        b.status
+                    FROM battles b
+                    JOIN "mapSolarSystems" ms ON ms."solarSystemID" = b.solar_system_id
+                    JOIN "mapRegions" mr ON mr."regionID" = ms."regionID"
+                    WHERE b.telegram_message_id IS NOT NULL
+                    ORDER BY b.last_kill_at DESC
+                    LIMIT %s
+                """, (limit,))
+
+                rows = cur.fetchall()
+
+                alerts = []
+                for row in rows:
+                    (battle_id, system_name, region_name, security,
+                     total_kills, total_isk, last_milestone, telegram_message_id,
+                     initial_alert_sent, sent_at, status) = row
+
+                    # Determine alert type
+                    if status == 'ended':
+                        alert_type = "ended"
+                    elif last_milestone >= 500:
+                        alert_type = "milestone"
+                    elif last_milestone >= 10:
+                        alert_type = "milestone"
+                    elif initial_alert_sent:
+                        alert_type = "new_battle"
+                    else:
+                        alert_type = "unknown"
+
+                    alerts.append({
+                        "battle_id": battle_id,
+                        "system_name": system_name,
+                        "region_name": region_name,
+                        "security": float(security) if security else 0.0,
+                        "alert_type": alert_type,
+                        "milestone": last_milestone or 0,
+                        "total_kills": total_kills,
+                        "total_isk_destroyed": int(total_isk),
+                        "telegram_message_id": telegram_message_id,
+                        "sent_at": sent_at.isoformat() + "Z" if sent_at else None,
+                        "status": status
+                    })
+
+                return {
+                    "alerts": alerts,
+                    "total": len(alerts)
+                }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch telegram alerts: {str(e)}")

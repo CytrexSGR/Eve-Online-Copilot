@@ -239,3 +239,13 @@ export async function getWarAlerts(limit = 5) {
   const response = await api.get('/api/war/alerts', { params: { limit } });
   return response.data;
 }
+
+export async function getActiveBattles(limit = 10) {
+  const response = await api.get('/api/war/battles/active', { params: { limit } });
+  return response.data;
+}
+
+export async function getRecentTelegramAlerts(limit = 5) {
+  const response = await api.get('/api/war/telegram/recent', { params: { limit } });
+  return response.data;
+}
