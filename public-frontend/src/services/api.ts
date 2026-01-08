@@ -69,6 +69,11 @@ export const battleApi = {
     return data;
   },
 
+  getSystemKills: async (systemId: number, limit = 500, hours = 24) => {
+    const { data } = await api.get(`/war/system/${systemId}/kills`, { params: { limit, hours } });
+    return data;
+  },
+
   getSystemDanger: async (systemId: number) => {
     const { data } = await api.get(`/war/system/${systemId}/danger`);
     return data;

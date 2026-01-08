@@ -74,7 +74,7 @@ export function BattleDetail() {
 
           try {
             const [killsData, dangerData, shipClassData] = await Promise.all([
-              battleApi.getLiveKills(foundBattle.system_id, 500),
+              battleApi.getSystemKills(foundBattle.system_id, 500, 24),
               battleApi.getSystemDanger(foundBattle.system_id),
               battleApi.getSystemShipClasses(foundBattle.system_id, 24)
             ]);
