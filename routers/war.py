@@ -764,7 +764,7 @@ async def get_active_battles(limit: int = Query(default=10, ge=1, le=1000)):
 
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                # Get active battles with system/region info
+                # Get active battles with system/region info including coordinates
                 cur.execute("""
                     SELECT
                         b.battle_id,
@@ -778,7 +778,9 @@ async def get_active_battles(limit: int = Query(default=10, ge=1, le=1000)):
                         b.started_at,
                         b.last_kill_at,
                         b.telegram_message_id,
-                        EXTRACT(EPOCH FROM (b.last_kill_at - b.started_at)) / 60 as duration_minutes
+                        EXTRACT(EPOCH FROM (b.last_kill_at - b.started_at)) / 60 as duration_minutes,
+                        ms.x,
+                        ms.z
                     FROM battles b
                     JOIN "mapSolarSystems" ms ON ms."solarSystemID" = b.solar_system_id
                     JOIN "mapRegions" mr ON mr."regionID" = ms."regionID"
@@ -797,7 +799,7 @@ async def get_active_battles(limit: int = Query(default=10, ge=1, le=1000)):
                 for row in rows:
                     (battle_id, system_id, system_name, region_name, security,
                      total_kills, total_isk, last_milestone, started_at, last_kill_at,
-                     telegram_message_id, duration_minutes) = row
+                     telegram_message_id, duration_minutes, x, z) = row
 
                     # Determine intensity
                     if total_kills >= 100 or total_isk >= 50_000_000_000:
@@ -822,7 +824,9 @@ async def get_active_battles(limit: int = Query(default=10, ge=1, le=1000)):
                         "last_kill_at": last_kill_at.isoformat() + "Z" if last_kill_at else None,
                         "duration_minutes": int(duration_minutes) if duration_minutes else 0,
                         "telegram_sent": telegram_message_id is not None,
-                        "intensity": intensity
+                        "intensity": intensity,
+                        "x": float(x),
+                        "z": float(z)
                     })
 
                 return {

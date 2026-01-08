@@ -26,6 +26,8 @@ interface ActiveBattle {
   duration_minutes: number;
   telegram_sent: boolean;
   intensity: 'extreme' | 'high' | 'moderate' | 'low';
+  x: number;
+  z: number;
 }
 
 interface Tooltip {
@@ -57,14 +59,12 @@ export function BattleMap2D() {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [systemsData, battlesData] = await Promise.all([
-          battleApi.getMapSystems(),
-          battleApi.getActiveBattles(1000) // Get up to 1000 battles
-        ]);
+        // Load battles with embedded coordinates (fast!)
+        const battlesData = await battleApi.getActiveBattles(1000);
 
-        setSystems(systemsData.systems);
         setBattles(battlesData.battles);
-        console.log(`[BattleMap2D] Loaded ${systemsData.total} systems and ${battlesData.battles.length} battles`);
+        setSystems([]); // No longer need to load all systems
+        console.log(`[BattleMap2D] Loaded ${battlesData.battles.length} battles`);
       } catch (err) {
         console.error('[BattleMap2D] Failed to load map data:', err);
       } finally {
@@ -87,17 +87,17 @@ export function BattleMap2D() {
     return () => clearInterval(interval);
   }, []);
 
-  // Calculate bounds for map centering
+  // Calculate bounds for map centering based on battles
   const calculateBounds = useCallback(() => {
-    if (systems.length === 0) return { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
+    if (battles.length === 0) return { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
 
-    const minX = Math.min(...systems.map(s => s.x));
-    const maxX = Math.max(...systems.map(s => s.x));
-    const minZ = Math.min(...systems.map(s => s.z));
-    const maxZ = Math.max(...systems.map(s => s.z));
+    const minX = Math.min(...battles.map(b => b.x));
+    const maxX = Math.max(...battles.map(b => b.x));
+    const minZ = Math.min(...battles.map(b => b.z));
+    const maxZ = Math.max(...battles.map(b => b.z));
 
     return { minX, maxX, minZ, maxZ };
-  }, [systems]);
+  }, [battles]);
 
   // World to screen coordinate conversion
   const worldToScreen = useCallback((worldX: number, worldZ: number, canvas: HTMLCanvasElement) => {
@@ -140,7 +140,7 @@ export function BattleMap2D() {
   // Draw the map
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || systems.length === 0) return;
+    if (!canvas || battles.length === 0) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -154,30 +154,9 @@ export function BattleMap2D() {
     ctx.fillStyle = '#0d1117';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw systems (small dots)
-    systems.forEach(system => {
-      const { x, y } = worldToScreen(system.x, system.z, canvas);
-
-      // Security color
-      let color = '#6b7280'; // nullsec gray
-      if (system.security >= 0.5) color = '#3fb950'; // highsec green
-      else if (system.security > 0.0) color = '#d29922'; // lowsec yellow
-
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.3;
-      ctx.beginPath();
-      ctx.arc(x, y, 1, 0, Math.PI * 2);
-      ctx.fill();
-    });
-
-    ctx.globalAlpha = 1.0;
-
-    // Draw battles (larger colored circles)
+    // Only draw battles (no background systems for performance)
     battles.forEach(battle => {
-      const system = systems.find(s => s.system_id === battle.system_id);
-      if (!system) return;
-
-      const { x, y } = worldToScreen(system.x, system.z, canvas);
+      const { x, y } = worldToScreen(battle.x, battle.z, canvas);
 
       // Size based on kills (min 5, max 25)
       const size = Math.min(Math.max(battle.total_kills / 20, 5), 25);
@@ -223,10 +202,7 @@ export function BattleMap2D() {
     let hoveredBattle: ActiveBattle | null = null;
 
     for (const battle of battles) {
-      const system = systems.find(s => s.system_id === battle.system_id);
-      if (!system) continue;
-
-      const { x, y } = worldToScreen(system.x, system.z, canvas);
+      const { x, y } = worldToScreen(battle.x, battle.z, canvas);
       const size = Math.min(Math.max(battle.total_kills / 20, 5), 25);
 
       const distance = Math.sqrt((mouseX - x) ** 2 + (mouseY - y) ** 2);
@@ -248,7 +224,7 @@ export function BattleMap2D() {
       setTooltip({ visible: false, x: 0, y: 0, battle: null });
       canvas.style.cursor = isDragging ? 'grabbing' : 'grab';
     }
-  }, [battles, systems, worldToScreen, isDragging]);
+  }, [battles, worldToScreen, isDragging]);
 
   // Mouse click handler
   const handleClick = useCallback((_e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -317,7 +293,7 @@ export function BattleMap2D() {
       <div className="card" style={{ marginBottom: '1.5rem' }}>
         <h1>🗺️ EVE Battle Map</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem' }}>
-          2D Canvas visualization of {systems.length.toLocaleString()} solar systems with {battles.length} active battles
+          Fast 2D Canvas visualization of {battles.length} active battles across New Eden
         </p>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <button
@@ -434,9 +410,8 @@ export function BattleMap2D() {
       {/* Legend */}
       <div className="card" style={{ marginTop: '1.5rem' }}>
         <h3 style={{ fontSize: '1rem', marginBottom: '1rem' }}>📖 Legend</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-          <div>
-            <div style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem' }}>Battle Intensity</div>
+        <div>
+          <div style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem' }}>Battle Intensity & Size</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.75rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#f85149' }} />
@@ -454,25 +429,10 @@ export function BattleMap2D() {
                 <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#3fb950' }} />
                 <span>Low (&lt;10 kills)</span>
               </div>
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem' }}>System Security</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#3fb950' }} />
-                <span>High-sec (0.5-1.0)</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#d29922' }} />
-                <span>Low-sec (0.1-0.4)</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#6b7280' }} />
-                <span>Null-sec (0.0)</span>
+              <div style={{ marginTop: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                💡 Circle size = kill count • Larger = more kills
               </div>
             </div>
-          </div>
         </div>
       </div>
     </div>
