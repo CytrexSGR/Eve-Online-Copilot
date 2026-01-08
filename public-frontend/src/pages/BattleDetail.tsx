@@ -266,7 +266,7 @@ export function BattleDetail() {
               ISK Destroyed
             </p>
             <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--danger)', fontFamily: 'monospace' }}>
-              {(battle.total_isk_destroyed / 1_000_000_000).toFixed(2)}B
+              {formatISK(battle.total_isk_destroyed)}
             </p>
           </div>
 
