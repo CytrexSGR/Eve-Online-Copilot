@@ -5,6 +5,7 @@ Serves cached combat intelligence reports to the public
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -19,6 +20,9 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc"
 )
+
+# GZip Compression - Compress responses larger than 500 bytes
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # CORS - Only allow our public domain
 app.add_middleware(

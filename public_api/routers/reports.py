@@ -3,7 +3,7 @@ Reports API Router
 Serves cached combat intelligence reports from Redis
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from typing import Dict
 import redis
 from services.zkillboard import zkill_live_service
@@ -42,7 +42,7 @@ async def get_battle_report() -> Dict:
 
 
 @router.get("/war-profiteering")
-async def get_war_profiteering() -> Dict:
+async def get_war_profiteering(limit: int = Query(default=20, ge=5, le=50)) -> Dict:
     """
     War Profiteering Daily Digest
 
@@ -50,10 +50,13 @@ async def get_war_profiteering() -> Dict:
     Shows items with highest market value destroyed in last 24 hours.
 
     Cache: 1 hour (refreshed daily at 06:00 UTC)
+
+    Parameters:
+    - limit: Number of items to return (default: 20, max: 50)
     """
     try:
         # Get original profiteering data
-        profit_data = zkill_live_service.get_war_profiteering_report(limit=20)
+        profit_data = zkill_live_service.get_war_profiteering_report(limit=limit)
 
         # Convert Decimal to float for JSON serialization
         items = []
@@ -126,18 +129,18 @@ async def get_alliance_wars() -> Dict:
             all_alliances.add(war["alliance_a_id"])
             all_alliances.add(war["alliance_b_id"])
             total_kills += war["total_kills"]
-            total_isk += war["isk_destroyed_by_a"] + war["isk_destroyed_by_b"]
+            total_isk += war["isk_by_a"] + war["isk_by_b"]
 
         # Transform wars to conflicts with correct field names
         conflicts = []
         for war in wars_data.get("wars", []):
-            # Determine winner name
+            # Determine winner name from overall_winner field
             winner_name = None
-            if war.get("winner") == "a":
+            if war.get("overall_winner") == "a":
                 winner_name = war["alliance_a_name"]
-            elif war.get("winner") == "b":
+            elif war.get("overall_winner") == "b":
                 winner_name = war["alliance_b_name"]
-            elif war.get("winner") == "contested":
+            elif war.get("overall_winner") == "contested":
                 winner_name = "Contested"
 
             conflicts.append({
@@ -147,28 +150,28 @@ async def get_alliance_wars() -> Dict:
                 "alliance_2_name": war["alliance_b_name"],
                 "alliance_1_kills": war["kills_by_a"],
                 "alliance_1_losses": war["kills_by_b"],
-                "alliance_1_isk_destroyed": war["isk_destroyed_by_a"],
-                "alliance_1_isk_lost": war["isk_destroyed_by_b"],
-                "alliance_1_efficiency": war["isk_efficiency_a"],
+                "alliance_1_isk_destroyed": war["isk_by_a"],
+                "alliance_1_isk_lost": war["isk_by_b"],
+                "alliance_1_efficiency": float(war["isk_efficiency_a"]),
                 "alliance_2_kills": war["kills_by_b"],
                 "alliance_2_losses": war["kills_by_a"],
-                "alliance_2_isk_destroyed": war["isk_destroyed_by_b"],
-                "alliance_2_isk_lost": war["isk_destroyed_by_a"],
-                "alliance_2_efficiency": war["isk_efficiency_b"],
-                "duration_days": 1,  # TODO: Calculate from killmail timestamps
+                "alliance_2_isk_destroyed": war["isk_by_b"],
+                "alliance_2_isk_lost": war["isk_by_a"],
+                "alliance_2_efficiency": float(war["isk_efficiency_b"]),
+                "duration_days": war.get("duration_days", 1),
                 "primary_regions": [war["system_hotspots"][0]["region_name"]] if war.get("system_hotspots") else ["Unknown"],
                 "active_systems": war.get("system_hotspots", []),
                 "winner": winner_name,
                 # NEW: Ship Class Analysis
                 "alliance_1_ship_classes": war.get("ship_classes_a", {}),
                 "alliance_2_ship_classes": war.get("ship_classes_b", {}),
-                # NEW: Activity Timeline
-                "hourly_activity": war.get("hourly_activity", {}),
-                "peak_hours": war.get("peak_hours", []),
-                # NEW: Economic Metrics
-                "avg_kill_value": war.get("avg_kill_value", 0),
-                "alliance_1_biggest_loss": war.get("biggest_loss_a", {"ship_type_id": None, "value": 0}),
-                "alliance_2_biggest_loss": war.get("biggest_loss_b", {"ship_type_id": None, "value": 0})
+                # NEW: Activity Timeline (not available in current data)
+                "hourly_activity": {},
+                "peak_hours": [],
+                # NEW: Economic Metrics (calculated from available data)
+                "avg_kill_value": war["total_isk"] / war["total_kills"] if war["total_kills"] > 0 else 0,
+                "alliance_1_biggest_loss": {"ship_type_id": None, "value": 0},
+                "alliance_2_biggest_loss": {"ship_type_id": None, "value": 0}
             })
 
         return {
@@ -187,14 +190,19 @@ async def get_alliance_wars() -> Dict:
             detail="Redis connection error. Reports temporarily unavailable."
         )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
-            detail="Failed to generate alliance wars report"
+            detail=f"Failed to generate alliance wars report: {str(e)}"
         )
 
 
 @router.get("/trade-routes")
-async def get_trade_routes() -> Dict:
+async def get_trade_routes(
+    limit: int = Query(default=5, ge=1, le=20),
+    include_systems: bool = Query(default=True)
+) -> Dict:
     """
     Trade Route Danger Map
 
@@ -202,6 +210,10 @@ async def get_trade_routes() -> Dict:
     Shows danger scores per system based on recent kills and gate camps.
 
     Cache: 1 hour (refreshed daily at 08:00 UTC)
+
+    Parameters:
+    - limit: Number of routes to return (default: 5, max: 20)
+    - include_systems: Include detailed system data (default: true, set to false for smaller response)
     """
     try:
         # Get original routes data
@@ -213,9 +225,9 @@ async def get_trade_routes() -> Dict:
         total_danger = 0
         gate_camps = 0
 
-        # Transform routes
+        # Transform routes (limited by query parameter)
         transformed_routes = []
-        for route in routes_data.get("routes", []):
+        for route in routes_data.get("routes", [])[:limit]:  # Apply limit here
             avg_danger = route.get("avg_danger_score", 0)
             total_danger += avg_danger
 
@@ -237,25 +249,32 @@ async def get_trade_routes() -> Dict:
                 if is_camp:
                     gate_camps += 1
 
-                transformed_systems.append({
-                    "system_id": system["system_id"],
-                    "system_name": system["system_name"],
-                    "security_status": system.get("security", 0),
-                    "danger_score": system.get("danger_score", 0),
-                    "kills_24h": kills,
-                    "isk_destroyed_24h": isk,
-                    "is_gate_camp": is_camp
-                })
+                # Only include detailed system data if requested
+                if include_systems:
+                    transformed_systems.append({
+                        "system_id": system["system_id"],
+                        "system_name": system["system_name"],
+                        "security_status": system.get("security", 0),
+                        "danger_score": system.get("danger_score", 0),
+                        "kills_24h": kills,
+                        "isk_destroyed_24h": isk,
+                        "is_gate_camp": is_camp
+                    })
 
-            transformed_routes.append({
+            route_data = {
                 "origin_system": route["from_hub"],
                 "destination_system": route["to_hub"],
                 "jumps": route.get("total_jumps", 0),
                 "danger_score": avg_danger,
                 "total_kills": total_kills,
                 "total_isk_destroyed": total_isk,
-                "systems": transformed_systems
-            })
+            }
+
+            # Only add systems array if include_systems is true
+            if include_systems:
+                route_data["systems"] = transformed_systems
+
+            transformed_routes.append(route_data)
 
         avg_danger_score = total_danger / total_routes if total_routes > 0 else 0
 

@@ -1,5 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './lib/queryClient';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import './App.css';
@@ -29,23 +31,25 @@ const PageLoader = () => (
 
 function App() {
   return (
-    <BrowserRouter>
-      <Layout>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/battle-report" element={<BattleReport />} />
-            <Route path="/battle-map" element={<BattleMap />} />
-            <Route path="/war-profiteering" element={<WarProfiteering />} />
-            <Route path="/alliance-wars" element={<AllianceWars />} />
-            <Route path="/trade-routes" element={<TradeRoutes />} />
-            <Route path="/impressum" element={<Impressum />} />
-            <Route path="/datenschutz" element={<Datenschutz />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
-      </Layout>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Layout>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/battle-report" element={<BattleReport />} />
+              <Route path="/battle-map" element={<BattleMap />} />
+              <Route path="/war-profiteering" element={<WarProfiteering />} />
+              <Route path="/alliance-wars" element={<AllianceWars />} />
+              <Route path="/trade-routes" element={<TradeRoutes />} />
+              <Route path="/impressum" element={<Impressum />} />
+              <Route path="/datenschutz" element={<Datenschutz />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </Layout>
+      </BrowserRouter>
+    </QueryClientProvider>
   );
 }
 

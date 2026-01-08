@@ -1,65 +1,31 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { reportsApi } from '../services/api';
 import { RefreshIndicator } from '../components/RefreshIndicator';
-import { BattleMapPreview } from '../components/BattleMapPreview';
+import { BattleMapPreviewLazy } from '../components/BattleMapPreviewLazy';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type {
-  BattleReport,
-  WarProfiteering,
-  AllianceWars,
-  TradeRoutes
-} from '../types/reports';
+import { useAllReports } from '../hooks/useReports';
 
 export function Home() {
-  const [battleReport, setBattleReport] = useState<BattleReport | null>(null);
-  const [profiteering, setProfiteering] = useState<WarProfiteering | null>(null);
-  const [allianceWars, setAllianceWars] = useState<AllianceWars | null>(null);
-  const [tradeRoutes, setTradeRoutes] = useState<TradeRoutes | null>(null);
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
 
-  const fetchAllReports = async () => {
-    try {
-      setError(null);
-      const [battle, profit, wars, routes] = await Promise.all([
-        reportsApi.getBattleReport(),
-        reportsApi.getWarProfiteering(),
-        reportsApi.getAllianceWars(),
-        reportsApi.getTradeRoutes(),
-      ]);
-
-      setBattleReport(battle);
-      setProfiteering(profit);
-      setAllianceWars(wars);
-      setTradeRoutes(routes);
-      setLastUpdated(new Date());
-      setLoading(false);
-    } catch (err: any) {
-      console.error('Failed to load reports:', err);
-      console.error('Error details:', {
-        message: err.message,
-        code: err.code,
-        response: err.response,
-        status: err.response?.status,
-        data: err.response?.data
-      });
-      setError('Failed to load reports. Please try again.');
-      setLoading(false);
-    }
-  };
-
-  // Initial load
-  useEffect(() => {
-    fetchAllReports();
-  }, []);
+  const {
+    battleReport,
+    profiteering,
+    allianceWars,
+    tradeRoutes,
+    isLoading,
+    isError,
+    error,
+    refetch
+  } = useAllReports();
 
   // Auto-refresh every 60 seconds
-  useAutoRefresh(fetchAllReports, 60);
+  useAutoRefresh(() => {
+    refetch();
+    setLastUpdated(new Date());
+  }, 60);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div>
         <div className="skeleton" style={{ height: '200px', marginBottom: '1rem' }} />
@@ -69,7 +35,7 @@ export function Home() {
     );
   }
 
-  if (error) {
+  if (isError) {
     return (
       <div className="card" style={{
         background: 'var(--danger)',
@@ -77,9 +43,12 @@ export function Home() {
         textAlign: 'center',
         padding: '2rem'
       }}>
-        <h2>❌ {error}</h2>
+        <h2>❌ {error instanceof Error ? error.message : 'Failed to load reports. Please try again.'}</h2>
         <button
-          onClick={fetchAllReports}
+          onClick={() => {
+            refetch();
+            setLastUpdated(new Date());
+          }}
           style={{
             marginTop: '1rem',
             padding: '0.5rem 1rem',
@@ -226,7 +195,7 @@ export function Home() {
               </div>
             </div>
           </div>
-          <BattleMapPreview
+          <BattleMapPreviewLazy
             battleReport={battleReport}
             showAllLayers={true}
           />
