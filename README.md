@@ -11,8 +11,9 @@ Comprehensive intelligence and industry platform for EVE Online. Two frontends: 
 **[🚀 https://eve.infinimind-creations.com](https://eve.infinimind-creations.com)** ⚠️ Alpha Version
 
 Free real-time combat intelligence dashboard with:
+- ⚡ **Live Battle Tracking** - Real-time battle detection & updates every 5 seconds
+- 🗺️ **ectmap Integration** - Full EVE universe map with live battle overlays
 - 📊 **24-Hour Battle Reports** - Track combat activity across New Eden
-- 🗺️ **3D Galaxy Combat Map** - Interactive visualization of all battles
 - 💰 **War Profiteering** - Most destroyed items and market opportunities
 - ⚔️ **Alliance Wars** - Active conflicts and combat statistics
 - 🛣️ **Trade Route Safety** - Danger analysis for cargo routes
@@ -80,13 +81,16 @@ Instant notifications when combat spikes are detected (5+ kills in 5 minutes):
 - **Material Expansion** - Recursive blueprint breakdown with option to build or buy sub-components
 
 ### ⚔️ Combat Intelligence (Public Dashboard)
+- **Live Battle Tracking** - Real-time battle detection from zkillboard stream (5+ kills/5min threshold)
+- **ectmap Integration** - Full EVE universe map with live battle overlays, interactive tooltips, click navigation
+- **Battle Detail Pages** - Individual battle analytics with kill timeline, ship class breakdown, ISK tracking
 - **24-Hour Battle Reports** - Total kills, ISK destroyed, peak activity hours, regional breakdown
-- **3D Galaxy Map** - Interactive Three.js visualization with real-time hotspot updates
 - **War Profiteering** - Track most destroyed items, market opportunities from combat losses
 - **Alliance Wars** - Active conflicts, kill/loss statistics, efficiency ratings, war zones
 - **Trade Route Safety** - Danger scoring based on recent kills along trade corridors
-- **Capital Tracking** - Monitor Titan, Supercarrier, Carrier, Dreadnought, and FAX losses
-- **Doctrine Detection** - Identify fleet compositions from loss patterns
+- **Telegram Integration** - Real-time battle alerts mirrored in dashboard feed
+- **Data Consistency** - Transactional integrity (battles only updated if kills successfully stored)
+- **Automatic Cleanup** - Old battles (>2h) removed every 30 minutes via cron job
 
 ### 👤 Character Management
 - **EVE SSO OAuth2** - Secure authentication with multiple character support
@@ -141,10 +145,17 @@ See [Agent Documentation](docs/agent/) for details.
 - MCP (Model Context Protocol) - 115 tools
 
 **Public Frontend** (`/public-frontend`):
-- React 18 + TypeScript 5
-- Three.js - 3D galaxy visualization
-- Vite - Build tooling
+- React 19 + TypeScript 5
+- Vite 7 - Build tooling
+- TanStack Query v5 - Data caching
+- ectmap integration (iframe, port 3001)
 - Auto-refresh every 60s
+
+**ectmap** (`/ectmap` - Port 3001):
+- Next.js 16 (Turbopack)
+- Canvas-based EVE Online universe map
+- Live battle overlay with 5s refresh
+- Interactive tooltips & click navigation
 
 **Internal Frontend** (`/frontend`):
 - React 18 + TypeScript 5
@@ -180,16 +191,22 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 # Public frontend setup (separate terminal)
 cd public-frontend
 npm install
+npm run dev -- --host 0.0.0.0
+
+# ectmap setup (separate terminal)
+cd ectmap
+npm install
 npm run dev
 
 # Internal frontend setup (separate terminal)
 cd frontend
 npm install
-npm run dev
+npm run dev -- --host 0.0.0.0
 ```
 
 ### Access Points
 - **Public Dashboard:** http://localhost:5173
+- **ectmap:** http://localhost:3001
 - **Internal Tools:** http://localhost:5174
 - **API Docs:** http://localhost:8000/docs
 - **Agent Interface:** http://localhost:5174/agent
@@ -198,10 +215,11 @@ npm run dev
 
 ## 📊 Data Sources
 
-- **zKillboard** - Combat data (daily killmail downloads)
+- **zKillboard RedisQ** - Real-time combat stream for live battle tracking
+- **zKillboard API** - Historical combat data (daily killmail downloads)
 - **ESI API** - EVE Online official API
 - **EVE SDE** - Static Data Export (PostgreSQL)
-- **Discord Webhooks** - Combat alerts and notifications
+- **Telegram Bot API** - Real-time battle alerts and scheduled reports
 
 ---
 
