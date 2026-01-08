@@ -401,7 +401,7 @@ class ZKillboardLiveService:
             print(f"Error parsing killmail: {e}")
             return None
 
-    def store_persistent_kill(self, kill: LiveKillmail, zkb_data: Dict, esi_killmail: Dict):
+    def store_persistent_kill(self, kill: LiveKillmail, zkb_data: Dict, esi_killmail: Dict) -> bool:
         """
         Store killmail permanently in PostgreSQL.
 
@@ -414,6 +414,9 @@ class ZKillboardLiveService:
             kill: Parsed killmail data
             zkb_data: zkillboard metadata (points, npc, awox flags)
             esi_killmail: Full ESI killmail data (for attacker details)
+
+        Returns:
+            True if successfully stored, False otherwise
         """
         try:
             with get_db_connection() as conn:
@@ -537,9 +540,11 @@ class ZKillboardLiveService:
                         ))
 
                     conn.commit()
+                    return True
 
         except Exception as e:
             print(f"Error storing killmail {kill.killmail_id} to PostgreSQL: {e}")
+            return False
 
     def _is_capital_ship(self, ship_type_id: int) -> bool:
         """
@@ -1246,7 +1251,7 @@ class ZKillboardLiveService:
         except Exception as e:
             print(f"Error finalizing wars: {e}")
 
-    def store_live_kill(self, kill: LiveKillmail, zkb_data: Optional[Dict] = None, esi_killmail: Optional[Dict] = None):
+    def store_live_kill(self, kill: LiveKillmail, zkb_data: Optional[Dict] = None, esi_killmail: Optional[Dict] = None) -> bool:
         """
         Store killmail in Redis with 24h TTL AND PostgreSQL permanently.
         Multiple storage patterns for different query types.
@@ -1255,12 +1260,23 @@ class ZKillboardLiveService:
             kill: Parsed killmail data
             zkb_data: Optional zkillboard metadata for PostgreSQL storage
             esi_killmail: Optional full ESI killmail data for detailed attacker storage
+
+        Returns:
+            True if PostgreSQL storage was successful (or not attempted), False if failed
         """
         timestamp = int(time.time())
 
         # PERSISTENT STORAGE: Write to PostgreSQL
+        db_stored = False
         if zkb_data and esi_killmail:
-            self.store_persistent_kill(kill, zkb_data, esi_killmail)
+            db_stored = self.store_persistent_kill(kill, zkb_data, esi_killmail)
+            if not db_stored:
+                print(f"[WARNING] Killmail {kill.killmail_id} NOT stored in database - skipping battle update")
+                return False
+        else:
+            # If we don't have full data, we can't store in DB, so don't count it
+            print(f"[WARNING] Killmail {kill.killmail_id} missing zkb_data or esi_killmail - skipping")
+            return False
 
         # TEMPORARY STORAGE: Redis for real-time queries
         # 1. Store full killmail by ID
@@ -1297,6 +1313,8 @@ class ZKillboardLiveService:
             key_item_demand = f"kill:item:{item['item_type_id']}:destroyed"
             self.redis_client.incrby(key_item_demand, item['quantity'])
             self.redis_client.expire(key_item_demand, REDIS_TTL)
+
+        return True
 
     def detect_hotspot(self, kill: LiveKillmail) -> Optional[Dict]:
         """
@@ -2040,11 +2058,18 @@ class ZKillboardLiveService:
             self.processed_kills = set(list(self.processed_kills)[-1000:])
 
         # Store (both Redis and PostgreSQL)
-        self.store_live_kill(
+        # CRITICAL: Only proceed with battle tracking if DB storage was successful
+        db_stored = self.store_live_kill(
             kill,
             zkb_data=zkb_entry.get("zkb", {}),
             esi_killmail=killmail
         )
+
+        if not db_stored:
+            # Kill was not successfully stored in database
+            # Don't update battles or track wars to maintain data consistency
+            print(f"[SKIP] Killmail {killmail_id} not stored - skipping battle/war tracking")
+            return
 
         # BATTLE TRACKING: Track all kills in active combat zones
         # Step 1: Check if hotspot detected (5+ kills in 5 min) - creates new battles
