@@ -668,41 +668,47 @@ async def get_battle_ship_classes(
                 if group_by == "category":
                     cur.execute("""
                         SELECT
-                            ship_category,
+                            COALESCE(
+                                LOWER(k.ship_category),
+                                LOWER(g."groupName")
+                            ) as category,
                             COUNT(*) as count
-                        FROM killmails
-                        WHERE solar_system_id = %s
-                            AND killmail_time >= %s
-                            AND killmail_time <= %s
-                            AND ship_category IS NOT NULL
-                        GROUP BY ship_category
+                        FROM killmails k
+                        LEFT JOIN "invTypes" t ON t."typeID" = k.ship_type_id
+                        LEFT JOIN "invGroups" g ON g."groupID" = t."groupID"
+                        WHERE k.solar_system_id = %s
+                            AND k.killmail_time >= %s
+                            AND k.killmail_time <= %s
+                        GROUP BY category
                         ORDER BY count DESC
                     """, (system_id, started_at, end_time))
                 elif group_by == "role":
                     cur.execute("""
                         SELECT
-                            ship_role,
+                            COALESCE(ship_role, 'standard') as role,
                             COUNT(*) as count
                         FROM killmails
                         WHERE solar_system_id = %s
                             AND killmail_time >= %s
                             AND killmail_time <= %s
-                            AND ship_role IS NOT NULL
-                        GROUP BY ship_role
+                        GROUP BY role
                         ORDER BY count DESC
                     """, (system_id, started_at, end_time))
                 else:  # both
                     cur.execute("""
                         SELECT
-                            ship_category || ':' || ship_role as combined,
+                            COALESCE(
+                                LOWER(k.ship_category),
+                                LOWER(g."groupName")
+                            ) || ':' || COALESCE(k.ship_role, 'standard') as combined,
                             COUNT(*) as count
-                        FROM killmails
-                        WHERE solar_system_id = %s
-                            AND killmail_time >= %s
-                            AND killmail_time <= %s
-                            AND ship_category IS NOT NULL
-                            AND ship_role IS NOT NULL
-                        GROUP BY ship_category, ship_role
+                        FROM killmails k
+                        LEFT JOIN "invTypes" t ON t."typeID" = k.ship_type_id
+                        LEFT JOIN "invGroups" g ON g."groupID" = t."groupID"
+                        WHERE k.solar_system_id = %s
+                            AND k.killmail_time >= %s
+                            AND k.killmail_time <= %s
+                        GROUP BY combined
                         ORDER BY count DESC
                     """, (system_id, started_at, end_time))
 
