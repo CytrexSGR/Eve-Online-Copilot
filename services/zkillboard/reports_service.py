@@ -33,8 +33,10 @@ SHIP_CATEGORIES = {
     'battleship': [27, 898, 900],  # Battleships, Black Ops, Marauders
     'battlecruiser': [419, 540],  # Battlecruisers, Command Ships
     'cruiser': [26, 358, 894, 906, 963],  # Cruisers, HACs, Recons, etc
-    'destroyer': [420, 541],  # Destroyers, Interdictors
+    'destroyer': [420, 541, 1305],  # Destroyers, Interdictors, Tactical Destroyers
     'frigate': [25, 324, 831, 893],  # Frigates, AFs, Interceptors, etc
+    'logistics': [832],  # Logistics Ships (Basilisk, Scimitar, etc)
+    'stealth_bomber': [834],  # Stealth Bombers (Purifier, Manticore, etc)
     'freighter': [513, 902],  # Freighters, Jump Freighters
     'industrial': [28, 463],  # Industrials, Mining Barges
     'exhumer': [543],  # Exhumers
@@ -71,8 +73,9 @@ class ZKillboardReportsService:
         """
         Get ship class from ship_type_id using EVE SDE.
 
-        Returns: 'capital', 'battleship', 'battlecruiser', 'cruiser', 'frigate', 'destroyer',
-                 'industrial', 'hauler', 'mining', 'capsule', 'other', or None
+        Returns: 'capital', 'battleship', 'battlecruiser', 'cruiser', 'destroyer', 'frigate',
+                 'logistics', 'stealth_bomber', 'industrial', 'hauler', 'mining', 'capsule',
+                 'other', or None
         """
         with get_db_connection() as conn:
             with conn.cursor() as cur:
@@ -103,6 +106,10 @@ class ZKillboardReportsService:
                     return 'destroyer'
                 elif group_id in SHIP_CATEGORIES.get('frigate', []):
                     return 'frigate'
+                elif group_id in SHIP_CATEGORIES.get('logistics', []):
+                    return 'logistics'
+                elif group_id in SHIP_CATEGORIES.get('stealth_bomber', []):
+                    return 'stealth_bomber'
                 elif group_id in SHIP_CATEGORIES.get('freighter', []):
                     return 'hauler'
                 elif group_id in SHIP_CATEGORIES.get('exhumer', []):
@@ -903,8 +910,10 @@ class ZKillboardReportsService:
                                     WHEN ig."groupID" IN (27, 898, 900) THEN 'battleship'
                                     WHEN ig."groupID" IN (419, 540) THEN 'battlecruiser'
                                     WHEN ig."groupID" IN (26, 358, 894, 906, 963) THEN 'cruiser'
-                                    WHEN ig."groupID" IN (420, 541) THEN 'destroyer'
+                                    WHEN ig."groupID" IN (420, 541, 1305) THEN 'destroyer'
                                     WHEN ig."groupID" IN (25, 324, 831, 893) THEN 'frigate'
+                                    WHEN ig."groupID" IN (832) THEN 'logistics'
+                                    WHEN ig."groupID" IN (834) THEN 'stealth_bomber'
                                     WHEN ig."groupID" IN (513, 902) THEN 'hauler'
                                     WHEN ig."groupID" IN (543) THEN 'mining'
                                     WHEN ig."groupID" IN (28, 463) THEN 'industrial'
@@ -934,13 +943,13 @@ class ZKillboardReportsService:
 
                         ship_classes_a = {
                             "capital": 0, "battleship": 0, "battlecruiser": 0, "cruiser": 0,
-                            "destroyer": 0, "frigate": 0, "industrial": 0, "hauler": 0,
-                            "mining": 0, "capsule": 0, "other": 0
+                            "destroyer": 0, "frigate": 0, "logistics": 0, "stealth_bomber": 0,
+                            "industrial": 0, "hauler": 0, "mining": 0, "capsule": 0, "other": 0
                         }
                         ship_classes_b = {
                             "capital": 0, "battleship": 0, "battlecruiser": 0, "cruiser": 0,
-                            "destroyer": 0, "frigate": 0, "industrial": 0, "hauler": 0,
-                            "mining": 0, "capsule": 0, "other": 0
+                            "destroyer": 0, "frigate": 0, "logistics": 0, "stealth_bomber": 0,
+                            "industrial": 0, "hauler": 0, "mining": 0, "capsule": 0, "other": 0
                         }
 
                         for ship_class, victim_alliance_id, count in cur.fetchall():

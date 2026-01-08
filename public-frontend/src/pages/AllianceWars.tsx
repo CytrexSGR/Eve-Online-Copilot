@@ -288,6 +288,8 @@ export function AllianceWars() {
                                 case 'cruiser': return 'var(--accent-blue)';
                                 case 'destroyer': return '#a855f7';
                                 case 'frigate': return 'var(--success)';
+                                case 'logistics': return '#22d3ee';  // Cyan for support ships
+                                case 'stealth_bomber': return '#dc2626';  // Red for bombers
                                 case 'industrial': return '#8b949e';
                                 case 'hauler': return '#6e7681';
                                 case 'mining': return '#d29922';
@@ -298,6 +300,7 @@ export function AllianceWars() {
                             const getShipClassLabel = (cls: string) => {
                               switch(cls) {
                                 case 'battlecruiser': return 'Battlecruiser';
+                                case 'stealth_bomber': return 'Stealth Bomber';
                                 case 'capsule': return 'Capsule/Pod';
                                 default: return cls.charAt(0).toUpperCase() + cls.slice(1);
                               }
@@ -356,6 +359,8 @@ export function AllianceWars() {
                                 case 'cruiser': return 'var(--accent-blue)';
                                 case 'destroyer': return '#a855f7';
                                 case 'frigate': return 'var(--success)';
+                                case 'logistics': return '#22d3ee';  // Cyan for support ships
+                                case 'stealth_bomber': return '#dc2626';  // Red for bombers
                                 case 'industrial': return '#8b949e';
                                 case 'hauler': return '#6e7681';
                                 case 'mining': return '#d29922';
@@ -366,6 +371,7 @@ export function AllianceWars() {
                             const getShipClassLabel = (cls: string) => {
                               switch(cls) {
                                 case 'battlecruiser': return 'Battlecruiser';
+                                case 'stealth_bomber': return 'Stealth Bomber';
                                 case 'capsule': return 'Capsule/Pod';
                                 default: return cls.charAt(0).toUpperCase() + cls.slice(1);
                               }
