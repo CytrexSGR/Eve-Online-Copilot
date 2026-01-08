@@ -71,7 +71,8 @@ class ZKillboardReportsService:
         """
         Get ship class from ship_type_id using EVE SDE.
 
-        Returns: 'capital', 'battleship', 'cruiser', 'frigate', 'destroyer', 'industrial', or None
+        Returns: 'capital', 'battleship', 'battlecruiser', 'cruiser', 'frigate', 'destroyer',
+                 'industrial', 'hauler', 'mining', 'capsule', 'other', or None
         """
         with get_db_connection() as conn:
             with conn.cursor() as cur:
@@ -85,21 +86,28 @@ class ZKillboardReportsService:
 
                 group_id = result[0]
 
-                # Classify based on group
-                if group_id in SHIP_CATEGORIES.get('titan', []) + SHIP_CATEGORIES.get('supercarrier', []) + \
+                # Classify based on group (order matters - most specific first)
+                if group_id in SHIP_CATEGORIES.get('capsule', []):
+                    return 'capsule'
+                elif group_id in SHIP_CATEGORIES.get('titan', []) + SHIP_CATEGORIES.get('supercarrier', []) + \
                              SHIP_CATEGORIES.get('carrier', []) + SHIP_CATEGORIES.get('dreadnought', []) + \
                              SHIP_CATEGORIES.get('force_auxiliary', []):
                     return 'capital'
-                elif group_id in SHIP_CATEGORIES.get('battleship', []) + SHIP_CATEGORIES.get('battlecruiser', []):
+                elif group_id in SHIP_CATEGORIES.get('battleship', []):
                     return 'battleship'
+                elif group_id in SHIP_CATEGORIES.get('battlecruiser', []):
+                    return 'battlecruiser'
                 elif group_id in SHIP_CATEGORIES.get('cruiser', []):
                     return 'cruiser'
-                elif group_id in SHIP_CATEGORIES.get('frigate', []):
-                    return 'frigate'
                 elif group_id in SHIP_CATEGORIES.get('destroyer', []):
                     return 'destroyer'
-                elif group_id in SHIP_CATEGORIES.get('freighter', []) + SHIP_CATEGORIES.get('industrial', []) + \
-                             SHIP_CATEGORIES.get('exhumer', []):
+                elif group_id in SHIP_CATEGORIES.get('frigate', []):
+                    return 'frigate'
+                elif group_id in SHIP_CATEGORIES.get('freighter', []):
+                    return 'hauler'
+                elif group_id in SHIP_CATEGORIES.get('exhumer', []):
+                    return 'mining'
+                elif group_id in SHIP_CATEGORIES.get('industrial', []):
                     return 'industrial'
                 else:
                     return 'other'
@@ -848,11 +856,16 @@ class ZKillboardReportsService:
                         cur.execute("""
                             SELECT
                                 CASE
-                                    WHEN ig."groupID" IN (30, 659, 547, 485, 1538, 941) THEN 'capital'
+                                    WHEN ig."groupID" IN (29) THEN 'capsule'
+                                    WHEN ig."groupID" IN (30, 659, 547, 485, 1538) THEN 'capital'
                                     WHEN ig."groupID" IN (27, 898, 900) THEN 'battleship'
-                                    WHEN ig."groupID" IN (26, 894, 906) THEN 'cruiser'
-                                    WHEN ig."groupID" IN (25, 324, 893, 1534) THEN 'frigate'
-                                    WHEN ig."groupID" IN (420, 541, 1305) THEN 'destroyer'
+                                    WHEN ig."groupID" IN (419, 540) THEN 'battlecruiser'
+                                    WHEN ig."groupID" IN (26, 358, 894, 906, 963) THEN 'cruiser'
+                                    WHEN ig."groupID" IN (420, 541) THEN 'destroyer'
+                                    WHEN ig."groupID" IN (25, 324, 831, 893) THEN 'frigate'
+                                    WHEN ig."groupID" IN (513, 902) THEN 'hauler'
+                                    WHEN ig."groupID" IN (543) THEN 'mining'
+                                    WHEN ig."groupID" IN (28, 463) THEN 'industrial'
                                     ELSE 'other'
                                 END as ship_class,
                                 CASE
@@ -872,8 +885,16 @@ class ZKillboardReportsService:
                             GROUP BY ship_class, alliance_role
                         """, (alliance_a, alliance_b, days, alliance_a, alliance_b, alliance_b, alliance_a))
 
-                        ship_classes_a = {"capital": 0, "battleship": 0, "cruiser": 0, "frigate": 0, "destroyer": 0, "other": 0}
-                        ship_classes_b = {"capital": 0, "battleship": 0, "cruiser": 0, "frigate": 0, "destroyer": 0, "other": 0}
+                        ship_classes_a = {
+                            "capital": 0, "battleship": 0, "battlecruiser": 0, "cruiser": 0,
+                            "destroyer": 0, "frigate": 0, "industrial": 0, "hauler": 0,
+                            "mining": 0, "capsule": 0, "other": 0
+                        }
+                        ship_classes_b = {
+                            "capital": 0, "battleship": 0, "battlecruiser": 0, "cruiser": 0,
+                            "destroyer": 0, "frigate": 0, "industrial": 0, "hauler": 0,
+                            "mining": 0, "capsule": 0, "other": 0
+                        }
 
                         for ship_class, role, count in cur.fetchall():
                             if role == "a_loss":
@@ -993,8 +1014,16 @@ class ZKillboardReportsService:
                             "isk_by_a": 0,
                             "isk_by_b": 0,
                             "systems": {},  # system_id -> kill count
-                            "ship_classes_a": {"capital": 0, "battleship": 0, "cruiser": 0, "frigate": 0, "destroyer": 0, "industrial": 0, "other": 0},
-                            "ship_classes_b": {"capital": 0, "battleship": 0, "cruiser": 0, "frigate": 0, "destroyer": 0, "industrial": 0, "other": 0},
+                            "ship_classes_a": {
+                                "capital": 0, "battleship": 0, "battlecruiser": 0, "cruiser": 0,
+                                "destroyer": 0, "frigate": 0, "industrial": 0, "hauler": 0,
+                                "mining": 0, "capsule": 0, "other": 0
+                            },
+                            "ship_classes_b": {
+                                "capital": 0, "battleship": 0, "battlecruiser": 0, "cruiser": 0,
+                                "destroyer": 0, "frigate": 0, "industrial": 0, "hauler": 0,
+                                "mining": 0, "capsule": 0, "other": 0
+                            },
                             "hourly_activity": {},  # hour (0-23) -> kill count
                             "biggest_loss_a": {"ship_type_id": None, "value": 0},
                             "biggest_loss_b": {"ship_type_id": None, "value": 0},

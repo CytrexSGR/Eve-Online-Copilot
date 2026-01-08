@@ -276,16 +276,40 @@ export function AllianceWars() {
                         {conflict.alliance_1_name} - Ships Lost
                       </h5>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {Object.entries(conflict.alliance_1_ship_classes || {}).map(([shipClass, count]) => (
-                          count > 0 && (
+                        {Object.entries(conflict.alliance_1_ship_classes || {})
+                          .filter(([_, count]) => count > 0)
+                          .sort((a, b) => b[1] - a[1])  // Sort by count descending
+                          .map(([shipClass, count]) => {
+                            const getShipClassColor = (cls: string) => {
+                              switch(cls) {
+                                case 'capital': return 'var(--danger)';
+                                case 'battleship': return '#ff6b00';
+                                case 'battlecruiser': return '#ff9500';
+                                case 'cruiser': return 'var(--accent-blue)';
+                                case 'destroyer': return '#a855f7';
+                                case 'frigate': return 'var(--success)';
+                                case 'industrial': return '#8b949e';
+                                case 'hauler': return '#6e7681';
+                                case 'mining': return '#d29922';
+                                case 'capsule': return '#4a5568';
+                                default: return 'var(--text-secondary)';
+                              }
+                            };
+                            const getShipClassLabel = (cls: string) => {
+                              switch(cls) {
+                                case 'battlecruiser': return 'Battlecruiser';
+                                case 'capsule': return 'Capsule/Pod';
+                                default: return cls.charAt(0).toUpperCase() + cls.slice(1);
+                              }
+                            };
+                            return (
                             <div key={shipClass} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <div style={{
-                                width: '100px',
+                                width: '110px',
                                 fontSize: '0.75rem',
-                                textTransform: 'capitalize',
                                 color: 'var(--text-secondary)'
                               }}>
-                                {shipClass === 'other' ? 'Other' : shipClass}
+                                {getShipClassLabel(shipClass)}
                               </div>
                               <div style={{
                                 flex: 1,
@@ -297,24 +321,20 @@ export function AllianceWars() {
                                 <div style={{
                                   height: '100%',
                                   width: `${(count / Math.max(...Object.values(conflict.alliance_1_ship_classes || {}))) * 100}%`,
-                                  background: shipClass === 'capital' ? 'var(--danger)' :
-                                             shipClass === 'battleship' ? 'var(--warning)' :
-                                             shipClass === 'cruiser' ? 'var(--accent-blue)' :
-                                             shipClass === 'frigate' ? 'var(--success)' : 'var(--text-secondary)',
+                                  background: getShipClassColor(shipClass),
                                   transition: 'width 0.3s ease'
                                 }}></div>
                               </div>
                               <div style={{
-                                width: '40px',
+                                width: '50px',
                                 textAlign: 'right',
                                 fontWeight: 600,
                                 fontSize: '0.875rem'
                               }}>
-                                {count}
+                                {count.toLocaleString()}
                               </div>
                             </div>
-                          )
-                        ))}
+                          )})}
                       </div>
                     </div>
 
@@ -324,16 +344,40 @@ export function AllianceWars() {
                         {conflict.alliance_2_name} - Ships Lost
                       </h5>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {Object.entries(conflict.alliance_2_ship_classes || {}).map(([shipClass, count]) => (
-                          count > 0 && (
+                        {Object.entries(conflict.alliance_2_ship_classes || {})
+                          .filter(([_, count]) => count > 0)
+                          .sort((a, b) => b[1] - a[1])  // Sort by count descending
+                          .map(([shipClass, count]) => {
+                            const getShipClassColor = (cls: string) => {
+                              switch(cls) {
+                                case 'capital': return 'var(--danger)';
+                                case 'battleship': return '#ff6b00';
+                                case 'battlecruiser': return '#ff9500';
+                                case 'cruiser': return 'var(--accent-blue)';
+                                case 'destroyer': return '#a855f7';
+                                case 'frigate': return 'var(--success)';
+                                case 'industrial': return '#8b949e';
+                                case 'hauler': return '#6e7681';
+                                case 'mining': return '#d29922';
+                                case 'capsule': return '#4a5568';
+                                default: return 'var(--text-secondary)';
+                              }
+                            };
+                            const getShipClassLabel = (cls: string) => {
+                              switch(cls) {
+                                case 'battlecruiser': return 'Battlecruiser';
+                                case 'capsule': return 'Capsule/Pod';
+                                default: return cls.charAt(0).toUpperCase() + cls.slice(1);
+                              }
+                            };
+                            return (
                             <div key={shipClass} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <div style={{
-                                width: '100px',
+                                width: '110px',
                                 fontSize: '0.75rem',
-                                textTransform: 'capitalize',
                                 color: 'var(--text-secondary)'
                               }}>
-                                {shipClass === 'other' ? 'Other' : shipClass}
+                                {getShipClassLabel(shipClass)}
                               </div>
                               <div style={{
                                 flex: 1,
@@ -345,24 +389,20 @@ export function AllianceWars() {
                                 <div style={{
                                   height: '100%',
                                   width: `${(count / Math.max(...Object.values(conflict.alliance_2_ship_classes || {}))) * 100}%`,
-                                  background: shipClass === 'capital' ? 'var(--danger)' :
-                                             shipClass === 'battleship' ? 'var(--warning)' :
-                                             shipClass === 'cruiser' ? 'var(--accent-blue)' :
-                                             shipClass === 'frigate' ? 'var(--success)' : 'var(--text-secondary)',
+                                  background: getShipClassColor(shipClass),
                                   transition: 'width 0.3s ease'
                                 }}></div>
                               </div>
                               <div style={{
-                                width: '40px',
+                                width: '50px',
                                 textAlign: 'right',
                                 fontWeight: 600,
                                 fontSize: '0.875rem'
                               }}>
-                                {count}
+                                {count.toLocaleString()}
                               </div>
                             </div>
-                          )
-                        ))}
+                          )})}
                       </div>
                     </div>
                   </div>
