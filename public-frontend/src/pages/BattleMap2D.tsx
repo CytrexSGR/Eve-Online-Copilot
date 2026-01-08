@@ -372,7 +372,7 @@ export function BattleMap2D() {
       <div className="card" style={{ padding: 0, position: 'relative', overflow: 'hidden' }}>
         {mapView === 'ectmap' ? (
           <iframe
-            src="http://localhost:3001"
+            src="http://192.168.178.108:3001"
             style={{
               width: '100%',
               height: '700px',
