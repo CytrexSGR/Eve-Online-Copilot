@@ -170,8 +170,8 @@ async def get_alliance_wars() -> Dict:
                 "peak_hours": [],
                 # NEW: Economic Metrics (calculated from available data)
                 "avg_kill_value": war["total_isk"] / war["total_kills"] if war["total_kills"] > 0 else 0,
-                "alliance_1_biggest_loss": {"ship_type_id": None, "value": 0},
-                "alliance_2_biggest_loss": {"ship_type_id": None, "value": 0}
+                "alliance_1_biggest_loss": war.get("biggest_loss_a", {"ship_type_id": None, "value": 0}),
+                "alliance_2_biggest_loss": war.get("biggest_loss_b", {"ship_type_id": None, "value": 0})
             })
 
         return {
