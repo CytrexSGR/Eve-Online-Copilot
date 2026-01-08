@@ -83,6 +83,27 @@ export function BattleMap() {
     };
   } | null>(null);
 
+  // Tooltip state for hover
+  const [tooltip, setTooltip] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    battle: ActiveBattle | null;
+  }>({ visible: false, x: 0, y: 0, battle: null });
+
+  // Debug tooltip state
+  useEffect(() => {
+    if (tooltip.visible && tooltip.battle) {
+      console.log('[BattleMap] Tooltip visible:', {
+        system: tooltip.battle.system_name,
+        x: tooltip.x,
+        y: tooltip.y
+      });
+    } else if (!tooltip.visible) {
+      console.log('[BattleMap] Tooltip hidden');
+    }
+  }, [tooltip.visible, tooltip.battle?.system_name, tooltip.x, tooltip.y]);
+
   // Initialize map control
   const mapControl = useMapControl({
     language: 'en',
@@ -188,8 +209,8 @@ export function BattleMap() {
     // Initial fetch
     fetchActiveBattles();
 
-    // Poll every 30 seconds
-    const interval = setInterval(fetchActiveBattles, 30000);
+    // Poll every 10 seconds (same as live hotspots)
+    const interval = setInterval(fetchActiveBattles, 10000);
 
     return () => clearInterval(interval);
   }, []);
@@ -895,6 +916,119 @@ export function BattleMap() {
           </label>
         </div>
 
+        {/* Top Active Battles List */}
+        {activeBattles.length > 0 && (
+            <div style={{
+              marginTop: '1.5rem',
+              paddingTop: '1.5rem',
+              borderTop: '1px solid var(--border-color)',
+            }}>
+              <h3 style={{ fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span>🔥</span> Top Active Battles
+              </h3>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+                maxHeight: '350px',
+                overflowY: 'auto',
+                paddingRight: '0.5rem'
+              }}>
+                {activeBattles.slice(0, 10).map((battle) => (
+                  <div
+                    key={battle.battle_id}
+                    className="battle-card"
+                    style={{
+                      padding: '0.75rem',
+                      background: 'var(--bg-primary)',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      console.log('[BattleMap] Mouse enter battle:', battle.system_name);
+                      setTooltip({
+                        visible: true,
+                        x: e.clientX,
+                        y: e.clientY,
+                        battle
+                      });
+                      // Hover effect
+                      (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)';
+                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-blue)';
+                    }}
+                    onMouseMove={(e) => {
+                      if (tooltip.visible && tooltip.battle?.battle_id === battle.battle_id) {
+                        setTooltip(prev => ({
+                          ...prev,
+                          x: e.clientX,
+                          y: e.clientY,
+                        }));
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      console.log('[BattleMap] Mouse leave battle');
+                      setTooltip({ visible: false, x: 0, y: 0, battle: null });
+                      // Remove hover effect
+                      (e.currentTarget as HTMLElement).style.background = 'var(--bg-primary)';
+                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-color)';
+                    }}
+                    onClick={() => handleSystemClick(battle.system_id)}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '0.25rem'
+                    }}>
+                      <div style={{
+                        fontSize: '0.875rem',
+                        fontWeight: 600,
+                        color: 'var(--text-primary)'
+                      }}>
+                        {battle.system_name}
+                      </div>
+                      <div style={{
+                        fontSize: '0.65rem',
+                        fontWeight: 600,
+                        padding: '0.125rem 0.375rem',
+                        borderRadius: '3px',
+                        background: battle.intensity === 'extreme' ? 'var(--danger)' :
+                                    battle.intensity === 'high' ? 'var(--warning)' :
+                                    battle.intensity === 'moderate' ? 'var(--accent-blue)' :
+                                    'var(--success)',
+                        color: 'white'
+                      }}>
+                        {battle.intensity.toUpperCase()}
+                      </div>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      gap: '0.75rem',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-secondary)'
+                    }}>
+                      <span>⚔️ {battle.total_kills}</span>
+                      <span>💰 {(battle.total_isk_destroyed / 1_000_000_000).toFixed(1)}B</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {activeBattles.length > 10 && (
+                <div style={{
+                  marginTop: '0.5rem',
+                  fontSize: '0.75rem',
+                  color: 'var(--text-tertiary)',
+                  textAlign: 'center',
+                  fontStyle: 'italic'
+                }}>
+                  Top 10 of {activeBattles.length} battles
+                </div>
+              )}
+            </div>
+        )}
+
         {/* Global Stats */}
         {battleReport && (
           <div style={{
@@ -941,6 +1075,97 @@ export function BattleMap() {
           regions={regions}
           mapControl={mapControl}
         />
+
+        {/* Tooltip for battles */}
+        {tooltip.visible && tooltip.battle && (
+          <div style={{
+            position: 'fixed',
+            left: `${tooltip.x + 15}px`,
+            top: `${tooltip.y + 15}px`,
+            background: 'var(--bg-elevated)',
+            border: '2px solid var(--accent-blue)',
+            borderRadius: '8px',
+            padding: '0.75rem',
+            minWidth: '250px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+            pointerEvents: 'none',
+            zIndex: 10000,
+          }}>
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{
+                fontSize: '1rem',
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                marginBottom: '0.25rem'
+              }}>
+                {tooltip.battle.system_name}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                {tooltip.battle.region_name} • {tooltip.battle.security.toFixed(1)} sec
+              </div>
+            </div>
+
+            <div style={{
+              display: 'inline-block',
+              padding: '0.25rem 0.5rem',
+              borderRadius: '4px',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              marginBottom: '0.5rem',
+              background: tooltip.battle.intensity === 'extreme' ? 'var(--danger)' :
+                          tooltip.battle.intensity === 'high' ? 'var(--warning)' :
+                          tooltip.battle.intensity === 'moderate' ? 'var(--accent-blue)' :
+                          'var(--success)',
+              color: 'white'
+            }}>
+              {tooltip.battle.intensity.toUpperCase()} INTENSITY
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '0.5rem',
+              fontSize: '0.875rem'
+            }}>
+              <div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Kills</div>
+                <div style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>
+                  {tooltip.battle.total_kills}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>ISK Destroyed</div>
+                <div style={{ color: 'var(--danger)', fontWeight: 600 }}>
+                  {(tooltip.battle.total_isk_destroyed / 1_000_000_000).toFixed(1)}B
+                </div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Duration</div>
+                <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                  {Math.floor(tooltip.battle.duration_minutes / 60)}h {tooltip.battle.duration_minutes % 60}m
+                </div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Status</div>
+                <div style={{ color: 'var(--success)', fontWeight: 600 }}>
+                  ACTIVE
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              marginTop: '0.5rem',
+              paddingTop: '0.5rem',
+              borderTop: '1px solid var(--border-color)',
+              fontSize: '0.75rem',
+              color: 'var(--text-tertiary)',
+              fontStyle: 'italic'
+            }}>
+              Click system for full details
+            </div>
+          </div>
+        )}
+
 
         {/* Instructions overlay */}
         <div style={{
