@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { reportsApi } from '../services/api';
 import { RefreshIndicator } from '../components/RefreshIndicator';
-import { BattleMapPreview } from '../components/BattleMapPreview';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { getSecurityColor, formatSecurity, formatISK } from '../utils/security';
 import type { BattleReport as BattleReportType } from '../types/reports';
@@ -11,7 +10,6 @@ export function BattleReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [show3DMap, setShow3DMap] = useState(false);
 
   const fetchReport = async () => {
     try {
@@ -86,36 +84,65 @@ export function BattleReport() {
         )}
       </div>
 
-      {/* 3D GALAXY MAP PREVIEW */}
-      {report.hot_zones && report.hot_zones.length > 0 && (
-        <div style={{ marginBottom: '2rem' }}>
-          <h2 style={{ marginBottom: '1rem' }}>🗺️ Galaxy Hot Zones - 3D View</h2>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-            Interactive 3D map showing combat hot zones across New Eden
-          </p>
-          {!show3DMap ? (
-            <div className="card" style={{ background: 'var(--bg-elevated)', padding: '3rem', textAlign: 'center' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🗺️</div>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-                3D Galaxy Map (loads ~8MB of map data)
-              </p>
-              <button
-                onClick={() => setShow3DMap(true)}
-                className="btn btn-primary"
-                style={{
-                  padding: '0.75rem 2rem',
-                  fontSize: '1rem',
-                  cursor: 'pointer'
-                }}
-              >
-                Load 3D Map
-              </button>
-            </div>
-          ) : (
-            <BattleMapPreview hotZones={report.hot_zones} />
-          )}
+      {/* ECTMAP - LIVE BATTLE MAP */}
+      <div style={{ marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>🗺️ Live Battle Map - EVE Universe</h2>
+            <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem', marginBottom: 0 }}>
+              Interactive map with live battle tracking • Click battles for details • Hover for info
+            </p>
+          </div>
+          <a
+            href="http://192.168.178.108:3001"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-primary"
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.875rem',
+              textDecoration: 'none',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Open Full Map ↗
+          </a>
         </div>
-      )}
+        <div
+          className="card"
+          style={{
+            background: 'var(--bg-primary)',
+            padding: '0',
+            overflow: 'hidden',
+            border: '2px solid var(--border)'
+          }}
+        >
+          <iframe
+            src="http://192.168.178.108:3001"
+            style={{
+              width: '100%',
+              height: '700px',
+              border: 'none',
+              display: 'block'
+            }}
+            title="EVE Online Battle Map (ectmap)"
+          />
+        </div>
+        <div style={{
+          marginTop: '0.5rem',
+          fontSize: '0.75rem',
+          color: 'var(--text-secondary)',
+          display: 'flex',
+          gap: '1.5rem',
+          flexWrap: 'wrap'
+        }}>
+          <span>🟢 Live Updates (5s)</span>
+          <span>🎯 Click battles → Detail page</span>
+          <span>ℹ️ Hover battles → Quick info</span>
+          <span>🔴 Color by intensity</span>
+          <span>📍 All systems & regions</span>
+        </div>
+      </div>
 
       {/* HOT ZONES */}
       {report.hot_zones && report.hot_zones.length > 0 && (
