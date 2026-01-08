@@ -958,40 +958,41 @@ class ZKillboardReportsService:
                             elif victim_alliance_id == alliance_b:
                                 ship_classes_b[ship_class] = count
 
-                        # Get biggest losses for each alliance
+                        # Get biggest loss for alliance A
                         cur.execute("""
-                            SELECT
-                                k.victim_alliance_id,
-                                k.ship_type_id,
-                                k.ship_value
+                            SELECT k.ship_type_id, k.ship_value
                             FROM killmails k
                             WHERE k.killmail_time >= NOW() - INTERVAL '%s days'
-                              AND k.victim_alliance_id IN (%s, %s)
-                              AND (
-                                  (k.victim_alliance_id = %s AND EXISTS (
-                                      SELECT 1 FROM killmail_attackers ka
-                                      WHERE ka.killmail_id = k.killmail_id
-                                      AND ka.alliance_id = %s
-                                  ))
-                                  OR
-                                  (k.victim_alliance_id = %s AND EXISTS (
-                                      SELECT 1 FROM killmail_attackers ka
-                                      WHERE ka.killmail_id = k.killmail_id
-                                      AND ka.alliance_id = %s
-                                  ))
+                              AND k.victim_alliance_id = %s
+                              AND EXISTS (
+                                  SELECT 1 FROM killmail_attackers ka
+                                  WHERE ka.killmail_id = k.killmail_id
+                                  AND ka.alliance_id = %s
                               )
                             ORDER BY k.ship_value DESC
-                            LIMIT 2
-                        """, (days, alliance_a, alliance_b, alliance_a, alliance_b, alliance_b, alliance_a))
+                            LIMIT 1
+                        """, (days, alliance_a, alliance_b))
 
-                        biggest_loss_a = {"ship_type_id": None, "value": 0}
-                        biggest_loss_b = {"ship_type_id": None, "value": 0}
+                        result_a = cur.fetchone()
+                        biggest_loss_a = {"ship_type_id": result_a[0], "value": int(result_a[1])} if result_a else {"ship_type_id": None, "value": 0}
 
-                        for victim_alliance_id, ship_type_id, ship_value in cur.fetchall():
-                            if victim_alliance_id == alliance_a and biggest_loss_a["value"] == 0:
-                                biggest_loss_a = {"ship_type_id": ship_type_id, "value": int(ship_value)}
-                            elif victim_alliance_id == alliance_b and biggest_loss_b["value"] == 0:
-                                biggest_loss_b = {"ship_type_id": ship_type_id, "value": int(ship_value)}
+                        # Get biggest loss for alliance B
+                        cur.execute("""
+                            SELECT k.ship_type_id, k.ship_value
+                            FROM killmails k
+                            WHERE k.killmail_time >= NOW() - INTERVAL '%s days'
+                              AND k.victim_alliance_id = %s
+                              AND EXISTS (
+                                  SELECT 1 FROM killmail_attackers ka
+                                  WHERE ka.killmail_id = k.killmail_id
+                                  AND ka.alliance_id = %s
+                              )
+                            ORDER BY k.ship_value DESC
+                            LIMIT 1
+                        """, (days, alliance_b, alliance_a))
+
+                        result_b = cur.fetchone()
+                        biggest_loss_b = {"ship_type_id": result_b[0], "value": int(result_b[1])} if result_b else {"ship_type_id": None, "value": 0}
 
                         # Calculate war intensity score
                         isk_score = (total_isk / 1e9) * 0.6
