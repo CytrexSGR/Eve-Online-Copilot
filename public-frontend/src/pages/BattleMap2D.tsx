@@ -46,6 +46,10 @@ interface ViewPort {
 export function BattleMap2D() {
   const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Map view toggle state
+  const [mapView, setMapView] = useState<'battles' | 'ectmap'>('ectmap');
+
   const [systems, setSystems] = useState<MapSystem[]>([]);
   const [battles, setBattles] = useState<ActiveBattle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -291,51 +295,109 @@ export function BattleMap2D() {
     <div>
       {/* Header Card */}
       <div className="card" style={{ marginBottom: '1.5rem' }}>
-        <h1>🗺️ EVE Battle Map</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem' }}>
-          Fast 2D Canvas visualization of {battles.length} active battles across New Eden
-        </p>
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <button
-            onClick={resetView}
-            style={{
-              padding: '0.5rem 1rem',
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontSize: '0.875rem'
-            }}
-          >
-            🎯 Reset View
-          </button>
-          <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-            Zoom: {(viewport.scale * 100).toFixed(0)}%
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+          <div>
+            <h1>🗺️ EVE Battle Map</h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
+              {mapView === 'ectmap'
+                ? 'Complete EVE Online universe map with all systems, regions, and routes'
+                : `Fast 2D Canvas visualization of ${battles.length} active battles across New Eden`}
+            </p>
           </div>
-          <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-            💡 Scroll to zoom • Drag to pan • Click battles for details
+
+          {/* View Toggle */}
+          <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--bg-primary)', padding: '0.25rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+            <button
+              onClick={() => setMapView('ectmap')}
+              style={{
+                padding: '0.5rem 1rem',
+                background: mapView === 'ectmap' ? 'var(--accent-blue)' : 'transparent',
+                color: mapView === 'ectmap' ? 'white' : 'var(--text-primary)',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: mapView === 'ectmap' ? 600 : 400,
+                fontSize: '0.875rem',
+                transition: 'all 0.2s',
+              }}
+            >
+              🗺️ Full Map
+            </button>
+            <button
+              onClick={() => setMapView('battles')}
+              style={{
+                padding: '0.5rem 1rem',
+                background: mapView === 'battles' ? 'var(--accent-blue)' : 'transparent',
+                color: mapView === 'battles' ? 'white' : 'var(--text-primary)',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: mapView === 'battles' ? 600 : 400,
+                fontSize: '0.875rem',
+                transition: 'all 0.2s',
+              }}
+            >
+              ⚔️ Battles Only
+            </button>
           </div>
         </div>
+
+        {mapView === 'battles' && (
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <button
+              onClick={resetView}
+              style={{
+                padding: '0.5rem 1rem',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontSize: '0.875rem'
+              }}
+            >
+              🎯 Reset View
+            </button>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+              Zoom: {(viewport.scale * 100).toFixed(0)}%
+            </div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+              💡 Scroll to zoom • Drag to pan • Click battles for details
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Canvas Map */}
+      {/* Map Display - Conditional */}
       <div className="card" style={{ padding: 0, position: 'relative', overflow: 'hidden' }}>
-        <canvas
-          ref={canvasRef}
-          onMouseMove={handleMouseMoveGlobal}
-          onClick={handleClick}
-          onWheel={handleWheel}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          style={{
-            width: '100%',
-            height: '700px',
-            cursor: 'grab',
-            display: 'block'
-          }}
-        />
+        {mapView === 'ectmap' ? (
+          <iframe
+            src="http://localhost:3001"
+            style={{
+              width: '100%',
+              height: '700px',
+              border: 'none',
+              display: 'block'
+            }}
+            title="EVE Online Universe Map (ectmap)"
+          />
+        ) : (
+          <canvas
+            ref={canvasRef}
+            onMouseMove={handleMouseMoveGlobal}
+            onClick={handleClick}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            style={{
+              width: '100%',
+              height: '700px',
+              cursor: 'grab',
+              display: 'block'
+            }}
+          />
+        )}
       </div>
 
       {/* Tooltip */}
