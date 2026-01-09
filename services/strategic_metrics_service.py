@@ -8,6 +8,143 @@ from psycopg2.extras import RealDictCursor
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from decimal import Decimal
+import redis
+import requests
+import json
+
+# Redis connection for caching
+redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+
+# ESI API base URL
+ESI_BASE_URL = "https://esi.evetech.net/latest"
+
+# Cache TTL for alliance/corp names (7 days)
+NAME_CACHE_TTL = 7 * 24 * 60 * 60
+
+
+def get_alliance_name(alliance_id: int) -> str:
+    """
+    Get alliance name from ESI API with Redis caching.
+
+    Args:
+        alliance_id: The alliance ID
+
+    Returns:
+        Alliance name or fallback string
+    """
+    if not alliance_id:
+        return "Unknown"
+
+    cache_key = f"esi:alliance:{alliance_id}:name"
+
+    # Try cache first
+    try:
+        cached = redis_client.get(cache_key)
+        if cached:
+            return cached
+    except redis.RedisError:
+        pass
+
+    # Fetch from ESI
+    try:
+        response = requests.get(
+            f"{ESI_BASE_URL}/alliances/{alliance_id}/",
+            timeout=5,
+            headers={"Accept": "application/json"}
+        )
+        if response.status_code == 200:
+            data = response.json()
+            name = data.get("name", f"Alliance {alliance_id}")
+            # Cache the result
+            try:
+                redis_client.setex(cache_key, NAME_CACHE_TTL, name)
+            except redis.RedisError:
+                pass
+            return name
+    except Exception as e:
+        print(f"Error fetching alliance {alliance_id}: {e}")
+
+    return f"Alliance {alliance_id}"
+
+
+def get_corporation_name(corp_id: int) -> str:
+    """
+    Get corporation name from ESI API with Redis caching.
+
+    Args:
+        corp_id: The corporation ID
+
+    Returns:
+        Corporation name or fallback string
+    """
+    if not corp_id:
+        return "Unknown"
+
+    cache_key = f"esi:corporation:{corp_id}:name"
+
+    # Try cache first
+    try:
+        cached = redis_client.get(cache_key)
+        if cached:
+            return cached
+    except redis.RedisError:
+        pass
+
+    # Fetch from ESI
+    try:
+        response = requests.get(
+            f"{ESI_BASE_URL}/corporations/{corp_id}/",
+            timeout=5,
+            headers={"Accept": "application/json"}
+        )
+        if response.status_code == 200:
+            data = response.json()
+            name = data.get("name", f"Corp {corp_id}")
+            # Cache the result
+            try:
+                redis_client.setex(cache_key, NAME_CACHE_TTL, name)
+            except redis.RedisError:
+                pass
+            return name
+    except Exception as e:
+        print(f"Error fetching corporation {corp_id}: {e}")
+
+    return f"Corp {corp_id}"
+
+
+def batch_resolve_alliance_names(alliance_ids: List[int]) -> Dict[int, str]:
+    """
+    Resolve multiple alliance names efficiently.
+    Uses cache where available, fetches missing from ESI.
+
+    Args:
+        alliance_ids: List of alliance IDs to resolve
+
+    Returns:
+        Dict mapping alliance_id to name
+    """
+    result = {}
+    ids_to_fetch = []
+
+    # Check cache first
+    for aid in alliance_ids:
+        if not aid:
+            continue
+        cache_key = f"esi:alliance:{aid}:name"
+        try:
+            cached = redis_client.get(cache_key)
+            if cached:
+                result[aid] = cached
+            else:
+                ids_to_fetch.append(aid)
+        except redis.RedisError:
+            ids_to_fetch.append(aid)
+
+    # Fetch missing from ESI (one by one, ESI doesn't have batch endpoint for names)
+    for aid in ids_to_fetch:
+        result[aid] = get_alliance_name(aid)
+
+    return result
 
 
 def convert_decimals(obj: Any) -> Any:
@@ -137,16 +274,23 @@ def get_power_balance_metrics() -> Dict:
     """)
 
     alliances = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    # Batch resolve alliance names from ESI
+    alliance_ids = [a['alliance_id'] for a in alliances if a['alliance_id']]
+    name_map = batch_resolve_alliance_names(alliance_ids)
 
     # Calculate net ISK and trends
     results = []
     for a in alliances:
         net_isk_24h = (a['isk_destroyed_24h'] or 0) - (a['isk_lost_24h'] or 0)
         net_isk_prev = (a['isk_destroyed_prev_24h'] or 0) - (a['isk_lost_prev_24h'] or 0)
+        alliance_id = a['alliance_id']
 
         results.append({
-            "alliance_id": a['alliance_id'],
-            "alliance_name": a['alliance_name'],
+            "alliance_id": alliance_id,
+            "alliance_name": name_map.get(alliance_id, f"Alliance {alliance_id}"),
             "kills_24h": a['kills_24h'],
             "losses_24h": a['losses_24h'],
             "isk_destroyed_24h": a['isk_destroyed_24h'],
@@ -156,9 +300,6 @@ def get_power_balance_metrics() -> Dict:
             "kills_change": a['kills_24h'] - (a['kills_prev_24h'] or 0),
             "isk_trend": net_isk_24h - net_isk_prev,
         })
-
-    cur.close()
-    conn.close()
 
     return {
         "top_alliances": results,
@@ -354,9 +495,20 @@ def get_capital_fleet_metrics() -> Dict:
     cur.close()
     conn.close()
 
+    # Resolve alliance names for capital losers
+    loser_alliance_ids = [l['victim_alliance_id'] for l in capital_losers if l['victim_alliance_id']]
+    loser_name_map = batch_resolve_alliance_names(loser_alliance_ids)
+
+    top_losers = []
+    for l in capital_losers:
+        alliance_id = l['victim_alliance_id']
+        loser_data = dict(l)
+        loser_data['alliance_name'] = loser_name_map.get(alliance_id, f"Alliance {alliance_id}")
+        top_losers.append(loser_data)
+
     return {
         "by_category": [dict(c) for c in capital_stats],
-        "top_losers": [dict(l) for l in capital_losers],
+        "top_losers": top_losers,
         "period": "24h",
         "comparison": "7d and 30d averages"
     }
@@ -420,6 +572,12 @@ def get_momentum_indicators() -> Dict:
     """)
 
     daily_data = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    # Batch resolve alliance names
+    unique_alliance_ids = list(set(row['alliance_id'] for row in daily_data if row['alliance_id']))
+    name_map = batch_resolve_alliance_names(unique_alliance_ids)
 
     # Calculate trends per alliance
     alliance_trends = {}
@@ -428,7 +586,7 @@ def get_momentum_indicators() -> Dict:
         if aid not in alliance_trends:
             alliance_trends[aid] = {
                 "alliance_id": aid,
-                "alliance_name": row['alliance_name'],
+                "alliance_name": name_map.get(aid, f"Alliance {aid}"),
                 "daily_efficiency": []
             }
         alliance_trends[aid]["daily_efficiency"].append({
@@ -456,9 +614,6 @@ def get_momentum_indicators() -> Dict:
 
     # Sort by absolute trend
     results.sort(key=lambda x: abs(x['trend_7d']), reverse=True)
-
-    cur.close()
-    conn.close()
 
     return {
         "alliance_momentum": results[:15],
@@ -626,8 +781,20 @@ def get_high_value_losses() -> Dict:
     cur.close()
     conn.close()
 
+    # Resolve alliance names for victims
+    victim_alliance_ids = [h['victim_alliance_id'] for h in high_value if h['victim_alliance_id']]
+    victim_name_map = batch_resolve_alliance_names(victim_alliance_ids)
+
+    top_losses = []
+    for h in high_value:
+        loss_data = dict(h)
+        alliance_id = h['victim_alliance_id']
+        if alliance_id:
+            loss_data['victim_alliance'] = victim_name_map.get(alliance_id, f"Alliance {alliance_id}")
+        top_losses.append(loss_data)
+
     return {
-        "top_losses": [dict(h) for h in high_value],
+        "top_losses": top_losses,
         "period": "24h"
     }
 
