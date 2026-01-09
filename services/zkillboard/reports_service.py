@@ -25,22 +25,51 @@ BATTLE_REPORT_CACHE_TTL = 600  # 10 minutes cache
 
 # Ship type categories based on groupID from invTypes table
 SHIP_CATEGORIES = {
+    # Capital Ships
     'titan': [30],  # Titans
     'supercarrier': [659],  # Supercarriers
     'carrier': [547],  # Carriers
-    'dreadnought': [485],  # Dreadnoughts
+    'dreadnought': [485, 4594],  # Dreadnoughts, Lancer Dreadnoughts
     'force_auxiliary': [1538],  # Force Auxiliaries
-    'battleship': [27, 898, 900],  # Battleships, Black Ops, Marauders
-    'battlecruiser': [419, 540],  # Battlecruisers, Command Ships
-    'cruiser': [26, 358, 894, 906, 963],  # Cruisers, HACs, Recons, etc
-    'destroyer': [420, 541, 1305],  # Destroyers, Interdictors, Tactical Destroyers
-    'frigate': [25, 324, 831, 893],  # Frigates, AFs, Interceptors, etc
-    'logistics': [832],  # Logistics Ships (Basilisk, Scimitar, etc)
+
+    # Subcapital Combat Ships
+    'battleship': [27, 898, 900, 381],  # Battleships, Black Ops, Marauders, Elite
+    'battlecruiser': [419, 540, 1201],  # Battlecruisers, Command Ships, Attack BCs
+    'cruiser': [26, 358, 894, 906, 963, 832, 1972, 833],  # Cruisers, HACs, HICs, Combat/Force Recons, Strategic, Logistics, Flag
+    'destroyer': [420, 541, 1305, 1534],  # Destroyers, Interdictors, Tactical, Command Destroyers
+    'frigate': [25, 324, 831, 893, 830, 834, 1527, 1283, 1022],  # Frigates, AFs, Interceptors, EAFs, Covert Ops, SBs, Logi Frigs, Expedition, Prototype
+
+    # Support Classes
+    'logistics': [832, 1527],  # Logistics Cruisers, Logistics Frigates
     'stealth_bomber': [834],  # Stealth Bombers (Purifier, Manticore, etc)
+    'capsule': [29],  # Capsules/Pods
+    'corvette': [237, 2001],  # Corvettes, Citizen Ships
+    'shuttle': [31],  # Shuttles
+
+    # Industrial Ships
     'freighter': [513, 902],  # Freighters, Jump Freighters
-    'industrial': [28, 463],  # Industrials, Mining Barges
+    'industrial': [28, 1202, 380],  # Industrials, Blockade Runners, Deep Space Transports
+    'mining_barge': [463],  # Mining Barges
     'exhumer': [543],  # Exhumers
-    'capsule': [29]  # Capsules/Pods
+    'industrial_command': [941],  # Industrial Command Ships (Orca, Porpoise)
+    'capital_industrial': [883],  # Capital Industrial Ships (Rorqual)
+
+    # Fighters (Carrier Drones)
+    'fighter': [1652, 1653, 1537, 4777, 4778, 4779],  # Light, Heavy, Support, Structure Fighters
+
+    # Deployables
+    'deployable': [361, 1246, 1250, 1276, 4093, 4107, 4137, 4810, 430, 449, 417, 426, 1249],  # Mobile Warp Disruptors, Depots, Tractors, Sentries, Cyno Inhibitors, etc.
+
+    # Starbases (POSes)
+    'starbase': [365, 363, 471, 441, 443],  # Control Towers, Ship Maint Arrays, Hangar Arrays, Batteries
+
+    # Orbitals
+    'orbital': [1025, 4736],  # Customs Offices, Skyhooks
+
+    # Upwell Structures
+    'citadel': [1657],  # Citadels (Astrahus, Fortizar, Keepstar)
+    'refinery': [1406],  # Refineries (Athanor, Tatara)
+    'structure': [1408, 4744, 1924]  # Jump Bridges, Moon Drills, Strongholds
 }
 
 
