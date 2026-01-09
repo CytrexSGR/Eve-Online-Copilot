@@ -14,6 +14,10 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8001',
         changeOrigin: true,
+      },
+      '/ectmap': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
       }
     }
   },
