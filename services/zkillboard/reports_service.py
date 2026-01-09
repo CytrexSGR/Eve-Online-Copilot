@@ -148,8 +148,12 @@ class ZKillboardReportsService:
                 else:
                     return 'other'
 
-    def get_system_location_info(self, system_id: int) -> Dict:
-        """Get full location info for a system"""
+    def get_system_location_info(self, system_id: int, cache: Dict = None) -> Dict:
+        """Get full location info for a system (uses cache if provided)"""
+        # Use cache if available
+        if cache and system_id in cache:
+            return cache[system_id]
+
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -176,6 +180,57 @@ class ZKillboardReportsService:
                     }
                 return {}
 
+    def get_system_locations_batch(self, system_ids: List[int]) -> Dict[int, Dict]:
+        """Batch load system location info for multiple systems in ONE query"""
+        if not system_ids:
+            return {}
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    '''
+                    SELECT
+                        s."solarSystemID",
+                        s."solarSystemName",
+                        s.security,
+                        c."constellationName",
+                        r."regionName"
+                    FROM "mapSolarSystems" s
+                    JOIN "mapConstellations" c ON s."constellationID" = c."constellationID"
+                    JOIN "mapRegions" r ON s."regionID" = r."regionID"
+                    WHERE s."solarSystemID" = ANY(%s)
+                    ''',
+                    (list(set(system_ids)),)
+                )
+                result = {}
+                for row in cur.fetchall():
+                    result[row[0]] = {
+                        'system_name': row[1],
+                        'security_status': float(row[2]),
+                        'constellation_name': row[3],
+                        'region_name': row[4]
+                    }
+                return result
+
+    def get_ship_info_batch(self, ship_type_ids: List[int]) -> Dict[int, Dict]:
+        """Batch load ship type info (groupID, name) for multiple ships in ONE query"""
+        if not ship_type_ids:
+            return {}
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    'SELECT "typeID", "groupID", "typeName" FROM "invTypes" WHERE "typeID" = ANY(%s)',
+                    (list(set(ship_type_ids)),)
+                )
+                result = {}
+                for row in cur.fetchall():
+                    result[row[0]] = {
+                        'group_id': row[1],
+                        'name': row[2]
+                    }
+                return result
+
     def get_ship_category(self, group_id: int) -> str:
         """Determine ship category from group ID"""
         for category, group_ids in SHIP_CATEGORIES.items():
@@ -200,8 +255,9 @@ class ZKillboardReportsService:
         ]
         return self.get_ship_category(group_id) in industrial_categories
 
-    def extract_capital_kills(self, killmails: List[Dict]) -> Dict:
-        """Extract and categorize capital kills"""
+    def extract_capital_kills(self, killmails: List[Dict],
+                              system_cache: Dict = None, ship_cache: Dict = None) -> Dict:
+        """Extract and categorize capital kills (uses caches if provided)"""
         capitals = {
             'titans': {'count': 0, 'total_isk': 0, 'kills': []},
             'supercarriers': {'count': 0, 'total_isk': 0, 'kills': []},
@@ -210,41 +266,32 @@ class ZKillboardReportsService:
             'force_auxiliaries': {'count': 0, 'total_isk': 0, 'kills': []}
         }
 
-        # Get groupID for all unique ship_type_ids
-        ship_type_ids = list(set(km.get('ship_type_id') for km in killmails if km.get('ship_type_id')))
-        ship_groups = {}
-        ship_names = {}
-
-        if ship_type_ids:
-            with get_db_connection() as conn:
-                with conn.cursor() as cur:
-                    # Batch lookup of groupIDs and ship names
-                    cur.execute(
-                        'SELECT "typeID", "groupID", "typeName" FROM "invTypes" WHERE "typeID" = ANY(%s)',
-                        (ship_type_ids,)
-                    )
-                    for row in cur.fetchall():
-                        ship_groups[row[0]] = row[1]
-                        ship_names[row[0]] = row[2]
-
         for km in killmails:
             ship_type_id = km.get('ship_type_id')
-            if not ship_type_id or ship_type_id not in ship_groups:
+            if not ship_type_id:
                 continue
 
-            group_id = ship_groups[ship_type_id]
+            # Use cached ship info or skip
+            ship_info = ship_cache.get(ship_type_id, {}) if ship_cache else {}
+            if not ship_info:
+                continue
+
+            group_id = ship_info.get('group_id')
+            if not group_id:
+                continue
+
             category = self.get_ship_category(group_id)
 
             if category not in ['titan', 'supercarrier', 'carrier', 'dreadnought', 'force_auxiliary']:
                 continue
 
-            # Get system info
+            # Get system info from cache
             system_id = km.get('solar_system_id')
-            system_info = self.get_system_location_info(system_id) if system_id else {}
+            system_info = system_cache.get(system_id, {}) if system_cache else {}
 
             kill_data = {
                 'killmail_id': km.get('killmail_id'),
-                'ship_name': ship_names.get(ship_type_id, 'Unknown'),
+                'ship_name': ship_info.get('name', 'Unknown'),
                 'victim': km.get('victim_character_id', 0),  # Character ID
                 'isk_destroyed': float(km.get('ship_value', 0)),
                 'system_name': system_info.get('system_name', 'Unknown'),
@@ -266,35 +313,21 @@ class ZKillboardReportsService:
 
         return capitals
 
-    def extract_high_value_kills(self, killmails: List[Dict], limit: int = 20) -> List[Dict]:
-        """Extract top N highest value kills"""
+    def extract_high_value_kills(self, killmails: List[Dict], limit: int = 20,
+                                 system_cache: Dict = None, ship_cache: Dict = None) -> List[Dict]:
+        """Extract top N highest value kills (uses caches if provided)"""
         high_value = []
-
-        # Get groupID for all unique ship_type_ids
-        ship_type_ids = list(set(km.get('ship_type_id') for km in killmails if km.get('ship_type_id')))
-        ship_groups = {}
-        ship_names = {}
-
-        if ship_type_ids:
-            with get_db_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        'SELECT "typeID", "groupID", "typeName" FROM "invTypes" WHERE "typeID" = ANY(%s)',
-                        (ship_type_ids,)
-                    )
-                    for row in cur.fetchall():
-                        ship_groups[row[0]] = row[1]
-                        ship_names[row[0]] = row[2]
 
         for km in killmails:
             system_id = km.get('solar_system_id')
-            system_info = self.get_system_location_info(system_id) if system_id else {}
+            system_info = system_cache.get(system_id, {}) if system_cache else {}
 
             isk_value = float(km.get('ship_value', 0))
             security = system_info.get('security_status', 0.0)
 
             ship_type_id = km.get('ship_type_id', 0)
-            group_id = ship_groups.get(ship_type_id, 0)
+            ship_info = ship_cache.get(ship_type_id, {}) if ship_cache else {}
+            group_id = ship_info.get('group_id', 0)
 
             # Gank detection: high-value kill in HighSec
             is_gank = security >= 0.5 and isk_value > 1_000_000_000  # 1B ISK threshold
@@ -303,7 +336,7 @@ class ZKillboardReportsService:
                 'killmail_id': km.get('killmail_id'),
                 'isk_destroyed': isk_value,
                 'ship_type': self.get_ship_category(group_id) if group_id else 'unknown',
-                'ship_name': ship_names.get(ship_type_id, 'Unknown'),
+                'ship_name': ship_info.get('name', 'Unknown'),
                 'victim': km.get('victim_character_id', 0),
                 'system_id': system_id,
                 'system_name': system_info.get('system_name', 'Unknown'),
@@ -324,31 +357,20 @@ class ZKillboardReportsService:
 
         return high_value[:limit]
 
-    def identify_danger_zones(self, killmails: List[Dict], min_kills: int = 3) -> List[Dict]:
-        """Identify systems where industrials/freighters are dying"""
+    def identify_danger_zones(self, killmails: List[Dict], min_kills: int = 3,
+                              system_cache: Dict = None, ship_cache: Dict = None) -> List[Dict]:
+        """Identify systems where industrials/freighters are dying (uses caches if provided)"""
         system_industrial_kills = {}
-
-        # Get groupID for all unique ship_type_ids
-        ship_type_ids = list(set(km.get('ship_type_id') for km in killmails if km.get('ship_type_id')))
-        ship_groups = {}
-
-        if ship_type_ids:
-            with get_db_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        'SELECT "typeID", "groupID" FROM "invTypes" WHERE "typeID" = ANY(%s)',
-                        (ship_type_ids,)
-                    )
-                    for row in cur.fetchall():
-                        ship_groups[row[0]] = row[1]
 
         for km in killmails:
             ship_type_id = km.get('ship_type_id')
-            if not ship_type_id or ship_type_id not in ship_groups:
+            if not ship_type_id:
                 continue
 
-            group_id = ship_groups[ship_type_id]
-            if not self.is_industrial_ship(group_id):
+            # Use cached ship info
+            ship_info = ship_cache.get(ship_type_id, {}) if ship_cache else {}
+            group_id = ship_info.get('group_id')
+            if not group_id or not self.is_industrial_ship(group_id):
                 continue
 
             system_id = km.get('solar_system_id')
@@ -356,7 +378,8 @@ class ZKillboardReportsService:
                 continue
 
             if system_id not in system_industrial_kills:
-                system_info = self.get_system_location_info(system_id)
+                # Use cached system info
+                system_info = system_cache.get(system_id, {}) if system_cache else {}
                 system_industrial_kills[system_id] = {
                     'system_name': system_info.get('system_name', 'Unknown'),
                     'region_name': system_info.get('region_name', 'Unknown'),
@@ -371,9 +394,8 @@ class ZKillboardReportsService:
             system_industrial_kills[system_id]['total_value'] += isk_value
             system_industrial_kills[system_id]['kills'].append(km)
 
-            # Count by type
-            ship_cat = self.get_ship_category(group_id)
-            if ship_cat == 'freighter':
+            # Count by type (group_id already loaded from cache above)
+            if self.get_ship_category(group_id) == 'freighter':
                 system_industrial_kills[system_id]['freighters_killed'] += 1
             else:
                 system_industrial_kills[system_id]['industrials_killed'] += 1
@@ -403,27 +425,14 @@ class ZKillboardReportsService:
 
         return danger_zones
 
-    def calculate_ship_breakdown(self, killmails: List[Dict]) -> Dict:
-        """Calculate kills and ISK by ship category"""
+    def calculate_ship_breakdown(self, killmails: List[Dict], ship_cache: Dict = None) -> Dict:
+        """Calculate kills and ISK by ship category (uses cache if provided)"""
         breakdown = {}
-
-        # Get groupID for all unique ship_type_ids
-        ship_type_ids = list(set(km.get('ship_type_id') for km in killmails if km.get('ship_type_id')))
-        ship_groups = {}
-
-        if ship_type_ids:
-            with get_db_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        'SELECT "typeID", "groupID" FROM "invTypes" WHERE "typeID" = ANY(%s)',
-                        (ship_type_ids,)
-                    )
-                    for row in cur.fetchall():
-                        ship_groups[row[0]] = row[1]
 
         for km in killmails:
             ship_type_id = km.get('ship_type_id', 0)
-            group_id = ship_groups.get(ship_type_id, 0)
+            ship_info = ship_cache.get(ship_type_id, {}) if ship_cache else {}
+            group_id = ship_info.get('group_id', 0)
             category = self.get_ship_category(group_id) if group_id else 'other'
 
             if category not in breakdown:
@@ -482,23 +491,10 @@ class ZKillboardReportsService:
             'isk_per_hour': peak['isk_destroyed']
         }
 
-    def extract_hot_zones(self, killmails: List[Dict], limit: int = 15) -> List[Dict]:
-        """Extract top N most active systems"""
+    def extract_hot_zones(self, killmails: List[Dict], limit: int = 15,
+                          system_cache: Dict = None, ship_cache: Dict = None) -> List[Dict]:
+        """Extract top N most active systems (uses caches if provided)"""
         system_activity = {}
-
-        # Get groupID and ship names for all unique ship_type_ids
-        ship_type_ids = list(set(km.get('ship_type_id') for km in killmails if km.get('ship_type_id')))
-        ship_names = {}
-
-        if ship_type_ids:
-            with get_db_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        'SELECT "typeID", "typeName" FROM "invTypes" WHERE "typeID" = ANY(%s)',
-                        (ship_type_ids,)
-                    )
-                    for row in cur.fetchall():
-                        ship_names[row[0]] = row[1]
 
         for km in killmails:
             system_id = km.get('solar_system_id')
@@ -506,7 +502,8 @@ class ZKillboardReportsService:
                 continue
 
             if system_id not in system_activity:
-                system_info = self.get_system_location_info(system_id)
+                # Use cached system info or fetch individually (fallback)
+                system_info = system_cache.get(system_id, {}) if system_cache else self.get_system_location_info(system_id)
                 system_activity[system_id] = {
                     'system_id': system_id,
                     'system_name': system_info.get('system_name', 'Unknown'),
@@ -522,9 +519,9 @@ class ZKillboardReportsService:
             system_activity[system_id]['kills'] += 1
             system_activity[system_id]['total_isk_destroyed'] += float(km.get('ship_value', 0))
 
-            # Track ship types
+            # Track ship types (use cached ship names)
             ship_type_id = km.get('ship_type_id')
-            ship_name = ship_names.get(ship_type_id, 'Unknown')
+            ship_name = ship_cache.get(ship_type_id, {}).get('name', 'Unknown') if ship_cache else 'Unknown'
             if ship_name not in system_activity[system_id]['ship_types']:
                 system_activity[system_id]['ship_types'][ship_name] = 0
             system_activity[system_id]['ship_types'][ship_name] += 1
@@ -553,6 +550,9 @@ class ZKillboardReportsService:
 
     def build_pilot_intelligence_report(self) -> Dict:
         """Build complete pilot intelligence battle report"""
+        import time
+        start_time = time.time()
+
         # Check cache first
         cache_key = "report:pilot_intelligence:24h"
         cached_report = self.redis_client.get(cache_key)
@@ -562,29 +562,59 @@ class ZKillboardReportsService:
 
         print(f"[CACHE MISS] Building pilot intelligence report from scratch...")
 
-        # Get all killmails from Redis
-        kill_ids = list(self.redis_client.scan_iter("kill:id:*"))
-        print(f"[Performance] Found {len(kill_ids)} killmail keys")
+        # Get all killmails from Redis using PIPELINE for bulk loading
+        kill_keys = list(self.redis_client.scan_iter("kill:id:*"))
+        print(f"[Performance] Found {len(kill_keys)} killmail keys in {time.time() - start_time:.2f}s")
 
+        # Use pipeline for bulk fetch (10-100x faster than individual gets)
+        pipe_start = time.time()
         killmails = []
-        for kill_id_key in kill_ids:
-            kill_data = self.redis_client.get(kill_id_key)
-            if kill_data:
-                killmails.append(json.loads(kill_data))
+        if kill_keys:
+            # Process in batches to avoid memory issues
+            BATCH_SIZE = 1000
+            for i in range(0, len(kill_keys), BATCH_SIZE):
+                batch_keys = kill_keys[i:i + BATCH_SIZE]
+                pipe = self.redis_client.pipeline()
+                for key in batch_keys:
+                    pipe.get(key)
+                results = pipe.execute()
+                for kill_data in results:
+                    if kill_data:
+                        killmails.append(json.loads(kill_data))
 
-        print(f"[Performance] Loaded {len(killmails)} killmails")
+        print(f"[Performance] Loaded {len(killmails)} killmails via pipeline in {time.time() - pipe_start:.2f}s")
 
         if not killmails:
             return self._empty_pilot_report()
 
-        # Calculate all intelligence sections
+        # PRE-LOAD all system and ship data in BATCH (eliminates N+1 queries)
+        batch_start = time.time()
+
+        # Collect all unique system IDs
+        all_system_ids = list(set(km.get('solar_system_id') for km in killmails if km.get('solar_system_id')))
+
+        # Collect all unique ship type IDs
+        all_ship_type_ids = list(set(km.get('ship_type_id') for km in killmails if km.get('ship_type_id')))
+
+        # Batch load system locations (1 query instead of N)
+        system_cache = self.get_system_locations_batch(all_system_ids)
+        print(f"[Performance] Batch loaded {len(system_cache)} systems in {time.time() - batch_start:.2f}s")
+
+        # Batch load ship info (1 query instead of N)
+        ship_start = time.time()
+        ship_cache = self.get_ship_info_batch(all_ship_type_ids)
+        print(f"[Performance] Batch loaded {len(ship_cache)} ship types in {time.time() - ship_start:.2f}s")
+
+        # Calculate all intelligence sections (using caches)
+        calc_start = time.time()
         timeline = self.calculate_hourly_timeline(killmails)
         peak_activity = self.find_peak_activity(timeline)
-        hot_zones = self.extract_hot_zones(killmails, limit=15)
-        capital_kills = self.extract_capital_kills(killmails)
-        high_value_kills = self.extract_high_value_kills(killmails, limit=20)
-        danger_zones = self.identify_danger_zones(killmails, min_kills=3)
-        ship_breakdown = self.calculate_ship_breakdown(killmails)
+        hot_zones = self.extract_hot_zones(killmails, limit=15, system_cache=system_cache, ship_cache=ship_cache)
+        capital_kills = self.extract_capital_kills(killmails, system_cache=system_cache, ship_cache=ship_cache)
+        high_value_kills = self.extract_high_value_kills(killmails, limit=20, system_cache=system_cache, ship_cache=ship_cache)
+        danger_zones = self.identify_danger_zones(killmails, min_kills=3, system_cache=system_cache, ship_cache=ship_cache)
+        ship_breakdown = self.calculate_ship_breakdown(killmails, ship_cache=ship_cache)
+        print(f"[Performance] Calculated all sections in {time.time() - calc_start:.2f}s")
 
         # Calculate global stats
         total_kills = len(killmails)
@@ -613,7 +643,9 @@ class ZKillboardReportsService:
         # Cache the report for 10 minutes (600 seconds)
         cache_key = "report:pilot_intelligence:24h"
         self.redis_client.setex(cache_key, BATTLE_REPORT_CACHE_TTL, json.dumps(report))
+        total_time = time.time() - start_time
         print(f"[CACHE] Cached pilot intelligence report for {BATTLE_REPORT_CACHE_TTL}s")
+        print(f"[Performance] TOTAL report generation time: {total_time:.2f}s")
 
         return report
 
