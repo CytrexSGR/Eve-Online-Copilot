@@ -86,6 +86,11 @@ export const battleApi = {
     return data;
   },
 
+  getBattleParticipants: async (battleId: number) => {
+    const { data } = await api.get(`/war/battle/${battleId}/participants`);
+    return data;
+  },
+
   getSystemDanger: async (systemId: number) => {
     const { data } = await api.get(`/war/system/${systemId}/danger`);
     return data;

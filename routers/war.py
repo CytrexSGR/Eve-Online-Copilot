@@ -733,6 +733,139 @@ async def get_battle_ship_classes(
         raise HTTPException(status_code=500, detail=f"Failed to fetch battle ship classes: {str(e)}")
 
 
+@router.get("/battle/{battle_id}/participants")
+async def get_battle_participants(battle_id: int):
+    """
+    Get detailed participant breakdown for a battle.
+
+    Shows alliances and corporations involved on each side,
+    with kill/loss counts and ISK destroyed.
+
+    Args:
+        battle_id: Battle ID
+
+    Returns:
+        Attackers and defenders with statistics
+    """
+    try:
+        from src.database import get_db_connection
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Verify battle exists
+                cur.execute("SELECT solar_system_id FROM battles WHERE battle_id = %s", (battle_id,))
+                if not cur.fetchone():
+                    raise HTTPException(status_code=404, detail=f"Battle {battle_id} not found")
+
+                # Get attacker alliances (who scored kills)
+                cur.execute("""
+                    SELECT
+                        k.final_blow_alliance_id as alliance_id,
+                        COUNT(*) as kills,
+                        COUNT(DISTINCT k.final_blow_corporation_id) as corps_involved
+                    FROM killmails k
+                    WHERE k.battle_id = %s
+                      AND k.final_blow_alliance_id IS NOT NULL
+                    GROUP BY k.final_blow_alliance_id
+                    ORDER BY kills DESC
+                """, (battle_id,))
+                attacker_alliances = []
+                for row in cur.fetchall():
+                    attacker_alliances.append({
+                        "alliance_id": row[0],
+                        "kills": row[1],
+                        "corps_involved": row[2]
+                    })
+
+                # Get attacker corporations
+                cur.execute("""
+                    SELECT
+                        k.final_blow_corporation_id as corp_id,
+                        k.final_blow_alliance_id as alliance_id,
+                        COUNT(*) as kills
+                    FROM killmails k
+                    WHERE k.battle_id = %s
+                      AND k.final_blow_corporation_id IS NOT NULL
+                    GROUP BY k.final_blow_corporation_id, k.final_blow_alliance_id
+                    ORDER BY kills DESC
+                    LIMIT 20
+                """, (battle_id,))
+                attacker_corps = []
+                for row in cur.fetchall():
+                    attacker_corps.append({
+                        "corporation_id": row[0],
+                        "alliance_id": row[1],
+                        "kills": row[2]
+                    })
+
+                # Get victim alliances (who lost ships)
+                cur.execute("""
+                    SELECT
+                        k.victim_alliance_id as alliance_id,
+                        COUNT(*) as losses,
+                        SUM(k.ship_value) as isk_lost,
+                        COUNT(DISTINCT k.victim_corporation_id) as corps_involved
+                    FROM killmails k
+                    WHERE k.battle_id = %s
+                      AND k.victim_alliance_id IS NOT NULL
+                    GROUP BY k.victim_alliance_id
+                    ORDER BY losses DESC
+                """, (battle_id,))
+                victim_alliances = []
+                for row in cur.fetchall():
+                    victim_alliances.append({
+                        "alliance_id": row[0],
+                        "losses": row[1],
+                        "isk_lost": row[2] or 0,
+                        "corps_involved": row[3]
+                    })
+
+                # Get victim corporations
+                cur.execute("""
+                    SELECT
+                        k.victim_corporation_id as corp_id,
+                        k.victim_alliance_id as alliance_id,
+                        COUNT(*) as losses,
+                        SUM(k.ship_value) as isk_lost
+                    FROM killmails k
+                    WHERE k.battle_id = %s
+                      AND k.victim_corporation_id IS NOT NULL
+                    GROUP BY k.victim_corporation_id, k.victim_alliance_id
+                    ORDER BY losses DESC
+                    LIMIT 20
+                """, (battle_id,))
+                victim_corps = []
+                for row in cur.fetchall():
+                    victim_corps.append({
+                        "corporation_id": row[0],
+                        "alliance_id": row[1],
+                        "losses": row[2],
+                        "isk_lost": row[3] or 0
+                    })
+
+                return {
+                    "battle_id": battle_id,
+                    "attackers": {
+                        "alliances": attacker_alliances,
+                        "corporations": attacker_corps,
+                        "total_alliances": len(attacker_alliances),
+                        "total_kills": sum(a["kills"] for a in attacker_alliances)
+                    },
+                    "defenders": {
+                        "alliances": victim_alliances,
+                        "corporations": victim_corps,
+                        "total_alliances": len(victim_alliances),
+                        "total_losses": sum(v["losses"] for v in victim_alliances),
+                        "total_isk_lost": sum(v["isk_lost"] for v in victim_alliances)
+                    }
+                }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch battle participants: {str(e)}")
+
+
 @router.get("/live/hotspots")
 async def get_live_hotspots():
     """

@@ -51,6 +51,39 @@ interface ShipClassData {
   };
 }
 
+interface ParticipantAlliance {
+  alliance_id: number;
+  kills?: number;
+  losses?: number;
+  isk_lost?: number;
+  corps_involved: number;
+}
+
+interface ParticipantCorp {
+  corporation_id: number;
+  alliance_id: number | null;
+  kills?: number;
+  losses?: number;
+  isk_lost?: number;
+}
+
+interface BattleParticipants {
+  battle_id: number;
+  attackers: {
+    alliances: ParticipantAlliance[];
+    corporations: ParticipantCorp[];
+    total_alliances: number;
+    total_kills: number;
+  };
+  defenders: {
+    alliances: ParticipantAlliance[];
+    corporations: ParticipantCorp[];
+    total_alliances: number;
+    total_losses: number;
+    total_isk_lost: number;
+  };
+}
+
 export function BattleDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -58,6 +91,7 @@ export function BattleDetail() {
   const [recentKills, setRecentKills] = useState<Killmail[]>([]);
   const [systemDanger, setSystemDanger] = useState<SystemDanger | null>(null);
   const [shipClasses, setShipClasses] = useState<ShipClassData | null>(null);
+  const [participants, setParticipants] = useState<BattleParticipants | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,14 +108,16 @@ export function BattleDetail() {
           setBattle(foundBattle);
 
           try {
-            const [killsData, dangerData, shipClassData] = await Promise.all([
+            const [killsData, dangerData, shipClassData, participantsData] = await Promise.all([
               battleApi.getBattleKills(foundBattle.battle_id, 500),
               battleApi.getSystemDanger(foundBattle.system_id),
-              battleApi.getBattleShipClasses(foundBattle.battle_id, 'category')
+              battleApi.getBattleShipClasses(foundBattle.battle_id, 'category'),
+              battleApi.getBattleParticipants(foundBattle.battle_id)
             ]);
             setRecentKills(killsData.kills || []);
             setSystemDanger(dangerData);
             setShipClasses(shipClassData);
+            setParticipants(participantsData);
           } catch (err) {
             console.error('Failed to fetch additional battle data:', err);
           }
@@ -303,6 +339,177 @@ export function BattleDetail() {
           </div>
         </div>
       </div>
+
+      {/* Battle Participants Card */}
+      {participants && (participants.attackers.alliances.length > 0 || participants.defenders.alliances.length > 0) && (
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>⚔️ Konfliktparteien</h3>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+            {/* Attackers */}
+            <div style={{ padding: '1rem', background: 'var(--bg-primary)', borderRadius: '8px', borderLeft: '4px solid var(--danger)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h4 style={{ margin: 0, color: 'var(--danger)', fontSize: '1rem' }}>
+                  🗡️ Angreifer
+                </h4>
+                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                  {participants.attackers.total_kills} Kills
+                </span>
+              </div>
+
+              {participants.attackers.alliances.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {participants.attackers.alliances.map((alliance) => (
+                    <div key={alliance.alliance_id} style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '0.5rem',
+                      background: 'var(--bg-elevated)',
+                      borderRadius: '4px'
+                    }}>
+                      <a
+                        href={`https://zkillboard.com/alliance/${alliance.alliance_id}/`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontWeight: 600 }}
+                      >
+                        Alliance #{alliance.alliance_id}
+                      </a>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <span style={{
+                          padding: '0.2rem 0.5rem',
+                          borderRadius: '4px',
+                          background: 'rgba(248, 81, 73, 0.2)',
+                          color: 'var(--danger)',
+                          fontSize: '0.75rem',
+                          fontWeight: 600
+                        }}>
+                          {alliance.kills} kills
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          ({alliance.corps_involved} corps)
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Keine Alliance-Daten</p>
+              )}
+
+              {/* Top Attacker Corps */}
+              {participants.attackers.corporations.length > 0 && (
+                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Top Corporations</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {participants.attackers.corporations.slice(0, 5).map((corp) => (
+                      <div key={corp.corporation_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                        <a
+                          href={`https://zkillboard.com/corporation/${corp.corporation_id}/`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: 'var(--text-primary)', textDecoration: 'none' }}
+                        >
+                          Corp #{corp.corporation_id}
+                        </a>
+                        <span style={{ color: 'var(--danger)', fontWeight: 600 }}>{corp.kills} kills</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Defenders */}
+            <div style={{ padding: '1rem', background: 'var(--bg-primary)', borderRadius: '8px', borderLeft: '4px solid var(--accent-blue)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h4 style={{ margin: 0, color: 'var(--accent-blue)', fontSize: '1rem' }}>
+                  🛡️ Verteidiger
+                </h4>
+                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                  {participants.defenders.total_losses} Verluste
+                </span>
+              </div>
+
+              {participants.defenders.alliances.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {participants.defenders.alliances.map((alliance) => (
+                    <div key={alliance.alliance_id} style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '0.5rem',
+                      background: 'var(--bg-elevated)',
+                      borderRadius: '4px'
+                    }}>
+                      <a
+                        href={`https://zkillboard.com/alliance/${alliance.alliance_id}/`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontWeight: 600 }}
+                      >
+                        Alliance #{alliance.alliance_id}
+                      </a>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <span style={{
+                          padding: '0.2rem 0.5rem',
+                          borderRadius: '4px',
+                          background: 'rgba(88, 166, 255, 0.2)',
+                          color: 'var(--accent-blue)',
+                          fontSize: '0.75rem',
+                          fontWeight: 600
+                        }}>
+                          {alliance.losses} lost
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontFamily: 'monospace' }}>
+                          {formatISK(alliance.isk_lost || 0)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Keine Alliance-Daten</p>
+              )}
+
+              {/* ISK Summary */}
+              {participants.defenders.total_isk_lost > 0 && (
+                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Gesamt ISK Verlust</span>
+                    <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--danger)', fontFamily: 'monospace' }}>
+                      {formatISK(participants.defenders.total_isk_lost)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Top Victim Corps */}
+              {participants.defenders.corporations.length > 0 && (
+                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Top Corporations (Verluste)</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {participants.defenders.corporations.slice(0, 5).map((corp) => (
+                      <div key={corp.corporation_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                        <a
+                          href={`https://zkillboard.com/corporation/${corp.corporation_id}/`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: 'var(--text-primary)', textDecoration: 'none' }}
+                        >
+                          Corp #{corp.corporation_id}
+                        </a>
+                        <span style={{ color: 'var(--accent-blue)' }}>{corp.losses} lost • <span style={{ color: 'var(--danger)' }}>{formatISK(corp.isk_lost || 0)}</span></span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Two Column Layout */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
