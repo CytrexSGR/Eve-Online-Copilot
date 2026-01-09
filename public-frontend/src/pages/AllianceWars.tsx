@@ -161,6 +161,32 @@ export function AllianceWars() {
                 </div>
               </div>
             )}
+
+            {/* Trend Analysis */}
+            {analysis.trends && analysis.trends.length > 0 && (
+              <div style={{ marginTop: '1.5rem' }}>
+                <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--success)' }}>
+                  📈 Trend Analysis
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {analysis.trends.map((trend, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '0.875rem 1rem',
+                        background: 'var(--bg-elevated)',
+                        borderRadius: '6px',
+                        borderLeft: '3px solid var(--success)',
+                        fontSize: '0.875rem',
+                        color: 'var(--text-primary)'
+                      }}
+                    >
+                      {trend}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : null}
       </div>

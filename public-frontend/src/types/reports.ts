@@ -212,6 +212,7 @@ export interface AllianceWars {
 export interface AllianceWarsAnalysis {
   summary: string;
   insights: string[];
+  trends?: string[];
   generated_at: string;
   error?: string;
 }

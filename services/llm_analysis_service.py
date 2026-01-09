@@ -6,8 +6,9 @@ Provides AI-powered analysis of EVE Online combat data using OpenAI.
 import os
 import json
 import redis
+import psycopg2
 from openai import OpenAI
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -16,6 +17,15 @@ load_dotenv(dotenv_path=os.path.expanduser("~/.env"))
 
 # Redis client
 redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+
+# Database connection settings
+DB_CONFIG = {
+    "host": "localhost",
+    "port": 5432,
+    "database": "eve_sde",
+    "user": "eve",
+    "password": "EvE_Pr0ject_2024"
+}
 
 # Get API key
 api_key = os.getenv("OPENAI_API_KEY")
@@ -27,6 +37,11 @@ openai_client = OpenAI(api_key=api_key) if api_key else None
 
 # Cache TTL: 1 hour
 ANALYSIS_CACHE_TTL = 3600
+
+# History settings
+HISTORY_KEY = "report:alliance_wars_analysis:history"
+HISTORY_MAX_ENTRIES = 3  # Keep last 3 snapshots
+HISTORY_TTL = 86400  # 24 hours
 
 # Model
 LLM_MODEL = "gpt-5-mini"
@@ -63,11 +78,29 @@ def generate_alliance_wars_analysis(wars_data: Dict) -> Dict:
     # Build context for LLM
     context = _build_analysis_context(wars_data)
 
+    # Get historical data for trend analysis
+    history = _get_history()
+    history_context = _build_history_context(history)
+
+    # Extract metrics for saving later
+    current_metrics = _extract_key_metrics(wars_data)
+
     # Generate analysis
+    trend_instruction = ""
+    if history:
+        trend_instruction = """
+Additionally, compare with previous snapshots and identify:
+- Trends: Which coalitions are improving or declining?
+- Changes: What significant shifts occurred since the last analysis?
+- Momentum: Who has the momentum right now?
+
+Include a "trends" field with 2-3 trend observations."""
+
     prompt = f"""You are an EVE Online military intelligence analyst. Analyze the following 24-hour alliance warfare data and provide:
 
 1. A concise situation summary (2-3 paragraphs) describing the current state of nullsec warfare
 2. 5-7 key strategic insights as bullet points
+{trend_instruction}
 
 Focus on:
 - Which coalitions/alliances are winning or losing
@@ -75,8 +108,9 @@ Focus on:
 - Economic impact (ISK destroyed)
 - Strategic implications for pilots and corporations
 
-Data:
+Current Data:
 {context}
+{history_context}
 
 Respond in JSON format:
 {{
@@ -86,6 +120,7 @@ Respond in JSON format:
         "Second key insight...",
         ...
     ],
+    "trends": ["Trend observation 1...", "Trend observation 2..."],
     "generated_at": "{datetime.utcnow().isoformat()}Z"
 }}"""
 
@@ -122,8 +157,16 @@ Respond in JSON format:
             result["summary"] = "Analysis unavailable."
         if "insights" not in result:
             result["insights"] = []
+        if "trends" not in result:
+            result["trends"] = []
         if "generated_at" not in result:
             result["generated_at"] = datetime.utcnow().isoformat() + "Z"
+
+        # Save to history for future trend analysis (Redis - short term)
+        _save_to_history(current_metrics, result.get("insights", []))
+
+        # Save to database for long-term history (PostgreSQL)
+        _save_analysis_to_db(result, current_metrics)
 
         # Cache the result
         redis_client.setex(cache_key, ANALYSIS_CACHE_TTL, json.dumps(result))
@@ -192,3 +235,148 @@ def invalidate_analysis_cache():
     """Manually invalidate the analysis cache."""
     redis_client.delete("report:alliance_wars_analysis:1h")
     print("[CACHE] Alliance wars analysis cache invalidated")
+
+
+def _extract_key_metrics(wars_data: Dict) -> Dict:
+    """Extract key metrics from wars data for historical comparison."""
+    g = wars_data.get("global", {})
+    coalitions = wars_data.get("coalitions", [])
+
+    # Extract top coalition metrics
+    coalition_metrics = []
+    for c in coalitions[:6]:
+        coalition_metrics.append({
+            "name": c.get("name", "Unknown"),
+            "kills": c.get("total_kills", 0),
+            "losses": c.get("total_losses", 0),
+            "isk_destroyed": round(c.get("isk_destroyed", 0) / 1_000_000_000, 2),
+            "isk_lost": round(c.get("isk_lost", 0) / 1_000_000_000, 2),
+            "efficiency": round(c.get("efficiency", 0), 1)
+        })
+
+    return {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "global": {
+            "total_kills": g.get("total_kills", 0),
+            "total_isk_destroyed": round(g.get("total_isk_destroyed", 0) / 1_000_000_000, 2),
+            "active_conflicts": g.get("active_conflicts", 0)
+        },
+        "coalitions": coalition_metrics
+    }
+
+
+def _save_to_history(metrics: Dict, insights: list):
+    """Save current metrics and insights to history."""
+    history_entry = {
+        "metrics": metrics,
+        "insights": insights[:5]  # Keep top 5 insights
+    }
+
+    # Get existing history
+    existing = redis_client.get(HISTORY_KEY)
+    history = json.loads(existing) if existing else []
+
+    # Add new entry at the beginning
+    history.insert(0, history_entry)
+
+    # Keep only last N entries
+    history = history[:HISTORY_MAX_ENTRIES]
+
+    # Save back
+    redis_client.setex(HISTORY_KEY, HISTORY_TTL, json.dumps(history))
+    print(f"[HISTORY] Saved snapshot, {len(history)} entries in history")
+
+
+def _get_history() -> list:
+    """Get historical analysis data."""
+    existing = redis_client.get(HISTORY_KEY)
+    return json.loads(existing) if existing else []
+
+
+def _build_history_context(history: list) -> str:
+    """Build context string from historical data."""
+    if not history:
+        return ""
+
+    lines = ["\n=== HISTORICAL DATA (Previous Snapshots) ==="]
+
+    for i, entry in enumerate(history):
+        metrics = entry.get("metrics", {})
+        insights = entry.get("insights", [])
+        timestamp = metrics.get("timestamp", "Unknown")
+
+        lines.append(f"\n--- Snapshot {i+1} ({timestamp}) ---")
+
+        # Global metrics
+        g = metrics.get("global", {})
+        lines.append(f"Global: {g.get('total_kills', 0):,} kills, {g.get('total_isk_destroyed', 0):.2f}B ISK")
+
+        # Coalition metrics
+        for c in metrics.get("coalitions", [])[:4]:
+            lines.append(f"  {c.get('name')}: {c.get('efficiency', 0)}% eff, {c.get('isk_destroyed', 0):.1f}B destroyed")
+
+        # Previous insights
+        if insights:
+            lines.append("Key insights at that time:")
+            for insight in insights[:3]:
+                # Truncate long insights
+                short = insight[:150] + "..." if len(insight) > 150 else insight
+                lines.append(f"  - {short}")
+
+    return "\n".join(lines)
+
+
+def _save_analysis_to_db(result: Dict, metrics: Dict, analysis_type: str = "alliance_wars"):
+    """Persist analysis to PostgreSQL for long-term history."""
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO llm_analyses (analysis_type, summary, insights, trends, metrics, model, generated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (
+            analysis_type,
+            result.get("summary", ""),
+            json.dumps(result.get("insights", [])),
+            json.dumps(result.get("trends", [])),
+            json.dumps(metrics),
+            LLM_MODEL,
+            result.get("generated_at", datetime.utcnow().isoformat() + "Z")
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[DB] Saved analysis to database")
+    except Exception as e:
+        print(f"[DB ERROR] Failed to save analysis: {e}")
+
+
+def get_analysis_history(analysis_type: str = "alliance_wars", limit: int = 24) -> List[Dict]:
+    """Retrieve historical analyses from database."""
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, summary, insights, trends, metrics, model, generated_at
+            FROM llm_analyses
+            WHERE analysis_type = %s
+            ORDER BY generated_at DESC
+            LIMIT %s
+        """, (analysis_type, limit))
+
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        return [{
+            "id": row[0],
+            "summary": row[1],
+            "insights": row[2] if isinstance(row[2], list) else json.loads(row[2]) if row[2] else [],
+            "trends": row[3] if isinstance(row[3], list) else json.loads(row[3]) if row[3] else [],
+            "metrics": row[4] if isinstance(row[4], dict) else json.loads(row[4]) if row[4] else {},
+            "model": row[5],
+            "generated_at": row[6].isoformat() if row[6] else None
+        } for row in rows]
+    except Exception as e:
+        print(f"[DB ERROR] Failed to retrieve history: {e}")
+        return []
