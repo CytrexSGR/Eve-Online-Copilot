@@ -76,8 +76,8 @@ export function Layout({ children }: LayoutProps) {
               </p>
             </div>
             <div style={{ display: 'flex', gap: '1.5rem' }}>
-              <Link to="/impressum" style={{ fontSize: '0.875rem' }}>Impressum</Link>
-              <Link to="/datenschutz" style={{ fontSize: '0.875rem' }}>Datenschutz</Link>
+              <Link to="/impressum" style={{ fontSize: '0.875rem' }}>Legal Notice</Link>
+              <Link to="/datenschutz" style={{ fontSize: '0.875rem' }}>Privacy Policy</Link>
             </div>
           </div>
         </div>
