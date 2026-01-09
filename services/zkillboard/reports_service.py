@@ -974,7 +974,7 @@ class ZKillboardReportsService:
                                       AND ka.alliance_id = %s
                                   ))
                               )
-                            GROUP BY ship_class, k.victim_alliance_id
+                            GROUP BY 1, 2
                         """, (days, alliance_a, alliance_b, alliance_b, alliance_a))
 
                         ship_classes_a = {
