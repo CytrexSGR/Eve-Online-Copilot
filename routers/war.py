@@ -573,7 +573,8 @@ async def get_battle_kills(
 
                 system_id, started_at, end_time = battle_row
 
-                # Get killmails within battle timeframe
+                # Get killmails linked to this battle (via battle_id FK)
+                # This is more reliable than time-based queries
                 cur.execute("""
                     SELECT
                         killmail_id,
@@ -588,12 +589,10 @@ async def get_battle_kills(
                         is_solo,
                         is_npc
                     FROM killmails
-                    WHERE solar_system_id = %s
-                      AND killmail_time >= %s
-                      AND killmail_time <= %s
+                    WHERE battle_id = %s
                     ORDER BY killmail_time DESC
                     LIMIT %s
-                """, (system_id, started_at, end_time, limit))
+                """, (battle_id, limit))
 
                 rows = cur.fetchall()
 
@@ -664,7 +663,7 @@ async def get_battle_ship_classes(
 
                 system_id, started_at, end_time = battle_row
 
-                # Get ship class breakdown for battle timeframe
+                # Get ship class breakdown using battle_id FK (more reliable)
                 if group_by == "category":
                     cur.execute("""
                         SELECT
@@ -676,24 +675,20 @@ async def get_battle_ship_classes(
                         FROM killmails k
                         LEFT JOIN "invTypes" t ON t."typeID" = k.ship_type_id
                         LEFT JOIN "invGroups" g ON g."groupID" = t."groupID"
-                        WHERE k.solar_system_id = %s
-                            AND k.killmail_time >= %s
-                            AND k.killmail_time <= %s
+                        WHERE k.battle_id = %s
                         GROUP BY category
                         ORDER BY count DESC
-                    """, (system_id, started_at, end_time))
+                    """, (battle_id,))
                 elif group_by == "role":
                     cur.execute("""
                         SELECT
                             COALESCE(ship_role, 'standard') as role,
                             COUNT(*) as count
                         FROM killmails
-                        WHERE solar_system_id = %s
-                            AND killmail_time >= %s
-                            AND killmail_time <= %s
+                        WHERE battle_id = %s
                         GROUP BY role
                         ORDER BY count DESC
-                    """, (system_id, started_at, end_time))
+                    """, (battle_id,))
                 else:  # both
                     cur.execute("""
                         SELECT
@@ -705,12 +700,10 @@ async def get_battle_ship_classes(
                         FROM killmails k
                         LEFT JOIN "invTypes" t ON t."typeID" = k.ship_type_id
                         LEFT JOIN "invGroups" g ON g."groupID" = t."groupID"
-                        WHERE k.solar_system_id = %s
-                            AND k.killmail_time >= %s
-                            AND k.killmail_time <= %s
+                        WHERE k.battle_id = %s
                         GROUP BY combined
                         ORDER BY count DESC
-                    """, (system_id, started_at, end_time))
+                    """, (battle_id,))
 
                 rows = cur.fetchall()
                 breakdown = {row[0]: row[1] for row in rows}
@@ -719,10 +712,8 @@ async def get_battle_ship_classes(
                 cur.execute("""
                     SELECT COUNT(*)
                     FROM killmails
-                    WHERE solar_system_id = %s
-                        AND killmail_time >= %s
-                        AND killmail_time <= %s
-                """, (system_id, started_at, end_time))
+                    WHERE battle_id = %s
+                """, (battle_id,))
 
                 total_kills = cur.fetchone()[0]
 
