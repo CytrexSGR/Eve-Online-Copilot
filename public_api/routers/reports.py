@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Dict
 import redis
 from services.zkillboard import zkill_live_service
-from services.llm_analysis_service import generate_alliance_wars_analysis
+from services.llm_analysis_service import generate_alliance_wars_analysis, generate_strategic_briefing
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -334,4 +334,39 @@ async def get_trade_routes(
         raise HTTPException(
             status_code=500,
             detail="Failed to generate trade routes report"
+        )
+
+
+@router.get("/strategic-briefing")
+async def get_strategic_briefing() -> Dict:
+    """
+    Strategic Intelligence Briefing
+
+    AI-powered strategic analysis of the current state of New Eden.
+    Provides executive-level intelligence for alliance leaders and FCs.
+
+    Includes:
+    - Power balance assessment
+    - Territorial control analysis
+    - Capital fleet status
+    - Momentum indicators
+    - Escalation risk zones
+    - Gate camp / chokepoint activity
+
+    Cache: 1 hour
+    """
+    try:
+        briefing = generate_strategic_briefing()
+        return briefing
+    except redis.RedisError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="Redis connection error. Briefing temporarily unavailable."
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate strategic briefing: {str(e)}"
         )

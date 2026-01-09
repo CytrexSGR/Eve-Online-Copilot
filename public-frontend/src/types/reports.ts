@@ -217,6 +217,21 @@ export interface AllianceWarsAnalysis {
   error?: string;
 }
 
+export interface PowerAssessment {
+  gaining_power: string[];
+  losing_power: string[];
+  contested: string[];
+}
+
+export interface StrategicBriefing {
+  briefing: string;
+  highlights: string[];
+  alerts: string[];
+  power_assessment?: PowerAssessment;
+  generated_at: string;
+  error?: string;
+}
+
 export interface TradeRoutes {
   period: string;
   global: {

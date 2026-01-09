@@ -1,14 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { RefreshIndicator } from '../components/RefreshIndicator';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { useAllReports } from '../hooks/useReports';
+import { reportsApi } from '../services/api';
+import type { StrategicBriefing } from '../types/reports';
 import BattleStatsCards from '../components/BattleStatsCards';
 import LiveBattles from '../components/LiveBattles';
 import TelegramMirror from '../components/TelegramMirror';
 
 export function Home() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [briefing, setBriefing] = useState<StrategicBriefing | null>(null);
+  const [briefingLoading, setBriefingLoading] = useState(true);
 
   const {
     battleReport,
@@ -20,6 +24,23 @@ export function Home() {
     error,
     refetch
   } = useAllReports();
+
+  // Fetch strategic briefing
+  const fetchBriefing = async () => {
+    try {
+      setBriefingLoading(true);
+      const data = await reportsApi.getStrategicBriefing();
+      setBriefing(data);
+    } catch (err) {
+      console.error('Failed to load strategic briefing:', err);
+    } finally {
+      setBriefingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBriefing();
+  }, []);
 
   // Auto-refresh every 60 seconds
   useAutoRefresh(() => {
@@ -108,6 +129,163 @@ export function Home() {
           </p>
         </div>
         <RefreshIndicator lastUpdated={lastUpdated} autoRefreshSeconds={60} />
+      </div>
+
+      {/* Strategic Intelligence Briefing */}
+      <div className="card" style={{
+        marginBottom: '1.5rem',
+        background: 'linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)',
+        border: '1px solid var(--accent-purple)',
+        borderLeft: '4px solid var(--accent-purple)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+          <span style={{ fontSize: '1.75rem' }}>🎖️</span>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Strategic Intelligence Briefing</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: 0 }}>
+              AI-powered strategic analysis for alliance leadership
+              {briefing?.generated_at && (
+                <span> • Last update: {new Date(briefing.generated_at).toLocaleTimeString()}</span>
+              )}
+            </p>
+          </div>
+        </div>
+
+        {briefingLoading ? (
+          <div style={{ padding: '2rem', textAlign: 'center' }}>
+            <div className="skeleton" style={{ height: '100px', marginBottom: '1rem' }} />
+            <p style={{ color: 'var(--text-secondary)' }}>Generating strategic briefing...</p>
+          </div>
+        ) : briefing?.error ? (
+          <div style={{ padding: '1rem', background: 'rgba(248, 81, 73, 0.1)', borderRadius: '8px', color: 'var(--danger)' }}>
+            Briefing temporarily unavailable: {briefing.error}
+          </div>
+        ) : briefing ? (
+          <div>
+            {/* Alerts (if any) */}
+            {briefing.alerts && briefing.alerts.length > 0 && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                {briefing.alerts.map((alert, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: '0.75rem 1rem',
+                      background: 'rgba(248, 81, 73, 0.15)',
+                      border: '1px solid var(--danger)',
+                      borderRadius: '6px',
+                      marginBottom: '0.5rem',
+                      fontSize: '0.875rem',
+                      color: 'var(--danger)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}
+                  >
+                    <span>⚠️</span> {alert}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Executive Briefing */}
+            <div style={{
+              padding: '1.25rem',
+              background: 'var(--bg-surface)',
+              borderRadius: '8px',
+              marginBottom: '1.25rem',
+              lineHeight: '1.7',
+              color: 'var(--text-primary)'
+            }}>
+              {briefing.briefing.split('\n').map((paragraph, idx) => (
+                <p key={idx} style={{ marginBottom: idx < briefing.briefing.split('\n').length - 1 ? '1rem' : 0 }}>
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+
+            {/* Power Assessment */}
+            {briefing.power_assessment && (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '1rem',
+                marginBottom: '1.25rem'
+              }}>
+                {briefing.power_assessment.gaining_power.length > 0 && (
+                  <div style={{
+                    padding: '1rem',
+                    background: 'rgba(63, 185, 80, 0.1)',
+                    borderRadius: '8px',
+                    border: '1px solid var(--success)'
+                  }}>
+                    <h4 style={{ fontSize: '0.75rem', color: 'var(--success)', marginBottom: '0.5rem' }}>
+                      📈 GAINING POWER
+                    </h4>
+                    {briefing.power_assessment.gaining_power.map((name, idx) => (
+                      <div key={idx} style={{ fontSize: '0.875rem', padding: '0.25rem 0' }}>{name}</div>
+                    ))}
+                  </div>
+                )}
+                {briefing.power_assessment.losing_power.length > 0 && (
+                  <div style={{
+                    padding: '1rem',
+                    background: 'rgba(248, 81, 73, 0.1)',
+                    borderRadius: '8px',
+                    border: '1px solid var(--danger)'
+                  }}>
+                    <h4 style={{ fontSize: '0.75rem', color: 'var(--danger)', marginBottom: '0.5rem' }}>
+                      📉 LOSING POWER
+                    </h4>
+                    {briefing.power_assessment.losing_power.map((name, idx) => (
+                      <div key={idx} style={{ fontSize: '0.875rem', padding: '0.25rem 0' }}>{name}</div>
+                    ))}
+                  </div>
+                )}
+                {briefing.power_assessment.contested.length > 0 && (
+                  <div style={{
+                    padding: '1rem',
+                    background: 'rgba(210, 153, 34, 0.1)',
+                    borderRadius: '8px',
+                    border: '1px solid var(--warning)'
+                  }}>
+                    <h4 style={{ fontSize: '0.75rem', color: 'var(--warning)', marginBottom: '0.5rem' }}>
+                      ⚔️ CONTESTED ZONES
+                    </h4>
+                    {briefing.power_assessment.contested.map((name, idx) => (
+                      <div key={idx} style={{ fontSize: '0.875rem', padding: '0.25rem 0' }}>{name}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Key Highlights */}
+            {briefing.highlights && briefing.highlights.length > 0 && (
+              <div>
+                <h3 style={{ fontSize: '0.875rem', marginBottom: '0.75rem', color: 'var(--accent-blue)' }}>
+                  🎯 Key Strategic Highlights
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {briefing.highlights.map((highlight, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '0.75rem 1rem',
+                        background: 'var(--bg-elevated)',
+                        borderRadius: '6px',
+                        borderLeft: '3px solid var(--accent-blue)',
+                        fontSize: '0.875rem',
+                        color: 'var(--text-primary)'
+                      }}
+                    >
+                      {highlight}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {/* Live Battle Intelligence */}
