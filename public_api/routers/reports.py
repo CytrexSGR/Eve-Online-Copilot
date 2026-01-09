@@ -112,12 +112,14 @@ async def get_alliance_wars() -> Dict:
 
     Tracks active alliance conflicts with kill/death ratios and ISK efficiency.
     Shows top 5 most active alliance wars in last 24 hours.
+    Includes auto-detected coalitions based on combat patterns.
 
     Cache: 30 minutes
     """
     try:
-        # Get original wars data
+        # Get wars data and coalition data in parallel
         wars_data = await zkill_live_service.get_alliance_war_tracker(limit=5)
+        coalition_data = await zkill_live_service.detect_coalitions(days=7)
 
         # Calculate global summary
         total_conflicts = len(wars_data.get("wars", []))
@@ -182,6 +184,8 @@ async def get_alliance_wars() -> Dict:
                 "total_kills": total_kills,
                 "total_isk_destroyed": total_isk
             },
+            "coalitions": coalition_data.get("coalitions", []),
+            "unaffiliated_alliances": coalition_data.get("unaffiliated", []),
             "conflicts": conflicts
         }
     except redis.RedisError as e:

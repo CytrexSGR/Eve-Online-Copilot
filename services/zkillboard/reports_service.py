@@ -1674,3 +1674,318 @@ class ZKillboardReportsService:
         self.redis_client.setex(cache_key, BATTLE_REPORT_CACHE_TTL, json.dumps(report))
 
         return report
+
+    async def detect_coalitions(self, days: int = 7, min_fights_together: int = 5) -> Dict:
+        """
+        Self-learning coalition detection based on combat patterns.
+
+        Alliances that frequently fight TOGETHER (co-attackers) are grouped into coalitions.
+        Named after the largest alliance in each coalition.
+
+        Args:
+            days: How many days of data to analyze
+            min_fights_together: Minimum shared kills to consider alliances allied
+
+        Returns:
+            Dict with detected coalitions and their aggregated stats
+        """
+        cache_key = f"coalitions:detected:{days}d"
+        cached = self.redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
+
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Step 1: Find alliance pairs that fight TOGETHER (co-attackers)
+                    cur.execute("""
+                        WITH recent_kills AS (
+                            SELECT killmail_id
+                            FROM killmails
+                            WHERE killmail_time >= NOW() - INTERVAL '%s days'
+                        )
+                        SELECT
+                            ka1.alliance_id as alliance_a,
+                            ka2.alliance_id as alliance_b,
+                            COUNT(DISTINCT ka1.killmail_id) as fights_together
+                        FROM killmail_attackers ka1
+                        JOIN killmail_attackers ka2
+                            ON ka1.killmail_id = ka2.killmail_id
+                            AND ka1.alliance_id < ka2.alliance_id
+                        WHERE ka1.killmail_id IN (SELECT killmail_id FROM recent_kills)
+                          AND ka1.alliance_id IS NOT NULL
+                          AND ka2.alliance_id IS NOT NULL
+                          AND ka1.alliance_id != ka2.alliance_id
+                        GROUP BY ka1.alliance_id, ka2.alliance_id
+                        HAVING COUNT(DISTINCT ka1.killmail_id) >= %s
+                        ORDER BY fights_together DESC
+                    """, (days, min_fights_together))
+
+                    alliance_pairs = cur.fetchall()
+
+                    # Step 2: Get alliance activity stats (for sizing and naming)
+                    cur.execute("""
+                        SELECT
+                            alliance_id,
+                            COUNT(*) as total_activity
+                        FROM (
+                            SELECT ka.alliance_id
+                            FROM killmail_attackers ka
+                            JOIN killmails k ON k.killmail_id = ka.killmail_id
+                            WHERE k.killmail_time >= NOW() - INTERVAL '%s days'
+                              AND ka.alliance_id IS NOT NULL
+                            UNION ALL
+                            SELECT k.victim_alliance_id as alliance_id
+                            FROM killmails k
+                            WHERE k.killmail_time >= NOW() - INTERVAL '%s days'
+                              AND k.victim_alliance_id IS NOT NULL
+                        ) combined
+                        GROUP BY alliance_id
+                        HAVING COUNT(*) >= 10
+                        ORDER BY total_activity DESC
+                    """, (days, days))
+
+                    alliance_activity = {row[0]: row[1] for row in cur.fetchall()}
+
+                    # Step 3: Build coalition clusters using Union-Find algorithm
+                    parent = {}
+
+                    def find(x):
+                        if x not in parent:
+                            parent[x] = x
+                        if parent[x] != x:
+                            parent[x] = find(parent[x])
+                        return parent[x]
+
+                    def union(x, y):
+                        px, py = find(x), find(y)
+                        if px != py:
+                            # Merge smaller into larger (by activity)
+                            if alliance_activity.get(px, 0) >= alliance_activity.get(py, 0):
+                                parent[py] = px
+                            else:
+                                parent[px] = py
+
+                    # Step 3b: Also get alliance pairs that fight AGAINST each other
+                    cur.execute("""
+                        SELECT
+                            ka.alliance_id as attacker_alliance,
+                            k.victim_alliance_id as victim_alliance,
+                            COUNT(*) as fights_against
+                        FROM killmail_attackers ka
+                        JOIN killmails k ON k.killmail_id = ka.killmail_id
+                        WHERE k.killmail_time >= NOW() - INTERVAL '%s days'
+                          AND ka.alliance_id IS NOT NULL
+                          AND k.victim_alliance_id IS NOT NULL
+                          AND ka.alliance_id != k.victim_alliance_id
+                        GROUP BY ka.alliance_id, k.victim_alliance_id
+                        HAVING COUNT(*) >= %s
+                    """, (days, min_fights_together))
+
+                    conflicts_raw = cur.fetchall()
+
+                    # Build conflict map: (alliance_a, alliance_b) -> fights_against
+                    conflict_map = {}
+                    for attacker, victim, count in conflicts_raw:
+                        pair = tuple(sorted([attacker, victim]))
+                        conflict_map[pair] = conflict_map.get(pair, 0) + count
+
+                    # Build cooperation map from alliance_pairs
+                    coop_map = {}
+                    for alliance_a, alliance_b, fights_together in alliance_pairs:
+                        pair = (alliance_a, alliance_b)
+                        coop_map[pair] = fights_together
+
+                    # Build set of confirmed enemies (fight against each other significantly)
+                    confirmed_enemies = set()
+                    for pair, fights_against in conflict_map.items():
+                        if fights_against >= 20:  # If they've fought 20+ times, they're enemies
+                            confirmed_enemies.add(pair)
+
+                    # Modified union that respects enemy relationships
+                    def safe_union(x, y):
+                        """Union only if not enemies (direct or transitive)"""
+                        px, py = find(x), find(y)
+                        if px == py:
+                            return  # Already in same coalition
+
+                        # Check if ANY member of coalition X is enemy of ANY member of coalition Y
+                        members_x = [a for a, r in parent.items() if find(a) == px]
+                        members_y = [a for a, r in parent.items() if find(a) == py]
+
+                        if not members_x:
+                            members_x = [px]
+                        if not members_y:
+                            members_y = [py]
+
+                        for mx in members_x:
+                            for my in members_y:
+                                enemy_pair = tuple(sorted([mx, my]))
+                                if enemy_pair in confirmed_enemies:
+                                    return  # Can't merge - they're enemies
+
+                        # Safe to merge
+                        if alliance_activity.get(px, 0) >= alliance_activity.get(py, 0):
+                            parent[py] = px
+                        else:
+                            parent[px] = py
+
+                    # Union alliances that are TRUE allies (fight together, rarely against)
+                    for alliance_a, alliance_b, fights_together in alliance_pairs:
+                        pair = tuple(sorted([alliance_a, alliance_b]))
+                        fights_against = conflict_map.get(pair, 0)
+
+                        # Skip if they're confirmed enemies
+                        if pair in confirmed_enemies:
+                            continue
+
+                        # Must cooperate significantly more than conflict
+                        if fights_against > 0 and fights_together < fights_against * 5:
+                            continue
+
+                        # Must actually cooperate significantly
+                        activity_a = alliance_activity.get(alliance_a, 0)
+                        activity_b = alliance_activity.get(alliance_b, 0)
+                        min_activity = min(activity_a, activity_b)
+
+                        is_significant = min_activity > 0 and fights_together >= min_activity * 0.10
+
+                        if is_significant:
+                            safe_union(alliance_a, alliance_b)
+
+                    # Step 4: Group alliances by coalition root
+                    coalitions_raw = {}
+                    for alliance_id in alliance_activity.keys():
+                        root = find(alliance_id)
+                        if root not in coalitions_raw:
+                            coalitions_raw[root] = []
+                        coalitions_raw[root].append(alliance_id)
+
+                    # Step 5: Get names for alliances and build final coalition data
+                    coalitions = []
+                    unaffiliated = []
+
+                    for root, members in coalitions_raw.items():
+                        if len(members) < 2:
+                            # Single alliance = unaffiliated
+                            unaffiliated.extend(members)
+                            continue
+
+                        # Sort members by activity, largest first
+                        members.sort(key=lambda x: alliance_activity.get(x, 0), reverse=True)
+
+                        # Get name of largest alliance for coalition name
+                        leader_name = await self.get_alliance_name(members[0])
+
+                        # Get coalition aggregate stats
+                        member_ids = tuple(members[:50])  # Limit to top 50 for query
+                        cur.execute("""
+                            SELECT
+                                COUNT(DISTINCT ka.killmail_id) as total_kills,
+                                COALESCE(SUM(DISTINCT k.ship_value), 0) as isk_destroyed
+                            FROM killmail_attackers ka
+                            JOIN killmails k ON k.killmail_id = ka.killmail_id
+                            WHERE k.killmail_time >= NOW() - INTERVAL '%s days'
+                              AND ka.alliance_id IN %s
+                        """, (days, member_ids))
+                        kills_result = cur.fetchone()
+
+                        cur.execute("""
+                            SELECT
+                                COUNT(*) as total_losses,
+                                COALESCE(SUM(ship_value), 0) as isk_lost
+                            FROM killmails
+                            WHERE killmail_time >= NOW() - INTERVAL '%s days'
+                              AND victim_alliance_id IN %s
+                        """, (days, member_ids))
+                        losses_result = cur.fetchone()
+
+                        total_kills = kills_result[0] if kills_result else 0
+                        isk_destroyed = int(kills_result[1]) if kills_result else 0
+                        total_losses = losses_result[0] if losses_result else 0
+                        isk_lost = int(losses_result[1]) if losses_result else 0
+
+                        efficiency = (isk_destroyed / (isk_destroyed + isk_lost) * 100) if (isk_destroyed + isk_lost) > 0 else 50
+
+                        # Get member names
+                        member_names = []
+                        for member_id in members[:10]:  # Top 10 members
+                            name = await self.get_alliance_name(member_id)
+                            member_names.append({
+                                "alliance_id": member_id,
+                                "name": name,
+                                "activity": alliance_activity.get(member_id, 0)
+                            })
+
+                        coalitions.append({
+                            "name": f"{leader_name} Coalition",
+                            "leader_alliance_id": members[0],
+                            "leader_name": leader_name,
+                            "member_count": len(members),
+                            "members": member_names,
+                            "total_kills": total_kills,
+                            "total_losses": total_losses,
+                            "isk_destroyed": isk_destroyed,
+                            "isk_lost": isk_lost,
+                            "efficiency": round(efficiency, 1),
+                            "total_activity": sum(alliance_activity.get(m, 0) for m in members)
+                        })
+
+                    # Sort coalitions by activity
+                    coalitions.sort(key=lambda x: x['total_activity'], reverse=True)
+
+                    # Build unaffiliated summary (top 5 by activity)
+                    unaffiliated.sort(key=lambda x: alliance_activity.get(x, 0), reverse=True)
+                    unaffiliated_data = []
+                    for alliance_id in unaffiliated[:10]:
+                        name = await self.get_alliance_name(alliance_id)
+
+                        cur.execute("""
+                            SELECT COUNT(*) as kills
+                            FROM killmail_attackers ka
+                            JOIN killmails k ON k.killmail_id = ka.killmail_id
+                            WHERE k.killmail_time >= NOW() - INTERVAL '%s days'
+                              AND ka.alliance_id = %s
+                        """, (days, alliance_id))
+                        kills = cur.fetchone()[0]
+
+                        cur.execute("""
+                            SELECT COUNT(*) as losses, COALESCE(SUM(ship_value), 0) as isk_lost
+                            FROM killmails
+                            WHERE killmail_time >= NOW() - INTERVAL '%s days'
+                              AND victim_alliance_id = %s
+                        """, (days, alliance_id))
+                        loss_result = cur.fetchone()
+
+                        unaffiliated_data.append({
+                            "alliance_id": alliance_id,
+                            "name": name,
+                            "kills": kills,
+                            "losses": loss_result[0],
+                            "isk_lost": int(loss_result[1]),
+                            "activity": alliance_activity.get(alliance_id, 0)
+                        })
+
+                    result = {
+                        "period_days": days,
+                        "coalitions": coalitions[:5],  # Top 5 coalitions
+                        "unaffiliated": unaffiliated_data,
+                        "total_coalitions_detected": len(coalitions),
+                        "total_unaffiliated": len(unaffiliated)
+                    }
+
+                    # Cache for 1 hour
+                    self.redis_client.setex(cache_key, 3600, json.dumps(result))
+
+                    return result
+
+        except Exception as e:
+            print(f"Error detecting coalitions: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "period_days": days,
+                "coalitions": [],
+                "unaffiliated": [],
+                "error": str(e)
+            }

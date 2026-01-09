@@ -65,6 +65,11 @@ class CombinedZKillboardService(ZKillboardLiveService):
         """Generate pilot intelligence battle report"""
         return self._reports_service.build_pilot_intelligence_report()
 
+    async def detect_coalitions(self, days: int = 7):
+        """Detect coalitions from combat patterns"""
+        self._reports_service.session = await self._get_session()
+        return await self._reports_service.detect_coalitions(days=days)
+
 
 # Singleton instance for backwards compatibility
 zkill_live_service = CombinedZKillboardService()

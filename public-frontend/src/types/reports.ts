@@ -127,6 +127,35 @@ export interface BiggestLoss {
   value: number;
 }
 
+export interface CoalitionMember {
+  alliance_id: number;
+  name: string;
+  activity: number;
+}
+
+export interface Coalition {
+  name: string;
+  leader_alliance_id: number;
+  leader_name: string;
+  member_count: number;
+  members: CoalitionMember[];
+  total_kills: number;
+  total_losses: number;
+  isk_destroyed: number;
+  isk_lost: number;
+  efficiency: number;
+  total_activity: number;
+}
+
+export interface UnaffiliatedAlliance {
+  alliance_id: number;
+  name: string;
+  kills: number;
+  losses: number;
+  isk_lost: number;
+  activity: number;
+}
+
 export interface AllianceWars {
   period: string;
   global: {
@@ -135,6 +164,8 @@ export interface AllianceWars {
     total_kills: number;
     total_isk_destroyed: number;
   };
+  coalitions?: Coalition[];
+  unaffiliated_alliances?: UnaffiliatedAlliance[];
   conflicts: Array<{
     alliance_1_id: number;
     alliance_1_name: string;

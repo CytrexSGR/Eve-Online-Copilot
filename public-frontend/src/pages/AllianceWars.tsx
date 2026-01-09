@@ -79,6 +79,132 @@ export function AllianceWars() {
         </div>
       </div>
 
+      {/* Coalition Summary - Auto-Detected Power Blocs */}
+      {report.coalitions && report.coalitions.length > 0 && (
+        <div className="card" style={{ marginTop: '1.5rem' }}>
+          <h2>Power Blocs</h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+            Auto-detected coalitions based on combat patterns (7 days)
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+            {report.coalitions.map((coalition) => (
+              <div
+                key={coalition.leader_alliance_id}
+                style={{
+                  padding: '1.25rem',
+                  background: 'var(--bg-elevated)',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  borderLeft: `4px solid ${coalition.efficiency >= 55 ? 'var(--success)' : coalition.efficiency >= 45 ? 'var(--warning)' : 'var(--danger)'}`
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+                      {coalition.name}
+                    </h3>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      {coalition.member_count} alliances
+                    </p>
+                  </div>
+                  <div style={{
+                    padding: '0.25rem 0.75rem',
+                    borderRadius: '999px',
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    background: coalition.efficiency >= 55 ? 'rgba(63, 185, 80, 0.15)' : coalition.efficiency >= 45 ? 'rgba(210, 153, 34, 0.15)' : 'rgba(248, 81, 73, 0.15)',
+                    color: coalition.efficiency >= 55 ? 'var(--success)' : coalition.efficiency >= 45 ? 'var(--warning)' : 'var(--danger)'
+                  }}>
+                    {coalition.efficiency.toFixed(1)}%
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Kills</p>
+                    <p style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--success)' }}>
+                      {coalition.total_kills.toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Losses</p>
+                    <p style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--danger)' }}>
+                      {coalition.total_losses.toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>ISK Destroyed</p>
+                    <p style={{ fontSize: '1rem', fontWeight: 600, fontFamily: 'monospace' }}>
+                      {(coalition.isk_destroyed / 1_000_000_000).toFixed(1)}B
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>ISK Lost</p>
+                    <p style={{ fontSize: '1rem', fontWeight: 600, fontFamily: 'monospace' }}>
+                      {(coalition.isk_lost / 1_000_000_000).toFixed(1)}B
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Key Members</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    {coalition.members.slice(0, 4).map((member) => (
+                      <span
+                        key={member.alliance_id}
+                        style={{
+                          fontSize: '0.75rem',
+                          padding: '0.25rem 0.5rem',
+                          background: 'var(--bg-surface)',
+                          borderRadius: '4px',
+                          color: 'var(--text-primary)'
+                        }}
+                      >
+                        {member.name}
+                      </span>
+                    ))}
+                    {coalition.member_count > 4 && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', padding: '0.25rem' }}>
+                        +{coalition.member_count - 4} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Unaffiliated Alliances */}
+          {report.unaffiliated_alliances && report.unaffiliated_alliances.length > 0 && (
+            <div style={{ marginTop: '1.5rem' }}>
+              <h3 style={{ fontSize: '1rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                Independent Operators
+              </h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                {report.unaffiliated_alliances.slice(0, 8).map((alliance) => (
+                  <div
+                    key={alliance.alliance_id}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: 'var(--bg-elevated)',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    <span style={{ fontWeight: 500 }}>{alliance.name}</span>
+                    <span style={{ marginLeft: '0.5rem', color: 'var(--text-secondary)' }}>
+                      {alliance.kills.toLocaleString()} kills
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Active Conflicts - Full List */}
       <div className="card" style={{ marginTop: '1.5rem' }}>
         <h2>Active Conflicts</h2>
