@@ -805,7 +805,7 @@ class ZKillboardReportsService:
 
     async def get_alliance_name(self, alliance_id: int) -> str:
         """
-        Get alliance name from ESI API.
+        Get alliance name from ESI API with Redis caching.
 
         Args:
             alliance_id: Alliance ID
@@ -813,13 +813,33 @@ class ZKillboardReportsService:
         Returns:
             Alliance name or fallback string
         """
+        if not alliance_id:
+            return "Unknown"
+
+        cache_key = f"esi:alliance:{alliance_id}:name"
+
+        # Try cache first
+        try:
+            cached = self.redis.get(cache_key)
+            if cached:
+                return cached if isinstance(cached, str) else cached.decode('utf-8')
+        except Exception:
+            pass
+
+        # Fetch from ESI
         try:
             async with aiohttp.ClientSession() as session:
                 url = f"https://esi.evetech.net/latest/alliances/{alliance_id}/"
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
                     if response.status == 200:
                         data = await response.json()
-                        return data.get("name", f"Alliance {alliance_id}")
+                        name = data.get("name", f"Alliance {alliance_id}")
+                        # Cache for 7 days
+                        try:
+                            self.redis.setex(cache_key, 7 * 24 * 60 * 60, name)
+                        except Exception:
+                            pass
+                        return name
         except Exception as e:
             print(f"Error fetching alliance {alliance_id}: {e}")
         return f"Alliance {alliance_id}"
