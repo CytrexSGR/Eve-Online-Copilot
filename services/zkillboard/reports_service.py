@@ -844,24 +844,7 @@ class ZKillboardReportsService:
                     war_data = []
                     for war in wars:
                         war_id, alliance_a, alliance_b, first_kill, last_kill, total_kills, total_isk, duration, status, \
-                        recent_kills_a, recent_kills_b, recent_isk_a, recent_isk_b = war
-
-                        # Calculate metrics
-                        kill_ratio_a = recent_kills_a / max(recent_kills_b, 1)
-                        isk_efficiency_a = (recent_isk_a / (recent_isk_a + recent_isk_b)) * 100 if (recent_isk_a + recent_isk_b) > 0 else 50
-                        isk_efficiency_b = 100 - isk_efficiency_a
-
-                        # Determine winners
-                        tactical_winner = "a" if kill_ratio_a > 1.2 else "b" if kill_ratio_a < 0.8 else "contested"
-                        economic_winner = "a" if isk_efficiency_a > 60 else "b" if isk_efficiency_a < 40 else "contested"
-
-                        # Overall winner (weighted: 60% economic, 40% tactical)
-                        if isk_efficiency_a > 55 or (isk_efficiency_a > 45 and kill_ratio_a > 1.5):
-                            overall_winner = "a"
-                        elif isk_efficiency_a < 45 or (isk_efficiency_a < 55 and kill_ratio_a < 0.67):
-                            overall_winner = "b"
-                        else:
-                            overall_winner = "contested"
+                        _, _, _, _ = war  # Ignore war_daily_stats values, we'll get actual data below
 
                         # Get alliance names
                         alliance_a_name = await self.get_alliance_name(alliance_a)
@@ -900,6 +883,23 @@ class ZKillboardReportsService:
                         recent_kills_b = actual_losses_a  # Alliance B killed A's ships
                         recent_isk_a = actual_isk_lost_b  # ISK destroyed by A
                         recent_isk_b = actual_isk_lost_a  # ISK destroyed by B
+
+                        # Calculate metrics using ACTUAL values (not war_daily_stats)
+                        kill_ratio_a = recent_kills_a / max(recent_kills_b, 1)
+                        isk_efficiency_a = (recent_isk_a / (recent_isk_a + recent_isk_b)) * 100 if (recent_isk_a + recent_isk_b) > 0 else 50
+                        isk_efficiency_b = 100 - isk_efficiency_a
+
+                        # Determine winners based on actual data
+                        tactical_winner = "a" if kill_ratio_a > 1.2 else "b" if kill_ratio_a < 0.8 else "contested"
+                        economic_winner = "a" if isk_efficiency_a > 60 else "b" if isk_efficiency_a < 40 else "contested"
+
+                        # Overall winner (weighted: 60% economic, 40% tactical)
+                        if isk_efficiency_a > 55 or (isk_efficiency_a > 45 and kill_ratio_a > 1.5):
+                            overall_winner = "a"
+                        elif isk_efficiency_a < 45 or (isk_efficiency_a < 55 and kill_ratio_a < 0.67):
+                            overall_winner = "b"
+                        else:
+                            overall_winner = "contested"
 
                         # Get system hotspots for this war (count each ship once)
                         cur.execute("""
