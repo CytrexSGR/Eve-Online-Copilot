@@ -40,7 +40,7 @@ export default function TelegramMirror() {
   }, []);
 
   const fetchAlerts = async () => {
-    try:
+    try {
       setError(null);
       const data = await getRecentTelegramAlerts(5);
       setAlerts(data.alerts || []);
