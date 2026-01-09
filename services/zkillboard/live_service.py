@@ -25,6 +25,7 @@ from dataclasses import dataclass, asdict
 from src.database import get_db_connection
 from config import DISCORD_WEBHOOK_URL, WAR_DISCORD_ENABLED
 from src.telegram_service import telegram_service
+from services.zkillboard.state_manager import RedisStateManager, HotspotInfo
 
 
 # Redis Configuration
@@ -223,14 +224,8 @@ class ZKillboardLiveService:
         self.session: Optional[aiohttp.ClientSession] = None
         self.running = False
 
-        # Track processed killmail IDs to avoid duplicates
-        self.processed_kills: set = set()
-
-        # In-memory hotspot tracking (system_id -> deque of timestamps)
-        self.kill_timestamps: Dict[int, deque] = defaultdict(lambda: deque(maxlen=100))
-
-        # Track when alerts were last sent per system (system_id -> timestamp)
-        self.last_alert_sent: Dict[int, float] = {}
+        # Redis-based state management (survives restarts!)
+        self.state_manager = RedisStateManager()
 
         # System -> Region mapping cache
         self.system_region_map: Dict[int, int] = {}
@@ -401,14 +396,18 @@ class ZKillboardLiveService:
             print(f"Error parsing killmail: {e}")
             return None
 
-    def store_persistent_kill(self, kill: LiveKillmail, zkb_data: Dict, esi_killmail: Dict) -> bool:
+    def store_persistent_kill(self, kill: LiveKillmail, zkb_data: Dict, esi_killmail: Dict) -> Optional[int]:
         """
-        Store killmail permanently in PostgreSQL.
+        Store killmail permanently in PostgreSQL with atomic battle assignment.
 
-        Writes to:
-        - killmails table (core data)
-        - killmail_items table (destroyed/dropped items)
-        - killmail_attackers table (attacker details)
+        CRITICAL: This method atomically:
+        1. Inserts the killmail with battle_id assignment in ONE query
+        2. Returns battle_id if kill was associated with a battle
+        3. Returns None if kill was a duplicate (ON CONFLICT DO NOTHING)
+
+        This prevents the 18.5x kill inflation bug by ensuring:
+        - Each kill is counted EXACTLY ONCE
+        - Battle stats are updated from battle_stats_computed view (always accurate)
 
         Args:
             kill: Parsed killmail data
@@ -416,7 +415,9 @@ class ZKillboardLiveService:
             esi_killmail: Full ESI killmail data (for attacker details)
 
         Returns:
-            True if successfully stored, False otherwise
+            battle_id if kill was stored and associated with battle
+            0 if kill was stored but not part of a battle
+            None if kill was a duplicate (already exists)
         """
         try:
             with get_db_connection() as conn:
@@ -442,7 +443,9 @@ class ZKillboardLiveService:
                             final_blow_alliance_id = attacker.get("alliance_id")
                             break
 
-                    # 1. Insert main killmail record
+                    # ATOMIC INSERT with battle assignment
+                    # The subquery finds an active battle in the same system
+                    # This ensures the kill-battle association happens in ONE query
                     cur.execute("""
                         INSERT INTO killmails (
                             killmail_id, killmail_time, solar_system_id, region_id,
@@ -452,7 +455,8 @@ class ZKillboardLiveService:
                             final_blow_character_id, final_blow_corporation_id, final_blow_alliance_id,
                             is_solo, is_npc, is_capital,
                             zkb_points, zkb_npc, zkb_awox,
-                            processed_at
+                            processed_at,
+                            battle_id
                         ) VALUES (
                             %s, %s, %s, %s,
                             %s, %s, %s, %s, %s,
@@ -461,9 +465,16 @@ class ZKillboardLiveService:
                             %s, %s, %s,
                             %s, %s, %s,
                             %s, %s, %s,
-                            CURRENT_TIMESTAMP
+                            CURRENT_TIMESTAMP,
+                            (SELECT battle_id FROM battles
+                             WHERE solar_system_id = %s
+                               AND status = 'active'
+                               AND last_kill_at > NOW() - INTERVAL '30 minutes'
+                             ORDER BY battle_id DESC
+                             LIMIT 1)
                         )
                         ON CONFLICT (killmail_id) DO NOTHING
+                        RETURNING killmail_id, battle_id
                     """, (
                         kill.killmail_id,
                         kill.killmail_time,
@@ -486,8 +497,18 @@ class ZKillboardLiveService:
                         is_capital,
                         zkb_data.get("points"),
                         zkb_data.get("npc", False),
-                        zkb_data.get("awox", False)
+                        zkb_data.get("awox", False),
+                        kill.solar_system_id  # For the battle subquery
                     ))
+
+                    # Check if insert was successful (not a duplicate)
+                    result = cur.fetchone()
+                    if result is None:
+                        # Duplicate kill - DO NOT count
+                        print(f"[DUPLICATE] Killmail {kill.killmail_id} already exists - skipping")
+                        return None
+
+                    inserted_killmail_id, battle_id = result
 
                     # 2. Insert destroyed items
                     for item in kill.destroyed_items:
@@ -539,12 +560,28 @@ class ZKillboardLiveService:
                             attacker.get("final_blow", False)
                         ))
 
+                    # 5. If kill is associated with a battle, refresh stats from computed view
+                    # This ensures battle statistics are ALWAYS accurate
+                    if battle_id:
+                        cur.execute("""
+                            UPDATE battles b SET
+                                last_kill_at = CURRENT_TIMESTAMP
+                            WHERE b.battle_id = %s
+                        """, (battle_id,))
+
+                        # Refresh battle stats from computed view (always accurate)
+                        cur.execute("SELECT refresh_battle_stats(%s)", (battle_id,))
+
+                        print(f"[BATTLE] Kill {kill.killmail_id} added to battle {battle_id}")
+
                     conn.commit()
-                    return True
+
+                    # Return battle_id (or 0 if not part of battle)
+                    return battle_id if battle_id else 0
 
         except Exception as e:
             print(f"Error storing killmail {kill.killmail_id} to PostgreSQL: {e}")
-            return False
+            return None
 
     def _is_capital_ship(self, ship_type_id: int) -> bool:
         """
@@ -568,161 +605,74 @@ class ZKillboardLiveService:
             pass
         return False
 
-    def _update_existing_battle(self, kill: LiveKillmail) -> Optional[int]:
+    def create_battle_for_hotspot(self, kill: LiveKillmail) -> Optional[int]:
         """
-        Update an existing active battle (if one exists) without creating a new one.
+        Create a new battle when a hotspot is detected (5+ kills in 5 minutes).
 
-        This is used for kills that don't trigger hotspot detection but occur
-        in systems with active battles.
+        NOTE: Battle stats are NO LONGER updated here. Stats are computed from
+        battle_stats_computed view and refreshed in store_persistent_kill().
+
+        This method ONLY creates new battles - it does NOT update existing battles.
+        Kill-to-battle association happens atomically in store_persistent_kill().
 
         Args:
-            kill: LiveKillmail to add to existing battle
+            kill: LiveKillmail that triggered the hotspot detection
 
         Returns:
-            battle_id if battle was updated, None if no active battle exists
+            battle_id if battle was created, None if battle already exists
         """
         try:
             with get_db_connection() as conn:
                 with conn.cursor() as cur:
-                    # Check for active battle
+                    # Check if there's already an active battle in this system
                     cur.execute("""
                         SELECT battle_id
                         FROM battles
                         WHERE solar_system_id = %s
                           AND status = 'active'
                           AND last_kill_at > NOW() - INTERVAL '30 minutes'
-                        ORDER BY battle_id DESC
                         LIMIT 1
                     """, (kill.solar_system_id,))
 
-                    result = cur.fetchone()
+                    if cur.fetchone():
+                        # Battle already exists - don't create duplicate
+                        # The kill will be associated via store_persistent_kill()
+                        return None
 
-                    if result:
-                        battle_id = result[0]
-                        is_capital = self._is_capital_ship(kill.ship_type_id)
+                    # Create new battle with initial stats = 0
+                    # Stats will be populated by refresh_battle_stats() after first kill
+                    print(f"[BATTLE] Creating new battle in system {kill.solar_system_id}")
 
-                        cur.execute("""
-                            UPDATE battles
-                            SET last_kill_at = CURRENT_TIMESTAMP,
-                                total_kills = total_kills + 1,
-                                total_isk_destroyed = total_isk_destroyed + %s,
-                                capital_kills = capital_kills + %s
-                            WHERE battle_id = %s
-                        """, (
-                            safe_int_value(kill.ship_value),
-                            1 if is_capital else 0,
-                            battle_id
-                        ))
-
-                        conn.commit()
-                        return battle_id
-
-                    return None
-
-        except Exception as e:
-            print(f"Error updating existing battle: {e}")
-            return None
-
-    def create_or_update_battle(self, kill: LiveKillmail) -> Optional[int]:
-        """
-        Create a new battle or update existing battle in a system.
-
-        A battle is a sustained combat engagement in a single system.
-        Battles are created when hotspots are detected and updated with each kill.
-
-        Args:
-            kill: LiveKillmail that triggered the battle detection
-
-        Returns:
-            battle_id if battle was created/updated, None otherwise
-        """
-        try:
-            with get_db_connection() as conn:
-                with conn.cursor() as cur:
-                    # Check if there's an active battle in this system
-                    # Battle is considered active if last kill was within 30 minutes
                     cur.execute("""
-                        SELECT battle_id, total_kills, total_isk_destroyed, capital_kills
-                        FROM battles
-                        WHERE solar_system_id = %s
-                          AND status = 'active'
-                          AND last_kill_at > NOW() - INTERVAL '30 minutes'
-                        ORDER BY battle_id DESC
-                        LIMIT 1
-                    """, (kill.solar_system_id,))
+                        INSERT INTO battles (
+                            solar_system_id,
+                            region_id,
+                            started_at,
+                            last_kill_at,
+                            total_kills,
+                            total_isk_destroyed,
+                            capital_kills,
+                            status
+                        ) VALUES (
+                            %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 0, 0, 'active'
+                        )
+                        RETURNING battle_id
+                    """, (
+                        kill.solar_system_id,
+                        kill.region_id
+                    ))
 
-                    result = cur.fetchone()
+                    battle_id = cur.fetchone()[0]
+                    conn.commit()
+                    print(f"[BATTLE] Battle {battle_id} created in system {kill.solar_system_id}")
 
-                    if result:
-                        # Update existing battle
-                        battle_id, total_kills, total_isk, capital_kills = result
-                        is_capital = self._is_capital_ship(kill.ship_type_id)
+                    # Send initial battle alert after a few more kills
+                    asyncio.create_task(self.send_initial_battle_alert(battle_id, kill.solar_system_id))
 
-                        print(f"[BATTLE] Updating battle {battle_id} in system {kill.solar_system_id} (was {total_kills} kills)")
-
-                        cur.execute("""
-                            UPDATE battles
-                            SET last_kill_at = CURRENT_TIMESTAMP,
-                                total_kills = total_kills + 1,
-                                total_isk_destroyed = total_isk_destroyed + %s,
-                                capital_kills = capital_kills + %s
-                            WHERE battle_id = %s
-                        """, (
-                            safe_int_value(kill.ship_value),
-                            1 if is_capital else 0,
-                            battle_id
-                        ))
-
-                        conn.commit()
-                        new_kill_count = total_kills + 1
-                        print(f"[BATTLE] Battle {battle_id} updated to {new_kill_count} kills")
-
-                        # Check if initial alert threshold reached (only sent once atomically)
-                        asyncio.create_task(self.send_initial_battle_alert(battle_id, kill.solar_system_id))
-
-                        # Check if milestone reached
-                        asyncio.create_task(self.check_and_send_milestone_alert(battle_id, new_kill_count, kill.solar_system_id))
-
-                        return battle_id
-                    else:
-                        # Create new battle
-                        is_capital = self._is_capital_ship(kill.ship_type_id)
-
-                        print(f"[BATTLE] Creating new battle in system {kill.solar_system_id}")
-
-                        cur.execute("""
-                            INSERT INTO battles (
-                                solar_system_id,
-                                region_id,
-                                started_at,
-                                last_kill_at,
-                                total_kills,
-                                total_isk_destroyed,
-                                capital_kills,
-                                status
-                            ) VALUES (
-                                %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, %s, %s, 'active'
-                            )
-                            RETURNING battle_id
-                        """, (
-                            kill.solar_system_id,
-                            kill.region_id,
-                            1,
-                            safe_int_value(kill.ship_value),
-                            1 if is_capital else 0
-                        ))
-
-                        battle_id = cur.fetchone()[0]
-                        conn.commit()
-                        print(f"[BATTLE] Battle {battle_id} created in system {kill.solar_system_id}")
-
-                        # Send initial battle alert
-                        asyncio.create_task(self.send_initial_battle_alert(battle_id, kill.solar_system_id))
-
-                        return battle_id
+                    return battle_id
 
         except Exception as e:
-            print(f"Error creating/updating battle: {e}")
+            print(f"Error creating battle: {e}")
             return None
 
     async def send_initial_battle_alert(self, battle_id: int, system_id: int):
@@ -1251,7 +1201,7 @@ class ZKillboardLiveService:
         except Exception as e:
             print(f"Error finalizing wars: {e}")
 
-    def store_live_kill(self, kill: LiveKillmail, zkb_data: Optional[Dict] = None, esi_killmail: Optional[Dict] = None) -> bool:
+    def store_live_kill(self, kill: LiveKillmail, zkb_data: Optional[Dict] = None, esi_killmail: Optional[Dict] = None) -> Optional[int]:
         """
         Store killmail in Redis with 24h TTL AND PostgreSQL permanently.
         Multiple storage patterns for different query types.
@@ -1262,21 +1212,26 @@ class ZKillboardLiveService:
             esi_killmail: Optional full ESI killmail data for detailed attacker storage
 
         Returns:
-            True if PostgreSQL storage was successful (or not attempted), False if failed
+            battle_id if kill was stored and part of a battle
+            0 if kill was stored but not part of a battle
+            None if kill was duplicate or failed to store
         """
         timestamp = int(time.time())
 
-        # PERSISTENT STORAGE: Write to PostgreSQL
-        db_stored = False
-        if zkb_data and esi_killmail:
-            db_stored = self.store_persistent_kill(kill, zkb_data, esi_killmail)
-            if not db_stored:
-                print(f"[WARNING] Killmail {kill.killmail_id} NOT stored in database - skipping battle update")
-                return False
-        else:
-            # If we don't have full data, we can't store in DB, so don't count it
+        # PERSISTENT STORAGE: Write to PostgreSQL with atomic battle assignment
+        if not zkb_data or not esi_killmail:
             print(f"[WARNING] Killmail {kill.killmail_id} missing zkb_data or esi_killmail - skipping")
-            return False
+            return None
+
+        # store_persistent_kill returns:
+        # - battle_id (>0) if associated with battle
+        # - 0 if stored but no battle
+        # - None if duplicate
+        result = self.store_persistent_kill(kill, zkb_data, esi_killmail)
+
+        if result is None:
+            # Duplicate - already exists in database
+            return None
 
         # TEMPORARY STORAGE: Redis for real-time queries
         # 1. Store full killmail by ID
@@ -1314,31 +1269,41 @@ class ZKillboardLiveService:
             self.redis_client.incrby(key_item_demand, item['quantity'])
             self.redis_client.expire(key_item_demand, REDIS_TTL)
 
-        return True
+        # Cache kill in state manager for fast retrieval
+        self.state_manager.cache_kill(kill.killmail_id, asdict(kill))
+
+        # Add to system timeline in state manager
+        self.state_manager.add_to_system_timeline(
+            kill.solar_system_id,
+            kill.killmail_id,
+            timestamp
+        )
+
+        # Return battle_id (or 0 if not part of battle)
+        return result
 
     def detect_hotspot(self, kill: LiveKillmail) -> Optional[Dict]:
         """
         Detect if this kill indicates a hotspot (combat spike).
 
+        Uses Redis-based state manager for persistence across restarts.
+
         Returns:
-            Hotspot info dict or None
+            Hotspot info dict or None if not a hotspot
         """
         system_id = kill.solar_system_id
         now = time.time()
 
-        # Add current kill timestamp
-        self.kill_timestamps[system_id].append(now)
+        # Add timestamp to Redis and get hotspot info
+        # This is atomic and survives service restarts
+        hotspot_info = self.state_manager.add_kill_timestamp(system_id, now)
 
-        # Count kills in last 5 minutes
-        cutoff = now - HOTSPOT_WINDOW_SECONDS
-        recent_kills = [ts for ts in self.kill_timestamps[system_id] if ts >= cutoff]
-
-        if len(recent_kills) >= HOTSPOT_THRESHOLD_KILLS:
+        if hotspot_info.is_hotspot:
             return {
                 "solar_system_id": system_id,
                 "region_id": kill.region_id,
-                "kill_count": len(recent_kills),
-                "window_seconds": HOTSPOT_WINDOW_SECONDS,
+                "kill_count": hotspot_info.kill_count,
+                "window_seconds": hotspot_info.window_seconds,
                 "timestamp": now,
                 "latest_ship": kill.ship_type_id,
                 "latest_value": kill.ship_value
@@ -2022,13 +1987,16 @@ class ZKillboardLiveService:
         """
         Process a single killmail from zkillboard API.
 
-        Pipeline:
-        1. Check if already processed
-        2. Fetch full data from ESI
-        3. Parse killmail
-        4. Store in Redis
-        5. Detect hotspots
-        6. Send alerts if needed
+        Pipeline (REDESIGNED for atomicity):
+        1. Check Redis if already processed (fast, survives restarts)
+        2. Mark as processed in Redis (atomic SADD)
+        3. Fetch full data from ESI
+        4. Parse killmail
+        5. Store in PostgreSQL with atomic battle assignment
+        6. If hotspot detected, create new battle (battles stats from computed view)
+        7. Update battle participants
+        8. Track alliance wars
+        9. Send alerts if needed
         """
         killmail_id = zkb_entry.get("killmail_id")
         hash_str = zkb_entry.get("zkb", {}).get("hash")
@@ -2036,52 +2004,64 @@ class ZKillboardLiveService:
         if not killmail_id or not hash_str:
             return
 
-        # Skip if already processed
-        if killmail_id in self.processed_kills:
+        # STEP 1: Check if already processed using Redis (survives restarts!)
+        if self.state_manager.is_kill_processed(killmail_id):
             return
 
-        # Fetch full killmail from ESI
+        # STEP 2: Atomically mark as processed in Redis
+        # SADD returns False if already exists (race condition protection)
+        if not self.state_manager.mark_kill_processed(killmail_id, source="redisq"):
+            return  # Another process already claimed this kill
+
+        # STEP 3: Fetch full killmail from ESI
         killmail = await self.fetch_killmail_from_esi(killmail_id, hash_str)
         if not killmail:
             return
 
-        # Parse
+        # STEP 4: Parse killmail
         kill = self.parse_killmail(killmail, zkb_entry.get("zkb", {}))
         if not kill:
             return
 
-        # Mark as processed
-        self.processed_kills.add(killmail_id)
+        # STEP 5: Detect hotspot BEFORE storing (to create battle if needed)
+        # This uses Redis-based timestamps that survive restarts
+        hotspot = self.detect_hotspot(kill)
 
-        # Keep processed set bounded (last 1000)
-        if len(self.processed_kills) > 1000:
-            self.processed_kills = set(list(self.processed_kills)[-1000:])
+        # STEP 6: If hotspot detected, ensure a battle exists for this system
+        # The battle must exist BEFORE store_live_kill so the kill gets associated
+        if hotspot:
+            self.create_battle_for_hotspot(kill)
 
-        # Store (both Redis and PostgreSQL)
-        # CRITICAL: Only proceed with battle tracking if DB storage was successful
-        db_stored = self.store_live_kill(
+        # STEP 7: Store in PostgreSQL with atomic battle assignment
+        # This returns:
+        # - battle_id (>0) if associated with battle
+        # - 0 if stored but no battle
+        # - None if duplicate (shouldn't happen due to Redis check)
+        battle_id = self.store_live_kill(
             kill,
             zkb_data=zkb_entry.get("zkb", {}),
             esi_killmail=killmail
         )
 
-        if not db_stored:
-            # Kill was not successfully stored in database
-            # Don't update battles or track wars to maintain data consistency
-            print(f"[SKIP] Killmail {killmail_id} not stored - skipping battle/war tracking")
+        if battle_id is None:
+            # Kill was duplicate (DB constraint) - shouldn't happen with Redis check
+            print(f"[SKIP] Killmail {killmail_id} not stored - duplicate in DB")
             return
 
-        # BATTLE TRACKING: Track all kills in active combat zones
-        # Step 1: Check if hotspot detected (5+ kills in 5 min) - creates new battles
-        hotspot = self.detect_hotspot(kill)
-
-        # Step 2: Always check if there's an active battle in this system
-        # This ensures all kills during a battle are counted, not just hotspot triggers
-        battle_id = self.create_or_update_battle(kill) if hotspot else self._update_existing_battle(kill)
-        if battle_id:
+        # STEP 8: Update battle participants (if kill is part of a battle)
+        if battle_id and battle_id > 0:
             self.update_battle_participants(battle_id, kill)
 
-        # ALLIANCE WAR TRACKING: Track long-term conflicts between alliances
+            # Check for battle milestones and send alerts
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT total_kills FROM battles WHERE battle_id = %s", (battle_id,))
+                    row = cur.fetchone()
+                    if row:
+                        asyncio.create_task(self.send_initial_battle_alert(battle_id, kill.solar_system_id))
+                        asyncio.create_task(self.check_and_send_milestone_alert(battle_id, row[0], kill.solar_system_id))
+
+        # STEP 9: Track alliance wars
         self.track_alliance_war(kill)
 
         # HIGH-VALUE KILL ALERTS: Alert on expensive kills (≥2B ISK)

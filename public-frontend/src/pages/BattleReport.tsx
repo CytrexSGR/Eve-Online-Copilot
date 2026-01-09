@@ -94,7 +94,7 @@ export function BattleReport() {
             </p>
           </div>
           <a
-            href="http://192.168.178.108:3001"
+            href="/ectmap"
             target="_blank"
             rel="noopener noreferrer"
             className="btn btn-primary"
@@ -118,7 +118,7 @@ export function BattleReport() {
           }}
         >
           <iframe
-            src="http://192.168.178.108:3001"
+            src="/ectmap"
             style={{
               width: '100%',
               height: '700px',
