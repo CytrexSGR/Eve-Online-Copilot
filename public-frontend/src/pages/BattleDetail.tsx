@@ -23,6 +23,7 @@ interface Killmail {
   killmail_time: string;
   solar_system_id: number;
   ship_type_id: number;
+  ship_name?: string;
   ship_value: number;
   victim_character_id: number;
   victim_corporation_id: number;
@@ -40,8 +41,9 @@ interface SystemDanger {
 }
 
 interface ShipClassData {
-  system_id: number;
-  hours: number;
+  battle_id?: number;
+  system_id?: number;
+  hours?: number;
   total_kills: number;
   group_by: string;
   breakdown: {
@@ -58,7 +60,6 @@ export function BattleDetail() {
   const [shipClasses, setShipClasses] = useState<ShipClassData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
     const fetchBattle = async () => {
@@ -162,10 +163,37 @@ export function BattleDetail() {
   const biggestKill = recentKills.length > 0 ? Math.max(...recentKills.map(k => k.ship_value)) : 0;
   const soloKills = recentKills.filter(k => k.is_solo).length;
   const fleetKills = recentKills.filter(k => !k.is_solo && !k.is_npc).length;
+  const npcKills = recentKills.filter(k => k.is_npc).length;
+
+  const getShipClassColor = (cls: string) => {
+    const lowerCls = cls.toLowerCase();
+    if (lowerCls.includes('capital') || lowerCls.includes('titan') || lowerCls.includes('supercarrier')) return 'var(--danger)';
+    if (lowerCls.includes('battleship')) return '#ff6b00';
+    if (lowerCls.includes('battlecruiser')) return '#ff9500';
+    if (lowerCls.includes('cruiser')) return 'var(--accent-blue)';
+    if (lowerCls.includes('destroyer')) return '#a855f7';
+    if (lowerCls.includes('frigate')) return 'var(--success)';
+    if (lowerCls.includes('logistics')) return '#22d3ee';
+    if (lowerCls.includes('stealth') || lowerCls.includes('bomber')) return '#dc2626';
+    if (lowerCls.includes('industrial') || lowerCls.includes('hauler')) return '#8b949e';
+    if (lowerCls.includes('mining')) return '#fb923c';
+    if (lowerCls.includes('capsule') || lowerCls.includes('pod')) return '#6b7280';
+    return 'var(--text-tertiary)';
+  };
+
+  const getShipClassLabel = (cls: string) => {
+    if (cls.includes(':')) {
+      const [category, role] = cls.split(':');
+      const categoryLabel = category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      const roleLabel = role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      return `${categoryLabel} (${roleLabel})`;
+    }
+    return cls.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
 
   return (
     <div>
-      {/* Header */}
+      {/* Back Button */}
       <button
         onClick={() => navigate('/battle-map')}
         style={{
@@ -183,24 +211,12 @@ export function BattleDetail() {
         ← Back to Battle Map
       </button>
 
-      {/* Battle Overview Card */}
-      <div
-        className="card card-elevated"
-        style={{
-          marginBottom: '1.5rem',
-          cursor: 'pointer',
-          transition: 'all 0.2s ease'
-        }}
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        {/* Battle Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+      {/* Battle Header Card */}
+      <div className="card card-elevated" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
           <div>
-            <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>
-              ⚔️ {battle.system_name}
-              <span style={{ marginLeft: '0.75rem', fontSize: '1rem', color: 'var(--text-secondary)' }}>
-                {isExpanded ? '▼' : '▶'}
-              </span>
+            <h1 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>
+              ⚔️ Battle in {battle.system_name}
             </h1>
             <div style={{
               display: 'flex',
@@ -209,21 +225,22 @@ export function BattleDetail() {
               color: 'var(--text-secondary)',
               flexWrap: 'wrap'
             }}>
-              <span>{battle.region_name}</span>
+              <span>📍 {battle.region_name}</span>
               <span>•</span>
               <span style={{
                 color: battle.security >= 0.5 ? 'var(--success)' :
-                       battle.security > 0 ? 'var(--warning)' : 'var(--danger)'
+                       battle.security > 0 ? 'var(--warning)' : 'var(--danger)',
+                fontWeight: 600
               }}>
-                {battle.security.toFixed(1)} sec
+                {battle.security.toFixed(1)} Security
               </span>
               <span>•</span>
-              <span>{battle.duration_minutes < 60 ? `${battle.duration_minutes}m` : `${Math.floor(battle.duration_minutes / 60)}h ${battle.duration_minutes % 60}m`}</span>
+              <span>⏱️ {battle.duration_minutes < 60 ? `${battle.duration_minutes}m` : `${Math.floor(battle.duration_minutes / 60)}h ${battle.duration_minutes % 60}m`} duration</span>
               {systemDanger && systemDanger.is_dangerous && (
                 <>
                   <span>•</span>
                   <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
-                    ⚠️ Dangerous System
+                    ⚠️ High Activity System
                   </span>
                 </>
               )}
@@ -235,7 +252,7 @@ export function BattleDetail() {
             borderRadius: '6px',
             background: intensityColor,
             color: 'white',
-            fontSize: '0.75rem',
+            fontSize: '0.875rem',
             fontWeight: 700,
             textTransform: 'uppercase'
           }}>
@@ -243,16 +260,14 @@ export function BattleDetail() {
           </div>
         </div>
 
-        {/* Combat Statistics Grid */}
+        {/* Main Statistics Grid */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '1.5rem',
-          marginTop: '1rem'
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: '1.5rem'
         }}>
-          {/* Total Kills */}
-          <div>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+          <div style={{ padding: '1rem', background: 'var(--bg-primary)', borderRadius: '8px', borderLeft: '4px solid var(--accent-blue)' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Total Kills
             </p>
             <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--accent-blue)' }}>
@@ -260,9 +275,8 @@ export function BattleDetail() {
             </p>
           </div>
 
-          {/* ISK Destroyed */}
-          <div>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+          <div style={{ padding: '1rem', background: 'var(--bg-primary)', borderRadius: '8px', borderLeft: '4px solid var(--danger)' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               ISK Destroyed
             </p>
             <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--danger)', fontFamily: 'monospace' }}>
@@ -270,9 +284,8 @@ export function BattleDetail() {
             </p>
           </div>
 
-          {/* Avg Kill Value */}
-          <div>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+          <div style={{ padding: '1rem', background: 'var(--bg-primary)', borderRadius: '8px', borderLeft: '4px solid var(--warning)' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Avg Kill Value
             </p>
             <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--warning)', fontFamily: 'monospace' }}>
@@ -280,387 +293,266 @@ export function BattleDetail() {
             </p>
           </div>
 
-          {/* System Activity */}
-          {systemDanger && (
+          <div style={{ padding: '1rem', background: 'var(--bg-primary)', borderRadius: '8px', borderLeft: '4px solid var(--success)' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Biggest Kill
+            </p>
+            <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>
+              {formatISK(biggestKill)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Two Column Layout */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+
+        {/* Combat Analysis Card */}
+        <div className="card">
+          <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>📊 Combat Analysis</h3>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div style={{ padding: '1rem', background: 'var(--bg-primary)', borderRadius: '6px', textAlign: 'center' }}>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Solo Kills</p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent-blue)' }}>{soloKills}</p>
+            </div>
+            <div style={{ padding: '1rem', background: 'var(--bg-primary)', borderRadius: '6px', textAlign: 'center' }}>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Fleet Kills</p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--danger)' }}>{fleetKills}</p>
+            </div>
+            <div style={{ padding: '1rem', background: 'var(--bg-primary)', borderRadius: '6px', textAlign: 'center' }}>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>NPC Kills</p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--warning)' }}>{npcKills}</p>
+            </div>
+            <div style={{ padding: '1rem', background: 'var(--bg-primary)', borderRadius: '6px', textAlign: 'center' }}>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>24h System Kills</p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--success)' }}>{systemDanger?.kills_24h || 0}</p>
+            </div>
+          </div>
+
+          {/* Kill Type Distribution Bar */}
+          {recentKills.length > 0 && (
             <div>
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                24h System Activity
-              </p>
-              <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--success)' }}>
-                {systemDanger.kills_24h} kills
-              </p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Kill Type Distribution</p>
+              <div style={{ display: 'flex', height: '24px', borderRadius: '4px', overflow: 'hidden' }}>
+                {soloKills > 0 && (
+                  <div style={{
+                    width: `${(soloKills / recentKills.length) * 100}%`,
+                    background: 'var(--accent-blue)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: 'white'
+                  }}>
+                    {soloKills > 2 && `${soloKills}`}
+                  </div>
+                )}
+                {fleetKills > 0 && (
+                  <div style={{
+                    width: `${(fleetKills / recentKills.length) * 100}%`,
+                    background: 'var(--danger)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: 'white'
+                  }}>
+                    {fleetKills > 2 && `${fleetKills}`}
+                  </div>
+                )}
+                {npcKills > 0 && (
+                  <div style={{
+                    width: `${(npcKills / recentKills.length) * 100}%`,
+                    background: 'var(--warning)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: 'white'
+                  }}>
+                    {npcKills > 2 && `${npcKills}`}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.75rem' }}>
+                <span><span style={{ color: 'var(--accent-blue)' }}>●</span> Solo</span>
+                <span><span style={{ color: 'var(--danger)' }}>●</span> Fleet</span>
+                <span><span style={{ color: 'var(--warning)' }}>●</span> NPC</span>
+              </div>
             </div>
           )}
         </div>
 
-        {/* EXPANDED DETAIL VIEW */}
-        {isExpanded && (
-          <div style={{
-            marginTop: '1.5rem',
-            paddingTop: '1.5rem',
-            borderTop: '2px solid var(--border-color)'
-          }}>
-            <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem', color: 'var(--accent-purple)' }}>
-              📊 Detailed Battle Intelligence
-            </h3>
+        {/* Ship Class Breakdown Card */}
+        <div className="card">
+          <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>🚀 Ship Classes Destroyed</h3>
 
-            {/* Economic Analysis */}
-            <div className="card" style={{ background: 'var(--bg-primary)', marginBottom: '1.5rem' }}>
-              <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>💰 Economic Analysis</h4>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: '1rem'
-              }}>
-                <div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Average Kill Value</p>
-                  <p style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'monospace', color: 'var(--warning)' }}>
-                    {formatISK(avgKillValue)} ISK
-                  </p>
-                </div>
-                <div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Biggest Kill</p>
-                  <p style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'monospace', color: 'var(--danger)' }}>
-                    {formatISK(biggestKill)} ISK
-                  </p>
-                </div>
-                <div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Solo Kills</p>
-                  <p style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent-blue)' }}>
-                    {soloKills}
-                  </p>
-                </div>
-                <div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Fleet Kills</p>
-                  <p style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--danger)' }}>
-                    {fleetKills}
-                  </p>
-                </div>
-              </div>
-            </div>
+          {shipClasses && shipClasses.total_kills > 0 ? (
+            <>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                {shipClasses.total_kills} ships analyzed during this battle
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {Object.entries(shipClasses.breakdown)
+                  .filter(([_, count]) => count > 0)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 8)
+                  .map(([shipClass, count]) => {
+                    const maxCount = Math.max(...Object.values(shipClasses.breakdown));
+                    const percentage = (count / maxCount) * 100;
 
-            {/* Ship Class Breakdown */}
-            {shipClasses && shipClasses.total_kills > 0 && (
-              <div className="card" style={{ background: 'var(--bg-primary)', marginBottom: '1.5rem' }}>
-                <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>🚀 Ship Class Breakdown</h4>
-                <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                  Analysis of {shipClasses.total_kills} {shipClasses.total_kills === 1 ? 'kill' : 'kills'} during battle
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {Object.entries(shipClasses.breakdown)
-                    .filter(([_, count]) => count > 0)
-                    .sort((a, b) => b[1] - a[1])  // Sort by count descending
-                    .map(([shipClass, count]) => {
-                      const getShipClassColor = (cls: string) => {
-                        switch(cls) {
-                          case 'capital': return 'var(--danger)';
-                          case 'battleship': return '#ff6b00';
-                          case 'battlecruiser': return '#ff9500';
-                          case 'cruiser': return 'var(--accent-blue)';
-                          case 'destroyer': return '#a855f7';
-                          case 'frigate': return 'var(--success)';
-                          case 'logistics': return '#22d3ee';
-                          case 'stealth_bomber': return '#dc2626';
-                          case 'industrial': return '#8b949e';
-                          case 'hauler': return '#64748b';
-                          case 'mining': return '#fb923c';
-                          case 'capsule': return '#6b7280';
-                          default: return 'var(--text-tertiary)';
-                        }
-                      };
-                      const getShipClassLabel = (cls: string) => {
-                        // Handle category:role format (e.g., "frigate:assault")
-                        if (cls.includes(':')) {
-                          const [category, role] = cls.split(':');
-                          const categoryLabel = category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                          const roleLabel = role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                          return `${categoryLabel} (${roleLabel})`;
-                        }
-
-                        // Handle single values (category or role)
-                        switch(cls) {
-                          case 'battlecruiser': return 'Battlecruiser';
-                          case 'stealth_bomber': return 'Stealth Bomber';
-                          case 'heavy_assault': return 'Heavy Assault';
-                          case 'covert_ops': return 'Covert Ops';
-                          case 'electronic_attack': return 'Electronic Attack';
-                          case 'heavy_interdictor': return 'Heavy Interdictor';
-                          case 'capsule': return 'Capsule/Pod';
-                          default: return cls.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                        }
-                      };
-
-                      const maxCount = Math.max(...Object.values(shipClasses.breakdown));
-                      const percentage = (count / maxCount) * 100;
-
-                      return (
-                        <div key={shipClass} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    return (
+                      <div key={shipClass} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ width: '120px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          {getShipClassLabel(shipClass)}
+                        </div>
+                        <div style={{ flex: 1, height: '20px', background: 'var(--bg-primary)', borderRadius: '4px', overflow: 'hidden' }}>
                           <div style={{
-                            width: '140px',
-                            fontSize: '0.875rem',
-                            color: 'var(--text-secondary)'
+                            height: '100%',
+                            width: `${percentage}%`,
+                            background: getShipClassColor(shipClass),
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            paddingRight: '0.5rem',
+                            transition: 'width 0.3s ease'
                           }}>
-                            {getShipClassLabel(shipClass)}
-                          </div>
-                          <div style={{
-                            flex: 1,
-                            height: '24px',
-                            background: 'var(--bg-elevated)',
-                            borderRadius: '4px',
-                            overflow: 'hidden'
-                          }}>
-                            <div style={{
-                              height: '100%',
-                              width: `${percentage}%`,
-                              background: getShipClassColor(shipClass),
-                              transition: 'width 0.3s ease',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'flex-end',
-                              paddingRight: '0.5rem'
-                            }}>
-                              {percentage > 15 && (
-                                <span style={{
-                                  fontSize: '0.75rem',
-                                  fontWeight: 600,
-                                  color: 'white'
-                                }}>
-                                  {count}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div style={{
-                            width: '50px',
-                            textAlign: 'right',
-                            fontWeight: 600,
-                            fontSize: '0.875rem'
-                          }}>
-                            {count}
+                            {percentage > 20 && (
+                              <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'white' }}>{count}</span>
+                            )}
                           </div>
                         </div>
-                      );
-                    })}
-                </div>
+                        <div style={{ width: '35px', textAlign: 'right', fontWeight: 600, fontSize: '0.875rem' }}>
+                          {count}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </>
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              <p>No ship class data available</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Battle Timeline Card */}
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>📅 Battle Timeline</h3>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 200px', padding: '1rem', background: 'var(--bg-primary)', borderRadius: '6px', borderLeft: '4px solid var(--success)' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Battle Started</p>
+            <p style={{ fontSize: '0.875rem', fontWeight: 600 }}>
+              {new Date(battle.started_at).toLocaleString('de-DE')}
+            </p>
+          </div>
+          <div style={{ flex: '1 1 200px', padding: '1rem', background: 'var(--bg-primary)', borderRadius: '6px', borderLeft: '4px solid var(--accent-blue)' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Last Kill</p>
+            <p style={{ fontSize: '0.875rem', fontWeight: 600 }}>
+              {new Date(battle.last_kill_at).toLocaleString('de-DE')}
+            </p>
+          </div>
+          {battle.last_milestone > 0 && (
+            <div style={{ flex: '1 1 200px', padding: '1rem', background: 'var(--bg-primary)', borderRadius: '6px', borderLeft: '4px solid var(--warning)' }}>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Last Milestone</p>
+              <p style={{ fontSize: '0.875rem', fontWeight: 600 }}>{battle.last_milestone} kills</p>
+            </div>
+          )}
+          <div style={{ flex: '1 1 200px', padding: '1rem', background: 'var(--bg-primary)', borderRadius: '6px', borderLeft: `4px solid ${battle.telegram_sent ? 'var(--accent-purple)' : 'var(--text-tertiary)'}` }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Telegram Alert</p>
+            <p style={{ fontSize: '0.875rem', fontWeight: 600, color: battle.telegram_sent ? 'var(--accent-purple)' : 'var(--text-tertiary)' }}>
+              {battle.telegram_sent ? '✓ Sent' : '✗ Not Sent'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Killmails Table Card */}
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h3 style={{ fontSize: '1.125rem', margin: 0 }}>🔴 Battle Killmails</h3>
+          {recentKills.length > 0 && (
+            <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', padding: '0.25rem 0.75rem', background: 'var(--bg-primary)', borderRadius: '4px' }}>
+              {recentKills.length} {recentKills.length === 1 ? 'kill' : 'kills'}
+            </span>
+          )}
+        </div>
+
+        {recentKills.length === 0 ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📭</div>
+            <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No detailed killmail data</p>
+            <p style={{ fontSize: '0.875rem' }}>
+              Battle reports {battle.total_kills} kills but detailed records are not yet available.
+            </p>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--border-color)', textAlign: 'left' }}>
+                  <th style={{ padding: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Time</th>
+                  <th style={{ padding: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Ship</th>
+                  <th style={{ padding: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Value</th>
+                  <th style={{ padding: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Type</th>
+                  <th style={{ padding: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Attackers</th>
+                  <th style={{ padding: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Link</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentKills.slice(0, 50).map((kill) => (
+                  <tr
+                    key={kill.killmail_id}
+                    style={{ borderBottom: '1px solid var(--border-color)', transition: 'background 0.2s' }}
+                    onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-elevated)'; }}
+                    onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                  >
+                    <td style={{ padding: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                      {formatTime(kill.killmail_time)}
+                    </td>
+                    <td style={{ padding: '0.75rem', color: 'var(--text-primary)' }}>
+                      {kill.ship_name || `Ship #${kill.ship_type_id}`}
+                    </td>
+                    <td style={{ padding: '0.75rem', fontWeight: 600, color: 'var(--danger)', fontFamily: 'monospace' }}>
+                      {formatISK(kill.ship_value)}
+                    </td>
+                    <td style={{ padding: '0.75rem' }}>
+                      {kill.is_solo ? (
+                        <span style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(88, 166, 255, 0.2)', color: 'var(--accent-blue)', fontSize: '0.75rem', fontWeight: 600 }}>SOLO</span>
+                      ) : kill.is_npc ? (
+                        <span style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(210, 153, 34, 0.2)', color: 'var(--warning)', fontSize: '0.75rem', fontWeight: 600 }}>NPC</span>
+                      ) : (
+                        <span style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(248, 81, 73, 0.2)', color: 'var(--danger)', fontSize: '0.75rem', fontWeight: 600 }}>FLEET</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '0.75rem', color: 'var(--text-primary)', textAlign: 'center' }}>
+                      {kill.attacker_count}
+                    </td>
+                    <td style={{ padding: '0.75rem' }}>
+                      <a
+                        href={`https://zkillboard.com/kill/${kill.killmail_id}/`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontWeight: 600 }}
+                      >
+                        zkill →
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {recentKills.length > 50 && (
+              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                Showing first 50 of {recentKills.length} kills
               </div>
             )}
-
-            {/* Battle Killmails Table */}
-            <div className="card" style={{ background: 'var(--bg-primary)', marginBottom: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h4 style={{ fontSize: '1rem', margin: 0 }}>🔴 Battle Killmails</h4>
-                {recentKills.length > 0 && (
-                  <div style={{
-                    fontSize: '0.75rem',
-                    color: 'var(--text-secondary)',
-                    padding: '0.25rem 0.75rem',
-                    background: 'var(--bg-elevated)',
-                    borderRadius: '4px'
-                  }}>
-                    {recentKills.length} {recentKills.length === 1 ? 'kill' : 'kills'} during battle
-                  </div>
-                )}
-              </div>
-
-              {recentKills.length === 0 ? (
-                <div style={{
-                  padding: '3rem',
-                  textAlign: 'center',
-                  color: 'var(--text-secondary)'
-                }}>
-                  <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📭</div>
-                  <p>No detailed killmail data available</p>
-                  <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>
-                    Battle has {battle.total_kills} kills but no detailed killmails in database
-                  </p>
-                </div>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{
-                    width: '100%',
-                    borderCollapse: 'collapse',
-                    fontSize: '0.875rem'
-                  }}>
-                    <thead>
-                      <tr style={{
-                        borderBottom: '2px solid var(--border-color)',
-                        textAlign: 'left'
-                      }}>
-                        <th style={{ padding: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Time</th>
-                        <th style={{ padding: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Ship Value</th>
-                        <th style={{ padding: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Type</th>
-                        <th style={{ padding: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Attackers</th>
-                        <th style={{ padding: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Link</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recentKills.map((kill) => (
-                        <tr
-                          key={kill.killmail_id}
-                          style={{
-                            borderBottom: '1px solid var(--border-color)',
-                            transition: 'background 0.2s'
-                          }}
-                          onMouseOver={(e) => {
-                            (e.currentTarget as HTMLElement).style.background = 'var(--bg-elevated)';
-                          }}
-                          onMouseOut={(e) => {
-                            (e.currentTarget as HTMLElement).style.background = 'transparent';
-                          }}
-                        >
-                          <td style={{ padding: '0.75rem', color: 'var(--text-secondary)' }}>
-                            {formatTime(kill.killmail_time)}
-                          </td>
-                          <td style={{ padding: '0.75rem', fontWeight: 600, color: 'var(--danger)', fontFamily: 'monospace' }}>
-                            {formatISK(kill.ship_value)}
-                          </td>
-                          <td style={{ padding: '0.75rem' }}>
-                            {kill.is_solo ? (
-                              <span style={{
-                                padding: '0.25rem 0.5rem',
-                                borderRadius: '4px',
-                                background: 'rgba(88, 166, 255, 0.2)',
-                                color: 'var(--accent-blue)',
-                                fontSize: '0.75rem',
-                                fontWeight: 600
-                              }}>
-                                SOLO
-                              </span>
-                            ) : kill.is_npc ? (
-                              <span style={{
-                                padding: '0.25rem 0.5rem',
-                                borderRadius: '4px',
-                                background: 'rgba(210, 153, 34, 0.2)',
-                                color: 'var(--warning)',
-                                fontSize: '0.75rem',
-                                fontWeight: 600
-                              }}>
-                                NPC
-                              </span>
-                            ) : (
-                              <span style={{
-                                padding: '0.25rem 0.5rem',
-                                borderRadius: '4px',
-                                background: 'rgba(248, 81, 73, 0.2)',
-                                color: 'var(--danger)',
-                                fontSize: '0.75rem',
-                                fontWeight: 600
-                              }}>
-                                FLEET
-                              </span>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.75rem', color: 'var(--text-primary)' }}>
-                            {kill.attacker_count}
-                          </td>
-                          <td style={{ padding: '0.75rem' }}>
-                            <a
-                              href={`https://zkillboard.com/kill/${kill.killmail_id}/`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                color: 'var(--accent-blue)',
-                                textDecoration: 'none',
-                                fontWeight: 600
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              zkill →
-                            </a>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Battle Timeline */}
-            <div className="card" style={{ background: 'var(--bg-primary)' }}>
-              <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>📅 Battle Timeline</h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {/* Started */}
-                <div style={{
-                  padding: '1rem',
-                  background: 'var(--bg-elevated)',
-                  borderRadius: '6px',
-                  borderLeft: '4px solid var(--success)'
-                }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
-                    Battle Started
-                  </div>
-                  <div style={{ fontSize: '1rem', fontWeight: 600 }}>
-                    {new Date(battle.started_at).toLocaleString('de-DE', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit'
-                    })}
-                  </div>
-                </div>
-
-                {/* Last Milestone */}
-                {battle.last_milestone > 0 && (
-                  <div style={{
-                    padding: '1rem',
-                    background: 'var(--bg-elevated)',
-                    borderRadius: '6px',
-                    borderLeft: '4px solid var(--warning)'
-                  }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
-                      Last Milestone Reached
-                    </div>
-                    <div style={{ fontSize: '1rem', fontWeight: 600 }}>
-                      {battle.last_milestone} kills
-                    </div>
-                  </div>
-                )}
-
-                {/* Last Kill */}
-                <div style={{
-                  padding: '1rem',
-                  background: 'var(--bg-elevated)',
-                  borderRadius: '6px',
-                  borderLeft: '4px solid var(--accent-blue)'
-                }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
-                    Last Kill At
-                  </div>
-                  <div style={{ fontSize: '1rem', fontWeight: 600 }}>
-                    {new Date(battle.last_kill_at).toLocaleString('de-DE', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit'
-                    })}
-                  </div>
-                </div>
-
-                {/* Telegram Alert Status */}
-                <div style={{
-                  padding: '1rem',
-                  background: 'var(--bg-elevated)',
-                  borderRadius: '6px',
-                  borderLeft: `4px solid ${battle.telegram_sent ? 'var(--accent-purple)' : 'var(--text-tertiary)'}`
-                }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
-                    Telegram Alert
-                  </div>
-                  <div style={{
-                    fontSize: '1rem',
-                    fontWeight: 600,
-                    color: battle.telegram_sent ? 'var(--accent-purple)' : 'var(--text-tertiary)'
-                  }}>
-                    {battle.telegram_sent ? '✓ Alert Sent' : '✗ No Alert'}
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         )}
       </div>
