@@ -345,14 +345,14 @@ export function BattleDetail() {
       {/* Battle Participants Card */}
       {participants && (participants.attackers.alliances.length > 0 || participants.defenders.alliances.length > 0) && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>⚔️ Konfliktparteien</h3>
+          <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>⚔️ Belligerents</h3>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
             {/* Attackers */}
             <div style={{ padding: '1rem', background: 'var(--bg-primary)', borderRadius: '8px', borderLeft: '4px solid var(--danger)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h4 style={{ margin: 0, color: 'var(--danger)', fontSize: '1rem' }}>
-                  🗡️ Angreifer
+                  🗡️ Attackers
                 </h4>
                 <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                   {participants.attackers.total_kills} Kills
@@ -397,7 +397,7 @@ export function BattleDetail() {
                   ))}
                 </div>
               ) : (
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Keine Alliance-Daten</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>No alliance data</p>
               )}
 
               {/* Top Attacker Corps */}
@@ -427,10 +427,10 @@ export function BattleDetail() {
             <div style={{ padding: '1rem', background: 'var(--bg-primary)', borderRadius: '8px', borderLeft: '4px solid var(--accent-blue)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h4 style={{ margin: 0, color: 'var(--accent-blue)', fontSize: '1rem' }}>
-                  🛡️ Verteidiger
+                  🛡️ Defenders
                 </h4>
                 <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                  {participants.defenders.total_losses} Verluste
+                  {participants.defenders.total_losses} Losses
                 </span>
               </div>
 
@@ -472,14 +472,14 @@ export function BattleDetail() {
                   ))}
                 </div>
               ) : (
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Keine Alliance-Daten</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>No alliance data</p>
               )}
 
               {/* ISK Summary */}
               {participants.defenders.total_isk_lost > 0 && (
                 <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Gesamt ISK Verlust</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Total ISK Lost</span>
                     <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--danger)', fontFamily: 'monospace' }}>
                       {formatISK(participants.defenders.total_isk_lost)}
                     </span>
@@ -490,7 +490,7 @@ export function BattleDetail() {
               {/* Top Victim Corps */}
               {participants.defenders.corporations.length > 0 && (
                 <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Top Corporations (Verluste)</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Top Corporations (Losses)</p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     {participants.defenders.corporations.slice(0, 5).map((corp) => (
                       <div key={corp.corporation_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
