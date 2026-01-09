@@ -749,29 +749,50 @@ async def get_battle_participants(battle_id: int):
     """
     import aiohttp
     import asyncio
+    import redis
+
+    # Redis cache for ESI names (24h TTL)
+    redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+    ESI_NAME_TTL = 86400  # 24 hours
 
     try:
         from src.database import get_db_connection
 
-        # Helper functions to fetch names from ESI
+        # Helper functions to fetch names from ESI with Redis caching
         async def get_alliance_name(session: aiohttp.ClientSession, alliance_id: int) -> str:
+            cache_key = f"esi:alliance:{alliance_id}:name"
+            # Check cache first
+            cached = redis_client.get(cache_key)
+            if cached:
+                return cached
+            # Fetch from ESI
             try:
                 url = f"https://esi.evetech.net/latest/alliances/{alliance_id}/"
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
                     if response.status == 200:
                         data = await response.json()
-                        return data.get("name", f"Alliance {alliance_id}")
+                        name = data.get("name", f"Alliance {alliance_id}")
+                        redis_client.setex(cache_key, ESI_NAME_TTL, name)
+                        return name
             except:
                 pass
             return f"Alliance {alliance_id}"
 
         async def get_corporation_name(session: aiohttp.ClientSession, corp_id: int) -> str:
+            cache_key = f"esi:corporation:{corp_id}:name"
+            # Check cache first
+            cached = redis_client.get(cache_key)
+            if cached:
+                return cached
+            # Fetch from ESI
             try:
                 url = f"https://esi.evetech.net/latest/corporations/{corp_id}/"
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
                     if response.status == 200:
                         data = await response.json()
-                        return data.get("name", f"Corporation {corp_id}")
+                        name = data.get("name", f"Corporation {corp_id}")
+                        redis_client.setex(cache_key, ESI_NAME_TTL, name)
+                        return name
             except:
                 pass
             return f"Corporation {corp_id}"
