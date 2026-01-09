@@ -209,6 +209,13 @@ export interface AllianceWars {
   }>;
 }
 
+export interface AllianceWarsAnalysis {
+  summary: string;
+  insights: string[];
+  generated_at: string;
+  error?: string;
+}
+
 export interface TradeRoutes {
   period: string;
   global: {

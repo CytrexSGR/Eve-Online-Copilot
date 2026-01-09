@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { reportsApi } from '../services/api';
 import { RefreshIndicator } from '../components/RefreshIndicator';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { AllianceWars as AllianceWarsType } from '../types/reports';
+import type { AllianceWars as AllianceWarsType, AllianceWarsAnalysis } from '../types/reports';
 
 export function AllianceWars() {
   const [report, setReport] = useState<AllianceWarsType | null>(null);
+  const [analysis, setAnalysis] = useState<AllianceWarsAnalysis | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
@@ -24,8 +26,21 @@ export function AllianceWars() {
     }
   };
 
+  const fetchAnalysis = async () => {
+    try {
+      setAnalysisLoading(true);
+      const data = await reportsApi.getAllianceWarsAnalysis();
+      setAnalysis(data);
+    } catch (err) {
+      console.error('Failed to load analysis:', err);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchReport();
+    fetchAnalysis();
   }, []);
 
   useAutoRefresh(fetchReport, 60);
@@ -77,6 +92,77 @@ export function AllianceWars() {
             </p>
           </div>
         </div>
+      </div>
+
+      {/* AI Strategic Analysis */}
+      <div className="card" style={{ marginTop: '1.5rem', background: 'linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)', border: '1px solid var(--accent-purple)', borderLeft: '4px solid var(--accent-purple)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+          <span style={{ fontSize: '1.5rem' }}>🤖</span>
+          <div>
+            <h2 style={{ margin: 0 }}>Strategic Intelligence Analysis</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: 0 }}>
+              AI-powered analysis • Updated hourly
+              {analysis?.generated_at && (
+                <span> • Last update: {new Date(analysis.generated_at).toLocaleTimeString()}</span>
+              )}
+            </p>
+          </div>
+        </div>
+
+        {analysisLoading ? (
+          <div style={{ padding: '2rem', textAlign: 'center' }}>
+            <div className="skeleton" style={{ height: '100px', marginBottom: '1rem' }} />
+            <p style={{ color: 'var(--text-secondary)' }}>Generating strategic analysis...</p>
+          </div>
+        ) : analysis?.error ? (
+          <div style={{ padding: '1rem', background: 'rgba(248, 81, 73, 0.1)', borderRadius: '8px', color: 'var(--danger)' }}>
+            Analysis temporarily unavailable: {analysis.error}
+          </div>
+        ) : analysis ? (
+          <div>
+            {/* Summary Text */}
+            <div style={{
+              padding: '1.25rem',
+              background: 'var(--bg-surface)',
+              borderRadius: '8px',
+              marginBottom: '1.5rem',
+              lineHeight: '1.7',
+              color: 'var(--text-primary)'
+            }}>
+              {analysis.summary.split('\n').map((paragraph, idx) => (
+                <p key={idx} style={{ marginBottom: idx < analysis.summary.split('\n').length - 1 ? '1rem' : 0 }}>
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+
+            {/* Key Insights */}
+            {analysis.insights && analysis.insights.length > 0 && (
+              <div>
+                <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--accent-blue)' }}>
+                  📊 Key Strategic Insights
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '0.75rem' }}>
+                  {analysis.insights.map((insight, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '0.875rem 1rem',
+                        background: 'var(--bg-elevated)',
+                        borderRadius: '6px',
+                        borderLeft: '3px solid var(--accent-blue)',
+                        fontSize: '0.875rem',
+                        color: 'var(--text-primary)'
+                      }}
+                    >
+                      {insight}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {/* Coalition Summary - Auto-Detected Power Blocs */}

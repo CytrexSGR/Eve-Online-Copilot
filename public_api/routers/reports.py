@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Dict
 import redis
 from services.zkillboard import zkill_live_service
+from services.llm_analysis_service import generate_alliance_wars_analysis
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -199,6 +200,38 @@ async def get_alliance_wars() -> Dict:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to generate alliance wars report: {str(e)}"
+        )
+
+
+@router.get("/alliance-wars/analysis")
+async def get_alliance_wars_analysis() -> Dict:
+    """
+    AI-Powered Alliance Wars Analysis
+
+    Returns an LLM-generated strategic analysis of the current alliance warfare situation.
+    Includes a summary and key insights based on the last 24 hours of combat data.
+
+    Cache: 1 hour
+    """
+    try:
+        # First get the alliance wars data
+        wars_data = await get_alliance_wars()
+
+        # Generate LLM analysis
+        analysis = generate_alliance_wars_analysis(wars_data)
+
+        return analysis
+    except redis.RedisError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="Redis connection error. Analysis temporarily unavailable."
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate alliance wars analysis: {str(e)}"
         )
 
 
