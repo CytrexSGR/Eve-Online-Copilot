@@ -739,16 +739,42 @@ async def get_battle_participants(battle_id: int):
     Get detailed participant breakdown for a battle.
 
     Shows alliances and corporations involved on each side,
-    with kill/loss counts and ISK destroyed.
+    with kill/loss counts and ISK destroyed. Names are resolved from ESI.
 
     Args:
         battle_id: Battle ID
 
     Returns:
-        Attackers and defenders with statistics
+        Attackers and defenders with statistics and names
     """
+    import aiohttp
+    import asyncio
+
     try:
         from src.database import get_db_connection
+
+        # Helper functions to fetch names from ESI
+        async def get_alliance_name(session: aiohttp.ClientSession, alliance_id: int) -> str:
+            try:
+                url = f"https://esi.evetech.net/latest/alliances/{alliance_id}/"
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("name", f"Alliance {alliance_id}")
+            except:
+                pass
+            return f"Alliance {alliance_id}"
+
+        async def get_corporation_name(session: aiohttp.ClientSession, corp_id: int) -> str:
+            try:
+                url = f"https://esi.evetech.net/latest/corporations/{corp_id}/"
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("name", f"Corporation {corp_id}")
+            except:
+                pass
+            return f"Corporation {corp_id}"
 
         with get_db_connection() as conn:
             with conn.cursor() as cur:
@@ -769,13 +795,7 @@ async def get_battle_participants(battle_id: int):
                     GROUP BY k.final_blow_alliance_id
                     ORDER BY kills DESC
                 """, (battle_id,))
-                attacker_alliances = []
-                for row in cur.fetchall():
-                    attacker_alliances.append({
-                        "alliance_id": row[0],
-                        "kills": row[1],
-                        "corps_involved": row[2]
-                    })
+                attacker_alliances_raw = cur.fetchall()
 
                 # Get attacker corporations
                 cur.execute("""
@@ -790,13 +810,7 @@ async def get_battle_participants(battle_id: int):
                     ORDER BY kills DESC
                     LIMIT 20
                 """, (battle_id,))
-                attacker_corps = []
-                for row in cur.fetchall():
-                    attacker_corps.append({
-                        "corporation_id": row[0],
-                        "alliance_id": row[1],
-                        "kills": row[2]
-                    })
+                attacker_corps_raw = cur.fetchall()
 
                 # Get victim alliances (who lost ships)
                 cur.execute("""
@@ -811,14 +825,7 @@ async def get_battle_participants(battle_id: int):
                     GROUP BY k.victim_alliance_id
                     ORDER BY losses DESC
                 """, (battle_id,))
-                victim_alliances = []
-                for row in cur.fetchall():
-                    victim_alliances.append({
-                        "alliance_id": row[0],
-                        "losses": row[1],
-                        "isk_lost": row[2] or 0,
-                        "corps_involved": row[3]
-                    })
+                victim_alliances_raw = cur.fetchall()
 
                 # Get victim corporations
                 cur.execute("""
@@ -834,31 +841,95 @@ async def get_battle_participants(battle_id: int):
                     ORDER BY losses DESC
                     LIMIT 20
                 """, (battle_id,))
-                victim_corps = []
-                for row in cur.fetchall():
-                    victim_corps.append({
-                        "corporation_id": row[0],
-                        "alliance_id": row[1],
-                        "losses": row[2],
-                        "isk_lost": row[3] or 0
-                    })
+                victim_corps_raw = cur.fetchall()
 
-                return {
-                    "battle_id": battle_id,
-                    "attackers": {
-                        "alliances": attacker_alliances,
-                        "corporations": attacker_corps,
-                        "total_alliances": len(attacker_alliances),
-                        "total_kills": sum(a["kills"] for a in attacker_alliances)
-                    },
-                    "defenders": {
-                        "alliances": victim_alliances,
-                        "corporations": victim_corps,
-                        "total_alliances": len(victim_alliances),
-                        "total_losses": sum(v["losses"] for v in victim_alliances),
-                        "total_isk_lost": sum(v["isk_lost"] for v in victim_alliances)
-                    }
-                }
+        # Collect all unique IDs to fetch names for
+        alliance_ids = set()
+        corp_ids = set()
+
+        for row in attacker_alliances_raw:
+            if row[0]:
+                alliance_ids.add(row[0])
+        for row in victim_alliances_raw:
+            if row[0]:
+                alliance_ids.add(row[0])
+        for row in attacker_corps_raw:
+            if row[0]:
+                corp_ids.add(row[0])
+        for row in victim_corps_raw:
+            if row[0]:
+                corp_ids.add(row[0])
+
+        # Fetch all names concurrently
+        alliance_names = {}
+        corp_names = {}
+
+        async with aiohttp.ClientSession() as session:
+            # Fetch alliance names
+            alliance_tasks = {aid: get_alliance_name(session, aid) for aid in alliance_ids}
+            alliance_results = await asyncio.gather(*alliance_tasks.values())
+            alliance_names = dict(zip(alliance_tasks.keys(), alliance_results))
+
+            # Fetch corporation names
+            corp_tasks = {cid: get_corporation_name(session, cid) for cid in corp_ids}
+            corp_results = await asyncio.gather(*corp_tasks.values())
+            corp_names = dict(zip(corp_tasks.keys(), corp_results))
+
+        # Build response with names
+        attacker_alliances = []
+        for row in attacker_alliances_raw:
+            attacker_alliances.append({
+                "alliance_id": row[0],
+                "alliance_name": alliance_names.get(row[0], f"Alliance {row[0]}"),
+                "kills": row[1],
+                "corps_involved": row[2]
+            })
+
+        attacker_corps = []
+        for row in attacker_corps_raw:
+            attacker_corps.append({
+                "corporation_id": row[0],
+                "corporation_name": corp_names.get(row[0], f"Corporation {row[0]}"),
+                "alliance_id": row[1],
+                "kills": row[2]
+            })
+
+        victim_alliances = []
+        for row in victim_alliances_raw:
+            victim_alliances.append({
+                "alliance_id": row[0],
+                "alliance_name": alliance_names.get(row[0], f"Alliance {row[0]}"),
+                "losses": row[1],
+                "isk_lost": row[2] or 0,
+                "corps_involved": row[3]
+            })
+
+        victim_corps = []
+        for row in victim_corps_raw:
+            victim_corps.append({
+                "corporation_id": row[0],
+                "corporation_name": corp_names.get(row[0], f"Corporation {row[0]}"),
+                "alliance_id": row[1],
+                "losses": row[2],
+                "isk_lost": row[3] or 0
+            })
+
+        return {
+            "battle_id": battle_id,
+            "attackers": {
+                "alliances": attacker_alliances,
+                "corporations": attacker_corps,
+                "total_alliances": len(attacker_alliances),
+                "total_kills": sum(a["kills"] for a in attacker_alliances)
+            },
+            "defenders": {
+                "alliances": victim_alliances,
+                "corporations": victim_corps,
+                "total_alliances": len(victim_alliances),
+                "total_losses": sum(v["losses"] for v in victim_alliances),
+                "total_isk_lost": sum(v["isk_lost"] for v in victim_alliances)
+            }
+        }
 
     except HTTPException:
         raise

@@ -53,6 +53,7 @@ interface ShipClassData {
 
 interface ParticipantAlliance {
   alliance_id: number;
+  alliance_name: string;
   kills?: number;
   losses?: number;
   isk_lost?: number;
@@ -61,6 +62,7 @@ interface ParticipantAlliance {
 
 interface ParticipantCorp {
   corporation_id: number;
+  corporation_name: string;
   alliance_id: number | null;
   kills?: number;
   losses?: number;
@@ -374,7 +376,7 @@ export function BattleDetail() {
                         rel="noopener noreferrer"
                         style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontWeight: 600 }}
                       >
-                        Alliance #{alliance.alliance_id}
+                        {alliance.alliance_name}
                       </a>
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <span style={{
@@ -411,7 +413,7 @@ export function BattleDetail() {
                           rel="noopener noreferrer"
                           style={{ color: 'var(--text-primary)', textDecoration: 'none' }}
                         >
-                          Corp #{corp.corporation_id}
+                          {corp.corporation_name}
                         </a>
                         <span style={{ color: 'var(--danger)', fontWeight: 600 }}>{corp.kills} kills</span>
                       </div>
@@ -449,7 +451,7 @@ export function BattleDetail() {
                         rel="noopener noreferrer"
                         style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontWeight: 600 }}
                       >
-                        Alliance #{alliance.alliance_id}
+                        {alliance.alliance_name}
                       </a>
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <span style={{
@@ -498,7 +500,7 @@ export function BattleDetail() {
                           rel="noopener noreferrer"
                           style={{ color: 'var(--text-primary)', textDecoration: 'none' }}
                         >
-                          Corp #{corp.corporation_id}
+                          {corp.corporation_name}
                         </a>
                         <span style={{ color: 'var(--accent-blue)' }}>{corp.losses} lost • <span style={{ color: 'var(--danger)' }}>{formatISK(corp.isk_lost || 0)}</span></span>
                       </div>
