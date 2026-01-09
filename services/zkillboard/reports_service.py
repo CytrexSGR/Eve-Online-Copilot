@@ -190,7 +190,14 @@ class ZKillboardReportsService:
 
     def is_industrial_ship(self, group_id: int) -> bool:
         """Check if ship is industrial/hauler"""
-        industrial_categories = ['freighter', 'industrial', 'exhumer']
+        industrial_categories = [
+            'freighter',           # Freighters, Jump Freighters
+            'industrial',          # Industrials, Blockade Runners, DSTs
+            'exhumer',             # Exhumers
+            'mining_barge',        # Mining Barges
+            'industrial_command',  # Orca, Porpoise
+            'capital_industrial'   # Rorqual
+        ]
         return self.get_ship_category(group_id) in industrial_categories
 
     def extract_capital_kills(self, killmails: List[Dict]) -> Dict:
