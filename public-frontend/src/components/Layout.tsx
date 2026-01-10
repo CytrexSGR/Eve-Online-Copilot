@@ -36,7 +36,6 @@ export function Layout({ children }: LayoutProps) {
             </div>
 
             <nav style={{ display: 'flex', gap: '1.5rem' }}>
-              <Link to="/battle-map">Battle Map</Link>
               <Link to="/battle-report">Battle Report</Link>
               <Link to="/war-profiteering">Profiteering</Link>
               <Link to="/war-economy">War Economy</Link>

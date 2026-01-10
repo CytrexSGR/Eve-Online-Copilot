@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { reportsApi } from '../services/api';
 import { RefreshIndicator } from '../components/RefreshIndicator';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
@@ -45,7 +46,23 @@ export function BattleReport() {
           <h1>⚔️ Pilot Intelligence - 24h Battle Report</h1>
           <p style={{ color: 'var(--text-secondary)' }}>Actionable combat intelligence from capsuleer perspective</p>
         </div>
-        <RefreshIndicator lastUpdated={lastUpdated} autoRefreshSeconds={60} />
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <Link
+            to="/battle-map"
+            style={{
+              padding: '0.5rem 1rem',
+              background: 'var(--accent-blue)',
+              color: 'white',
+              borderRadius: '6px',
+              textDecoration: 'none',
+              fontSize: '0.875rem',
+              fontWeight: 500
+            }}
+          >
+            View Battle Map
+          </Link>
+          <RefreshIndicator lastUpdated={lastUpdated} autoRefreshSeconds={60} />
+        </div>
       </div>
 
       {/* Hero Stats */}
