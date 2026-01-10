@@ -2,14 +2,18 @@ import { useState, useEffect } from 'react';
 import { reportsApi } from '../services/api';
 import { RefreshIndicator } from '../components/RefreshIndicator';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { WarEconomy as WarEconomyType } from '../types/reports';
+import type { WarEconomy as WarEconomyType, WarEconomyAnalysis } from '../types/reports';
 
 export function WarEconomy() {
   const [report, setReport] = useState<WarEconomyType | null>(null);
+  const [analysis, setAnalysis] = useState<WarEconomyAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
+  const [analysisLoading, setAnalysisLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [activeTab, setActiveTab] = useState<'regional' | 'items' | 'doctrines'>('regional');
+  const [insightsExpanded, setInsightsExpanded] = useState(false);
+  const [recommendationsExpanded, setRecommendationsExpanded] = useState(false);
 
   const fetchReport = async () => {
     try {
@@ -24,8 +28,21 @@ export function WarEconomy() {
     }
   };
 
+  const fetchAnalysis = async () => {
+    try {
+      setAnalysisLoading(true);
+      const data = await reportsApi.getWarEconomyAnalysis();
+      setAnalysis(data);
+      setAnalysisLoading(false);
+    } catch (err) {
+      console.error('Failed to load war economy analysis:', err);
+      setAnalysisLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchReport();
+    fetchAnalysis();
   }, []);
 
   useAutoRefresh(fetchReport, 120); // Refresh every 2 minutes
@@ -56,6 +73,140 @@ export function WarEconomy() {
           </p>
         </div>
         <RefreshIndicator lastUpdated={lastUpdated} autoRefreshSeconds={120} />
+      </div>
+
+      {/* Intelligence Briefing */}
+      <div className="card card-elevated" style={{ marginBottom: '1.5rem', borderLeft: '4px solid var(--accent-purple)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '1.5rem' }}>📊</span> Market Intelligence Briefing
+          </h2>
+          {analysis && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+              Updated: {new Date(analysis.generated_at).toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+
+        {analysisLoading ? (
+          <div className="skeleton" style={{ height: '150px' }} />
+        ) : analysis?.error ? (
+          <p style={{ color: 'var(--warning)' }}>Analysis temporarily unavailable.</p>
+        ) : analysis ? (
+          <div>
+            {/* Summary */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <p style={{ color: 'var(--text-primary)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                {analysis.summary}
+              </p>
+            </div>
+
+            {/* Doctrine Alert */}
+            {analysis.doctrine_alert && (
+              <div style={{
+                padding: '1rem',
+                background: 'rgba(188, 140, 255, 0.1)',
+                borderRadius: '8px',
+                marginBottom: '1rem',
+                border: '1px solid var(--accent-purple)'
+              }}>
+                <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--accent-purple)' }}>
+                  Doctrine Alert
+                </p>
+                <p style={{ color: 'var(--text-secondary)', margin: 0 }}>{analysis.doctrine_alert}</p>
+              </div>
+            )}
+
+            {/* Insights and Recommendations in two columns - collapsible */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+              {/* Key Insights */}
+              {analysis.insights.length > 0 && (
+                <div>
+                  <button
+                    onClick={() => setInsightsExpanded(!insightsExpanded)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      marginBottom: '0.75rem',
+                      color: 'var(--accent-blue)',
+                      padding: 0,
+                      fontSize: '1rem'
+                    }}
+                  >
+                    <span style={{ transition: 'transform 0.2s', transform: insightsExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                    Key Insights ({analysis.insights.length})
+                  </button>
+                  {insightsExpanded && (
+                    <ul style={{ margin: 0, paddingLeft: '1.25rem', color: 'var(--text-secondary)' }}>
+                      {analysis.insights.map((insight, idx) => (
+                        <li key={idx} style={{ marginBottom: '0.5rem', lineHeight: 1.5 }}>{insight}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {/* Recommendations */}
+              {analysis.recommendations.length > 0 && (
+                <div>
+                  <button
+                    onClick={() => setRecommendationsExpanded(!recommendationsExpanded)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      marginBottom: '0.75rem',
+                      color: 'var(--success)',
+                      padding: 0,
+                      fontSize: '1rem'
+                    }}
+                  >
+                    <span style={{ transition: 'transform 0.2s', transform: recommendationsExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                    Trading Recommendations ({analysis.recommendations.length})
+                  </button>
+                  {recommendationsExpanded && (
+                    <ul style={{ margin: 0, paddingLeft: '1.25rem', color: 'var(--text-secondary)' }}>
+                      {analysis.recommendations.map((rec, idx) => (
+                        <li key={idx} style={{ marginBottom: '0.5rem', lineHeight: 1.5 }}>{rec}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Risk Warnings */}
+            {analysis.risk_warnings && analysis.risk_warnings.length > 0 && (
+              <div style={{
+                marginTop: '1rem',
+                padding: '0.75rem 1rem',
+                background: 'rgba(248, 81, 73, 0.1)',
+                borderRadius: '8px',
+                border: '1px solid var(--danger)'
+              }}>
+                <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--danger)', fontSize: '0.875rem' }}>
+                  Risk Warnings
+                </p>
+                <ul style={{ margin: 0, paddingLeft: '1.25rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                  {analysis.risk_warnings.map((warning, idx) => (
+                    <li key={idx} style={{ marginBottom: '0.25rem' }}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p style={{ color: 'var(--text-secondary)' }}>Loading market intelligence...</p>
+        )}
       </div>
 
       {/* Global Summary */}
@@ -262,7 +413,7 @@ export function WarEconomy() {
         <div className="card">
           <h2>Detected Fleet Doctrines</h2>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-            Ship class patterns reveal active fleet doctrines - anticipate module and ammunition demand
+            Specific hull analysis reveals active fleet doctrines - anticipate module and ammunition demand
           </p>
 
           {report.fleet_compositions.length === 0 ? (
@@ -270,7 +421,7 @@ export function WarEconomy() {
               No fleet composition data available
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '1.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem' }}>
               {report.fleet_compositions.map((fleet) => (
                 <div
                   key={fleet.region_id}
@@ -286,23 +437,26 @@ export function WarEconomy() {
                       {fleet.region_name}
                     </h3>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                      {fleet.total_ships_lost} ships analyzed
+                      {fleet.total_ships_lost} combat ships analyzed (excl. pods/shuttles)
                     </p>
                   </div>
 
                   {/* Doctrine Hints */}
-                  {fleet.doctrine_hints.length > 0 && (
+                  {fleet.doctrine_hints && fleet.doctrine_hints.length > 0 && (
                     <div style={{ marginBottom: '1rem' }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                        {fleet.doctrine_hints.map((hint, idx) => (
+                        {fleet.doctrine_hints.map((hint: string, idx: number) => (
                           <span
                             key={idx}
                             style={{
-                              padding: '0.375rem 0.75rem',
-                              background: 'var(--warning)',
-                              color: 'black',
+                              padding: '0.5rem 0.75rem',
+                              background: hint.includes('Capital') ? 'var(--danger)' :
+                                         hint.includes('HAC') ? 'var(--accent-purple)' :
+                                         hint.includes('Logistics') ? 'var(--success)' :
+                                         'var(--warning)',
+                              color: hint.includes('Capital') || hint.includes('HAC') ? 'white' : 'black',
                               borderRadius: '4px',
-                              fontSize: '0.75rem',
+                              fontSize: '0.8rem',
                               fontWeight: 600
                             }}
                           >
@@ -313,18 +467,15 @@ export function WarEconomy() {
                     </div>
                   )}
 
-                  {/* Ship Class Breakdown */}
-                  <div>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '0.5rem' }}>
-                      Ship Class Breakdown:
-                    </p>
-                    {Object.entries(fleet.composition)
-                      .filter(([, data]) => data.count > 0)
-                      .sort((a, b) => b[1].count - a[1].count)
-                      .slice(0, 6)
-                      .map(([shipClass, data]) => (
+                  {/* Top Hulls - Specific Ship Types */}
+                  {fleet.top_hulls && fleet.top_hulls.length > 0 && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '0.5rem' }}>
+                        Top Hull Types:
+                      </p>
+                      {fleet.top_hulls.slice(0, 6).map((hull: { ship_name: string; ship_class: string; losses: number; percentage: number }, idx: number) => (
                         <div
-                          key={shipClass}
+                          key={idx}
                           style={{
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -333,36 +484,95 @@ export function WarEconomy() {
                             borderBottom: '1px solid var(--border-color)'
                           }}
                         >
-                          <span style={{ textTransform: 'capitalize' }}>{shipClass.replace('_', ' ')}</span>
-                          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                              {data.count}x
+                          <div>
+                            <span style={{ fontWeight: 500 }}>{hull.ship_name}</span>
+                            <span style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem', marginLeft: '0.5rem', textTransform: 'capitalize' }}>
+                              ({hull.ship_class})
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                            <span style={{ color: 'var(--danger)', fontSize: '0.875rem', fontWeight: 600 }}>
+                              {hull.losses}x
                             </span>
                             <div
                               style={{
-                                width: '60px',
-                                height: '8px',
+                                width: '50px',
+                                height: '6px',
                                 background: 'var(--bg-surface)',
-                                borderRadius: '4px',
+                                borderRadius: '3px',
                                 overflow: 'hidden'
                               }}
                             >
                               <div
                                 style={{
-                                  width: `${Math.min(data.percentage, 100)}%`,
+                                  width: `${Math.min(hull.percentage * 2, 100)}%`,
                                   height: '100%',
                                   background: 'var(--accent-blue)',
-                                  borderRadius: '4px'
+                                  borderRadius: '3px'
                                 }}
                               />
                             </div>
-                            <span style={{ color: 'var(--accent-blue)', fontSize: '0.875rem', fontWeight: 500, width: '40px', textAlign: 'right' }}>
-                              {data.percentage}%
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', width: '35px', textAlign: 'right' }}>
+                              {hull.percentage}%
                             </span>
                           </div>
                         </div>
                       ))}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* Class Summary (compact) */}
+                  {fleet.class_summary && Object.keys(fleet.class_summary).length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      {Object.entries(fleet.class_summary as Record<string, { count: number; percentage: number }>)
+                        .slice(0, 4)
+                        .map(([shipClass, data]) => (
+                          <span
+                            key={shipClass}
+                            style={{
+                              padding: '0.25rem 0.5rem',
+                              background: 'var(--bg-surface)',
+                              borderRadius: '4px',
+                              fontSize: '0.7rem',
+                              color: 'var(--text-secondary)',
+                              textTransform: 'capitalize'
+                            }}
+                          >
+                            {shipClass}: {data.count} ({data.percentage}%)
+                          </span>
+                        ))}
+                    </div>
+                  )}
+
+                  {/* Fallback to old composition format */}
+                  {!fleet.top_hulls && fleet.composition && (
+                    <div>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '0.5rem' }}>
+                        Ship Class Breakdown:
+                      </p>
+                      {Object.entries(fleet.composition as Record<string, { count: number; percentage: number }>)
+                        .filter(([, data]) => data.count > 0)
+                        .sort((a, b) => b[1].count - a[1].count)
+                        .slice(0, 6)
+                        .map(([shipClass, data]) => (
+                          <div
+                            key={shipClass}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '0.375rem 0',
+                              borderBottom: '1px solid var(--border-color)'
+                            }}
+                          >
+                            <span style={{ textTransform: 'capitalize' }}>{shipClass.replace('_', ' ')}</span>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                              {data.count}x ({data.percentage}%)
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

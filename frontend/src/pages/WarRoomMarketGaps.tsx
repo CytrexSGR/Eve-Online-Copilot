@@ -112,17 +112,14 @@ export default function WarRoomMarketGaps() {
         return sortDir === 'desc' ? bRoi - aRoi : aRoi - bRoi;
       }
 
-      let aVal: any = a[sortField];
-      let bVal: any = b[sortField];
-
       if (sortField === 'name') {
-        aVal = aVal || '';
-        bVal = bVal || '';
+        const aVal = a.name || '';
+        const bVal = b.name || '';
         return sortDir === 'desc' ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
       }
 
-      aVal = aVal || 0;
-      bVal = bVal || 0;
+      const aVal = (a[sortField as keyof MarketGap] as number) || 0;
+      const bVal = (b[sortField as keyof MarketGap] as number) || 0;
       return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
     });
 

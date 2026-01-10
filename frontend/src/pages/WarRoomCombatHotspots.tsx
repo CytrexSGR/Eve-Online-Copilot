@@ -3,6 +3,11 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MapPin, ArrowUpDown, ArrowLeft } from 'lucide-react';
 import { getWarHeatmap } from '../api';
+import type { HeatmapPoint } from '../types/war';
+
+interface HeatmapResponse {
+  systems: HeatmapPoint[];
+}
 
 export default function WarRoomCombatHotspots() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -11,21 +16,21 @@ export default function WarRoomCombatHotspots() {
   const [sortField, setSortField] = useState<'name' | 'kills' | 'security'>('kills');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  const heatmapQuery = useQuery({
+  const heatmapQuery = useQuery<HeatmapResponse>({
     queryKey: ['warHeatmap', days, 1],
     queryFn: () => getWarHeatmap(days, 1),
     staleTime: 5 * 60 * 1000,
   });
 
-  const systems = useMemo(() => {
+  const systems = useMemo<HeatmapPoint[]>(() => {
     if (!heatmapQuery.data?.systems) return [];
     return heatmapQuery.data.systems;
   }, [heatmapQuery.data]);
 
   const filteredAndSorted = useMemo(() => {
-    let results = [...systems];
+    const results = [...systems];
 
-    results.sort((a: any, b: any) => {
+    results.sort((a, b) => {
       const aVal = a[sortField] || 0;
       const bVal = b[sortField] || 0;
 
@@ -33,7 +38,7 @@ export default function WarRoomCombatHotspots() {
         return sortDir === 'desc' ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
       }
 
-      return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+      return sortDir === 'desc' ? (bVal as number) - (aVal as number) : (aVal as number) - (bVal as number);
     });
 
     return results;
@@ -113,7 +118,7 @@ export default function WarRoomCombatHotspots() {
                 </tr>
               </thead>
               <tbody>
-                {filteredAndSorted.map((system: any) => {
+                {filteredAndSorted.map((system) => {
                   const dangerLevel = system.kills > 500 ? 'extreme' : system.kills > 200 ? 'high' : system.kills > 50 ? 'medium' : 'low';
 
                   return (

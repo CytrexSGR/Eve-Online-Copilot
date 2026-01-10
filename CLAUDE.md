@@ -31,6 +31,8 @@
 
 Think before acting. Use the right tool. Document your solutions. Test before committing.
 
+**Chrome DevTools MCP - ONLY IN EMERGENCIES!** Browser automation via MCP consumes excessive tokens. Use curl/API calls for verification. Only use DevTools when absolutely necessary (e.g., complex UI debugging that cannot be verified otherwise).
+
 ---
 
 ## UI/UX Design Guidelines

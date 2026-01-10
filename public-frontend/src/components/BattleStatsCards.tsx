@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { battleApi } from '../services/api';
+import type { ActiveBattle } from '../types/reports';
 import './BattleStatsCards.css';
 
 interface BattleStats {
@@ -42,7 +43,7 @@ export default function BattleStatsCards() {
       let totalISK = 0;
       let milestonesCount = 0;
 
-      data.battles.forEach((battle: any) => {
+      data.battles.forEach((battle: ActiveBattle) => {
         totalKills += battle.total_kills;
         totalISK += battle.total_isk_destroyed;
         // Count milestones (10, 25, 50, 100, 200, 500)

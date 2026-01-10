@@ -23,7 +23,7 @@ from .live_service import (
     HOTSPOT_THRESHOLD_KILLS,
     HOTSPOT_ALERT_COOLDOWN
 )
-from .reports_service import ZKillboardReportsService, BATTLE_REPORT_CACHE_TTL
+from .reports_service import ZKillboardReportsService, REPORT_CACHE_TTL
 
 
 class CombinedZKillboardService(ZKillboardLiveService):
@@ -92,5 +92,5 @@ __all__ = [
     'HOTSPOT_WINDOW_SECONDS',
     'HOTSPOT_THRESHOLD_KILLS',
     'HOTSPOT_ALERT_COOLDOWN',
-    'BATTLE_REPORT_CACHE_TTL'
+    'REPORT_CACHE_TTL'
 ]

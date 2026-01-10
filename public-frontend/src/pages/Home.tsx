@@ -131,50 +131,58 @@ export function Home() {
         <RefreshIndicator lastUpdated={lastUpdated} autoRefreshSeconds={60} />
       </div>
 
-      {/* Strategic Intelligence Briefing */}
+      {/* Strategic Intelligence Summary (Compact) */}
       <div className="card" style={{
         marginBottom: '1.5rem',
         background: 'linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-elevated) 100%)',
         border: '1px solid var(--accent-purple)',
         borderLeft: '4px solid var(--accent-purple)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-          <span style={{ fontSize: '1.75rem' }}>🎖️</span>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Strategic Intelligence Briefing</h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: 0 }}>
-              AI-powered strategic analysis for alliance leadership
-              {briefing?.generated_at && (
-                <span> • Last update: {new Date(briefing.generated_at).toLocaleTimeString()}</span>
-              )}
-            </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+            <span style={{ fontSize: '1.5rem' }}>🎖️</span>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.125rem' }}>Strategic Intelligence</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: 0 }}>
+                AI-powered strategic analysis
+              </p>
+            </div>
           </div>
+          <Link
+            to="/battle-report"
+            style={{
+              padding: '0.5rem 1rem',
+              background: 'var(--accent-purple)',
+              color: 'white',
+              borderRadius: '6px',
+              textDecoration: 'none',
+              fontSize: '0.75rem',
+              fontWeight: 500
+            }}
+          >
+            Full Briefing →
+          </Link>
         </div>
 
         {briefingLoading ? (
-          <div style={{ padding: '2rem', textAlign: 'center' }}>
-            <div className="skeleton" style={{ height: '100px', marginBottom: '1rem' }} />
-            <p style={{ color: 'var(--text-secondary)' }}>Generating strategic briefing...</p>
-          </div>
+          <div className="skeleton" style={{ height: '60px' }} />
         ) : briefing?.error ? (
-          <div style={{ padding: '1rem', background: 'rgba(248, 81, 73, 0.1)', borderRadius: '8px', color: 'var(--danger)' }}>
-            Briefing temporarily unavailable: {briefing.error}
-          </div>
+          <p style={{ color: 'var(--warning)', fontSize: '0.875rem' }}>Briefing temporarily unavailable</p>
         ) : briefing ? (
           <div>
-            {/* Alerts (if any) */}
+            {/* Alerts only (max 2) */}
             {briefing.alerts && briefing.alerts.length > 0 && (
-              <div style={{ marginBottom: '1.25rem' }}>
-                {briefing.alerts.map((alert, idx) => (
+              <div style={{ marginBottom: '0.75rem' }}>
+                {briefing.alerts.slice(0, 2).map((alert, idx) => (
                   <div
                     key={idx}
                     style={{
-                      padding: '0.75rem 1rem',
+                      padding: '0.5rem 0.75rem',
                       background: 'rgba(248, 81, 73, 0.15)',
                       border: '1px solid var(--danger)',
-                      borderRadius: '6px',
+                      borderRadius: '4px',
                       marginBottom: '0.5rem',
-                      fontSize: '0.875rem',
+                      fontSize: '0.8rem',
                       color: 'var(--danger)',
                       display: 'flex',
                       alignItems: 'center',
@@ -187,102 +195,16 @@ export function Home() {
               </div>
             )}
 
-            {/* Executive Briefing */}
-            <div style={{
-              padding: '1.25rem',
-              background: 'var(--bg-surface)',
-              borderRadius: '8px',
-              marginBottom: '1.25rem',
-              lineHeight: '1.7',
-              color: 'var(--text-primary)'
-            }}>
-              {briefing.briefing.split('\n').map((paragraph, idx) => (
-                <p key={idx} style={{ marginBottom: idx < briefing.briefing.split('\n').length - 1 ? '1rem' : 0 }}>
-                  {paragraph}
-                </p>
-              ))}
-            </div>
-
-            {/* Power Assessment */}
-            {briefing.power_assessment && (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: '1rem',
-                marginBottom: '1.25rem'
-              }}>
-                {briefing.power_assessment.gaining_power.length > 0 && (
-                  <div style={{
-                    padding: '1rem',
-                    background: 'rgba(63, 185, 80, 0.1)',
-                    borderRadius: '8px',
-                    border: '1px solid var(--success)'
-                  }}>
-                    <h4 style={{ fontSize: '0.75rem', color: 'var(--success)', marginBottom: '0.5rem' }}>
-                      📈 GAINING POWER
-                    </h4>
-                    {briefing.power_assessment.gaining_power.map((name, idx) => (
-                      <div key={idx} style={{ fontSize: '0.875rem', padding: '0.25rem 0' }}>{name}</div>
-                    ))}
-                  </div>
-                )}
-                {briefing.power_assessment.losing_power.length > 0 && (
-                  <div style={{
-                    padding: '1rem',
-                    background: 'rgba(248, 81, 73, 0.1)',
-                    borderRadius: '8px',
-                    border: '1px solid var(--danger)'
-                  }}>
-                    <h4 style={{ fontSize: '0.75rem', color: 'var(--danger)', marginBottom: '0.5rem' }}>
-                      📉 LOSING POWER
-                    </h4>
-                    {briefing.power_assessment.losing_power.map((name, idx) => (
-                      <div key={idx} style={{ fontSize: '0.875rem', padding: '0.25rem 0' }}>{name}</div>
-                    ))}
-                  </div>
-                )}
-                {briefing.power_assessment.contested.length > 0 && (
-                  <div style={{
-                    padding: '1rem',
-                    background: 'rgba(210, 153, 34, 0.1)',
-                    borderRadius: '8px',
-                    border: '1px solid var(--warning)'
-                  }}>
-                    <h4 style={{ fontSize: '0.75rem', color: 'var(--warning)', marginBottom: '0.5rem' }}>
-                      ⚔️ CONTESTED ZONES
-                    </h4>
-                    {briefing.power_assessment.contested.map((name, idx) => (
-                      <div key={idx} style={{ fontSize: '0.875rem', padding: '0.25rem 0' }}>{name}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Key Highlights */}
+            {/* First highlight only as teaser */}
             {briefing.highlights && briefing.highlights.length > 0 && (
-              <div>
-                <h3 style={{ fontSize: '0.875rem', marginBottom: '0.75rem', color: 'var(--accent-blue)' }}>
-                  🎯 Key Strategic Highlights
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {briefing.highlights.map((highlight, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        padding: '0.75rem 1rem',
-                        background: 'var(--bg-elevated)',
-                        borderRadius: '6px',
-                        borderLeft: '3px solid var(--accent-blue)',
-                        fontSize: '0.875rem',
-                        color: 'var(--text-primary)'
-                      }}
-                    >
-                      {highlight}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <p style={{
+                fontSize: '0.875rem',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.5,
+                margin: 0
+              }}>
+                {briefing.highlights[0]}
+              </p>
             )}
           </div>
         ) : null}

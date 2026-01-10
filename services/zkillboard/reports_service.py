@@ -20,8 +20,8 @@ from src.database import get_db_connection
 from src.route_service import RouteService, TRADE_HUB_SYSTEMS
 
 
-# Battle Report Configuration
-BATTLE_REPORT_CACHE_TTL = 600  # 10 minutes cache
+# Cache Configuration - All reports generated every 6h by cron, TTL 7h for buffer
+REPORT_CACHE_TTL = 7 * 3600  # 7 hours (regenerated every 6h by cron)
 
 # Ship type categories based on groupID from invTypes table
 SHIP_CATEGORIES = {
@@ -549,7 +549,7 @@ class ZKillboardReportsService:
         return hot_zones
 
     def build_pilot_intelligence_report(self) -> Dict:
-        """Build complete pilot intelligence battle report"""
+        """Build complete pilot intelligence battle report (with cache)"""
         import time
         start_time = time.time()
 
@@ -561,6 +561,18 @@ class ZKillboardReportsService:
             return json.loads(cached_report)
 
         print(f"[CACHE MISS] Building pilot intelligence report from scratch...")
+        return self._build_pilot_intelligence_report_internal(start_time, cache_key)
+
+    def build_pilot_intelligence_report_fresh(self) -> Dict:
+        """Build complete pilot intelligence battle report (skip cache, for cron job)"""
+        import time
+        start_time = time.time()
+        print(f"[FRESH] Building pilot intelligence report from scratch...")
+        return self._build_pilot_intelligence_report_internal(start_time, None)
+
+    def _build_pilot_intelligence_report_internal(self, start_time: float, cache_key: str = None) -> Dict:
+        """Internal method to build the report"""
+        import time
 
         # Get all killmails from Redis using PIPELINE for bulk loading
         kill_keys = list(self.redis_client.scan_iter("kill:id:*"))
@@ -640,11 +652,11 @@ class ZKillboardReportsService:
             'regions': region_summary
         }
 
-        # Cache the report for 10 minutes (600 seconds)
-        cache_key = "report:pilot_intelligence:24h"
-        self.redis_client.setex(cache_key, BATTLE_REPORT_CACHE_TTL, json.dumps(report))
+        # Cache the report if cache_key provided (not for fresh generation)
         total_time = time.time() - start_time
-        print(f"[CACHE] Cached pilot intelligence report for {BATTLE_REPORT_CACHE_TTL}s")
+        if cache_key:
+            self.redis_client.setex(cache_key, REPORT_CACHE_TTL, json.dumps(report))
+            print(f"[CACHE] Cached pilot intelligence report for {REPORT_CACHE_TTL}s")
         print(f"[Performance] TOTAL report generation time: {total_time:.2f}s")
 
         return report
@@ -720,6 +732,16 @@ class ZKillboardReportsService:
         Returns:
             Dict with top destroyed items and their market opportunity scores
         """
+        # Check cache first
+        cache_key = f"report:war_profiteering:{limit}"
+        try:
+            cached = self.redis_client.get(cache_key)
+            if cached:
+                print(f"[CACHE HIT] Returning cached war profiteering report")
+                return json.loads(cached)
+        except Exception:
+            pass
+
         # Get destroyed items from Redis
         items = []
         for key in self.redis_client.scan_iter("kill:item:*:destroyed"):
@@ -796,12 +818,21 @@ class ZKillboardReportsService:
         # Calculate totals
         total_opportunity = sum(item['opportunity_value'] for item in item_data[:limit])
 
-        return {
+        result = {
             "items": item_data[:limit],
             "total_items": len(item_data),
             "total_opportunity_value": total_opportunity,
             "period": "24h"
         }
+
+        # Cache for 7 hours
+        try:
+            self.redis_client.setex(cache_key, REPORT_CACHE_TTL, json.dumps(result))
+            print(f"[CACHE] Cached war profiteering report for {REPORT_CACHE_TTL}s")
+        except Exception:
+            pass
+
+        return result
 
     async def get_alliance_name(self, alliance_id: int) -> str:
         """
@@ -1141,8 +1172,27 @@ class ZKillboardReportsService:
         Returns:
             Dict with top alliance wars and their statistics
         """
-        # Redirect to PostgreSQL-based method (7 days history)
-        return await self.get_alliance_war_tracker_postgres(limit=limit, days=7)
+        # Check cache first
+        cache_key = f"report:alliance_wars:{limit}"
+        try:
+            cached = self.redis_client.get(cache_key)
+            if cached:
+                print(f"[CACHE HIT] Returning cached alliance wars report")
+                return json.loads(cached)
+        except Exception:
+            pass
+
+        # Get from PostgreSQL
+        result = await self.get_alliance_war_tracker_postgres(limit=limit, days=7)
+
+        # Cache for 7 hours
+        try:
+            self.redis_client.setex(cache_key, REPORT_CACHE_TTL, json.dumps(result))
+            print(f"[CACHE] Cached alliance wars report for {REPORT_CACHE_TTL}s")
+        except Exception:
+            pass
+
+        return result
 
     async def get_alliance_war_tracker_redis_legacy(self, limit: int = 5) -> Dict:
         """
@@ -1403,6 +1453,16 @@ class ZKillboardReportsService:
         Returns:
             Dict with routes and danger analysis
         """
+        # Check cache first
+        cache_key = "report:trade_routes:danger_map"
+        try:
+            cached = self.redis_client.get(cache_key)
+            if cached:
+                print(f"[CACHE HIT] Returning cached trade routes report")
+                return json.loads(cached)
+        except Exception:
+            pass
+
         route_service = RouteService()
 
         # Major trade routes (hub pairs)
@@ -1548,7 +1608,7 @@ class ZKillboardReportsService:
         # Sort by danger level
         routes_data.sort(key=lambda x: x['avg_danger_score'], reverse=True)
 
-        return {
+        result = {
             "timestamp": datetime.now().isoformat(),
             "routes": routes_data,
             "total_routes": len(routes_data),
@@ -1561,6 +1621,15 @@ class ZKillboardReportsService:
                 "EXTREME": "50+ avg danger"
             }
         }
+
+        # Cache for 7 hours
+        try:
+            self.redis_client.setex(cache_key, REPORT_CACHE_TTL, json.dumps(result))
+            print(f"[CACHE] Cached trade routes report for {REPORT_CACHE_TTL}s")
+        except Exception:
+            pass
+
+        return result
 
     def get_24h_battle_report(self) -> Dict:
         """
@@ -1722,8 +1791,8 @@ class ZKillboardReportsService:
             "regions": regional_stats
         }
 
-        # Cache report for 10 minutes
-        self.redis_client.setex(cache_key, BATTLE_REPORT_CACHE_TTL, json.dumps(report))
+        # Cache report for 7 hours (regenerated every 6h by cron)
+        self.redis_client.setex(cache_key, REPORT_CACHE_TTL, json.dumps(report))
 
         return report
 
@@ -2026,8 +2095,8 @@ class ZKillboardReportsService:
                         "total_unaffiliated": len(unaffiliated)
                     }
 
-                    # Cache for 1 hour
-                    self.redis_client.setex(cache_key, 3600, json.dumps(result))
+                    # Cache for 7 hours (regenerated every 6h by cron)
+                    self.redis_client.setex(cache_key, REPORT_CACHE_TTL, json.dumps(result))
 
                     return result
 
@@ -2041,6 +2110,120 @@ class ZKillboardReportsService:
                 "unaffiliated": [],
                 "error": str(e)
             }
+
+    def _detect_doctrines(self, top_hulls: List[Dict], total_ships: int) -> List[str]:
+        """
+        Detect fleet doctrines based on hull type patterns.
+
+        Known EVE Online doctrines detected:
+        - Ferox Fleet (Shield Battlecruiser)
+        - Muninn Fleet (Armor HAC)
+        - Eagle Fleet (Shield HAC)
+        - Caracal Fleet (Shield Cruiser)
+        - Jackdaw Fleet (Tactical Destroyer)
+        - Bomber Fleet (Stealth Bombers)
+        - Capital Brawl (Dreads/Carriers)
+        """
+        hints = []
+        hull_names = {h["ship_name"].lower(): h for h in top_hulls}
+        hull_counts = {h["ship_name"]: h["losses"] for h in top_hulls}
+
+        # Known doctrine ships and their detection thresholds
+        doctrine_patterns = {
+            # Battlecruiser doctrines
+            "ferox": ("Ferox Fleet", "battlecruiser", 15),
+            "hurricane": ("Hurricane Fleet", "battlecruiser", 15),
+            "brutix": ("Brutix Fleet", "battlecruiser", 10),
+            "harbinger": ("Harbinger Fleet", "battlecruiser", 10),
+            "drake": ("Drake Fleet", "battlecruiser", 15),
+
+            # HAC doctrines
+            "muninn": ("Muninn Fleet (Armor HAC)", "cruiser", 10),
+            "eagle": ("Eagle Fleet (Shield HAC)", "cruiser", 10),
+            "cerberus": ("Cerberus Fleet (Missile HAC)", "cruiser", 10),
+            "sacrilege": ("Sacrilege Fleet (Armor HAC)", "cruiser", 8),
+            "zealot": ("Zealot Fleet (Armor HAC)", "cruiser", 8),
+            "ishtar": ("Ishtar Fleet (Drone HAC)", "cruiser", 10),
+            "deimos": ("Deimos Fleet (Armor HAC)", "cruiser", 8),
+            "vagabond": ("Vagabond Gang (Kiting HAC)", "cruiser", 5),
+
+            # Cruiser doctrines
+            "caracal": ("Caracal Fleet (Missile Cruiser)", "cruiser", 15),
+            "moa": ("Moa Fleet (Shield Cruiser)", "cruiser", 10),
+            "vexor": ("Vexor Fleet (Drone Cruiser)", "cruiser", 15),
+            "thorax": ("Thorax Fleet (Blaster Cruiser)", "cruiser", 10),
+            "omen": ("Omen Fleet (Laser Cruiser)", "cruiser", 10),
+            "rupture": ("Rupture Fleet (Projectile Cruiser)", "cruiser", 10),
+
+            # Destroyer doctrines
+            "jackdaw": ("Jackdaw Fleet (T3 Destroyer)", "destroyer", 10),
+            "hecate": ("Hecate Fleet (T3 Destroyer)", "destroyer", 8),
+            "confessor": ("Confessor Fleet (T3 Destroyer)", "destroyer", 8),
+            "svipul": ("Svipul Fleet (T3 Destroyer)", "destroyer", 8),
+            "cormorant": ("Cormorant Fleet (Rail Destroyer)", "destroyer", 15),
+            "catalyst": ("Catalyst Gang (Gankers)", "destroyer", 20),
+            "thrasher": ("Thrasher Fleet (Arty Destroyer)", "destroyer", 15),
+            "coercer": ("Coercer Fleet (Beam Destroyer)", "destroyer", 15),
+            "kikimora": ("Kikimora Fleet (Trig Destroyer)", "destroyer", 10),
+
+            # Stealth Bomber doctrines
+            "manticore": ("Bomber Fleet", "frigate", 5),
+            "purifier": ("Bomber Fleet", "frigate", 5),
+            "hound": ("Bomber Fleet", "frigate", 5),
+            "nemesis": ("Bomber Fleet", "frigate", 5),
+
+            # Interdictor presence (indicates fleet fights)
+            "sabre": ("Interdictor Support", "destroyer", 8),
+            "flycatcher": ("Interdictor Support", "destroyer", 8),
+
+            # Capital presence
+            "revelation": ("Capital Brawl (Dreadnoughts)", "dreadnought", 3),
+            "naglfar": ("Capital Brawl (Dreadnoughts)", "dreadnought", 3),
+            "moros": ("Capital Brawl (Dreadnoughts)", "dreadnought", 3),
+            "phoenix": ("Capital Brawl (Dreadnoughts)", "dreadnought", 3),
+            "thanatos": ("Carrier Operations", "carrier", 2),
+            "nidhoggur": ("Carrier Operations", "carrier", 2),
+            "archon": ("Carrier Operations", "carrier", 2),
+            "chimera": ("Carrier Operations", "carrier", 2),
+
+            # Logistics (indicates organized fleet)
+            "scimitar": ("Logistics Supported", "cruiser", 5),
+            "basilisk": ("Logistics Supported", "cruiser", 5),
+            "guardian": ("Logistics Supported", "cruiser", 5),
+            "oneiros": ("Logistics Supported", "cruiser", 5),
+            "exequror navy issue": ("Navy Logi Supported", "cruiser", 8),
+        }
+
+        detected = set()
+        for ship_key, (doctrine_name, expected_class, min_count) in doctrine_patterns.items():
+            # Check for exact match or partial match
+            for hull_name, hull_data in hull_names.items():
+                if ship_key in hull_name and hull_data["losses"] >= min_count:
+                    if doctrine_name not in detected:
+                        detected.add(doctrine_name)
+                        count = hull_data["losses"]
+                        hints.append(f"{doctrine_name} ({count} ships)")
+
+        # Detect mixed doctrines based on ship class dominance
+        class_counts = {}
+        for h in top_hulls:
+            sc = h["ship_class"]
+            class_counts[sc] = class_counts.get(sc, 0) + h["losses"]
+
+        if not hints:
+            # Fallback to class-based detection if no specific doctrine found
+            for ship_class, count in sorted(class_counts.items(), key=lambda x: x[1], reverse=True):
+                pct = (count / total_ships) * 100 if total_ships > 0 else 0
+                if ship_class == "battlecruiser" and pct > 25:
+                    hints.append(f"Battlecruiser Doctrine ({count} ships, {pct:.0f}%)")
+                elif ship_class == "cruiser" and pct > 30:
+                    hints.append(f"Cruiser Gang ({count} ships, {pct:.0f}%)")
+                elif ship_class == "destroyer" and pct > 30:
+                    hints.append(f"Destroyer Swarm ({count} ships, {pct:.0f}%)")
+                elif ship_class == "frigate" and pct > 35:
+                    hints.append(f"Frigate Blob ({count} ships, {pct:.0f}%)")
+
+        return hints[:4]  # Max 4 doctrine hints
 
     def get_war_economy_report(self, limit: int = 10) -> Dict:
         """
@@ -2216,49 +2399,90 @@ class ZKillboardReportsService:
             result["regional_demand"] = regional_demand[:limit]
 
             # Build fleet compositions (doctrine detection) per region
+            # Now using specific hull types instead of generic ship classes
             fleet_compositions = []
-            for rd in result["regional_demand"][:5]:  # Top 5 combat regions
-                ship_classes = rd.get("ship_classes", {})
-                total_ships = sum(ship_classes.values())
 
-                if total_ships == 0:
-                    continue
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Get top 5 combat regions by kills
+                    top_region_ids = [rd["region_id"] for rd in result["regional_demand"][:5]]
 
-                # Calculate percentages
-                composition = {
-                    "region_id": rd["region_id"],
-                    "region_name": rd["region_name"],
-                    "total_ships_lost": total_ships,
-                    "composition": {}
-                }
+                    if top_region_ids:
+                        # Query specific hull types per region (excluding noise)
+                        cur.execute("""
+                            SELECT
+                                k.region_id,
+                                k.ship_type_id,
+                                t."typeName" as ship_name,
+                                k.ship_class,
+                                g."groupName" as ship_group,
+                                COUNT(*) as losses
+                            FROM killmails k
+                            JOIN "invTypes" t ON k.ship_type_id = t."typeID"
+                            JOIN "invGroups" g ON t."groupID" = g."groupID"
+                            WHERE k.killmail_time > NOW() - INTERVAL '24 hours'
+                              AND k.region_id = ANY(%s)
+                              AND k.ship_class NOT IN ('capsule', 'shuttle', 'corvette', 'other')
+                            GROUP BY k.region_id, k.ship_type_id, t."typeName", k.ship_class, g."groupName"
+                            ORDER BY k.region_id, losses DESC
+                        """, (top_region_ids,))
 
-                # Detect doctrine pattern
-                doctrine_hints = []
-                for ship_class, count in sorted(ship_classes.items(), key=lambda x: x[1], reverse=True):
-                    pct = (count / total_ships) * 100
-                    composition["composition"][ship_class] = {
-                        "count": count,
-                        "percentage": round(pct, 1)
-                    }
+                        # Group by region
+                        region_hulls = {}
+                        for row in cur.fetchall():
+                            region_id, ship_type_id, ship_name, ship_class, ship_group, losses = row
+                            if region_id not in region_hulls:
+                                region_hulls[region_id] = []
+                            region_hulls[region_id].append({
+                                "ship_type_id": ship_type_id,
+                                "ship_name": ship_name,
+                                "ship_class": ship_class,
+                                "ship_group": ship_group,
+                                "losses": losses
+                            })
 
-                    # Doctrine hints based on patterns
-                    if ship_class == "battleship" and pct > 30:
-                        doctrine_hints.append("Battleship fleet doctrine")
-                    elif ship_class == "cruiser" and pct > 40:
-                        doctrine_hints.append("Cruiser gang doctrine")
-                    elif ship_class == "destroyer" and pct > 35:
-                        doctrine_hints.append("Destroyer wolf pack")
-                    elif ship_class == "frigate" and pct > 40:
-                        doctrine_hints.append("Frigate swarm")
-                    elif ship_class == "capital" and count > 0:
-                        doctrine_hints.append(f"Capital engagement ({count} capitals)")
-                    elif ship_class == "stealth_bomber" and pct > 20:
-                        doctrine_hints.append("Bomber fleet")
-                    elif ship_class == "logistics" and pct > 10:
-                        doctrine_hints.append("Logistics-supported fleet")
+                        # Build composition for each region
+                        for rd in result["regional_demand"][:5]:
+                            region_id = rd["region_id"]
+                            hulls = region_hulls.get(region_id, [])
 
-                composition["doctrine_hints"] = doctrine_hints[:3]  # Max 3 hints
-                fleet_compositions.append(composition)
+                            if not hulls:
+                                continue
+
+                            total_ships = sum(h["losses"] for h in hulls)
+                            top_hulls = hulls[:8]  # Top 8 hull types
+
+                            # Detect doctrines based on hull patterns
+                            doctrine_hints = self._detect_doctrines(top_hulls, total_ships)
+
+                            # Group by ship class for summary
+                            class_breakdown = {}
+                            for h in hulls:
+                                sc = h["ship_class"]
+                                if sc not in class_breakdown:
+                                    class_breakdown[sc] = 0
+                                class_breakdown[sc] += h["losses"]
+
+                            composition = {
+                                "region_id": region_id,
+                                "region_name": rd["region_name"],
+                                "total_ships_lost": total_ships,
+                                "top_hulls": [
+                                    {
+                                        "ship_name": h["ship_name"],
+                                        "ship_class": h["ship_class"],
+                                        "losses": h["losses"],
+                                        "percentage": round((h["losses"] / total_ships) * 100, 1)
+                                    }
+                                    for h in top_hulls
+                                ],
+                                "class_summary": {
+                                    k: {"count": v, "percentage": round((v / total_ships) * 100, 1)}
+                                    for k, v in sorted(class_breakdown.items(), key=lambda x: x[1], reverse=True)[:6]
+                                },
+                                "doctrine_hints": doctrine_hints
+                            }
+                            fleet_compositions.append(composition)
 
             result["fleet_compositions"] = fleet_compositions
 
@@ -2279,8 +2503,8 @@ class ZKillboardReportsService:
                 "total_opportunity_value": sum(i.get("opportunity_value", 0) for i in result["hot_items"])
             }
 
-            # Cache for 30 minutes
-            self.redis_client.setex(cache_key, 1800, json.dumps(result))
+            # Cache for 7 hours (regenerated every 6h by cron)
+            self.redis_client.setex(cache_key, REPORT_CACHE_TTL, json.dumps(result))
 
             return result
 

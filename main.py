@@ -58,7 +58,7 @@ app.include_router(shopping_router)
 app.include_router(hunter_router)
 app.include_router(mcp_router)
 app.include_router(mining_router)
-app.include_router(war_router)
+app.include_router(war_router, prefix="/api/war", tags=["War Room"])
 app.include_router(dashboard_router)
 app.include_router(research_router)
 

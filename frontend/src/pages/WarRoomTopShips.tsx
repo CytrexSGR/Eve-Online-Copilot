@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Target, ArrowUpDown, ArrowLeft } from 'lucide-react';
 import { getTopShips } from '../api';
+import type { TopShip, TopShipsResponse } from '../types/war';
 
 export default function WarRoomTopShips() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -12,19 +13,19 @@ export default function WarRoomTopShips() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [groupFilter, setGroupFilter] = useState<string>('');
 
-  const shipsQuery = useQuery({
+  const shipsQuery = useQuery<TopShipsResponse>({
     queryKey: ['topShips', days, 1000],
     queryFn: () => getTopShips(days, 1000),
     staleTime: 5 * 60 * 1000,
   });
 
-  const ships = useMemo(() => {
+  const ships = useMemo<TopShip[]>(() => {
     if (!shipsQuery.data?.ships) return [];
     return shipsQuery.data.ships;
   }, [shipsQuery.data]);
 
   const shipGroups = useMemo(() => {
-    const groups = new Set(ships.map((s: any) => s.group).filter(Boolean));
+    const groups = new Set(ships.map((s) => s.group).filter(Boolean));
     return Array.from(groups).sort();
   }, [ships]);
 
@@ -32,10 +33,10 @@ export default function WarRoomTopShips() {
     let results = [...ships];
 
     if (groupFilter) {
-      results = results.filter((s: any) => s.group === groupFilter);
+      results = results.filter((s) => s.group === groupFilter);
     }
 
-    results.sort((a: any, b: any) => {
+    results.sort((a, b) => {
       const aVal = a[sortField] || 0;
       const bVal = b[sortField] || 0;
 
@@ -43,7 +44,7 @@ export default function WarRoomTopShips() {
         return sortDir === 'desc' ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
       }
 
-      return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+      return sortDir === 'desc' ? (bVal as number) - (aVal as number) : (aVal as number) - (bVal as number);
     });
 
     return results;
@@ -142,7 +143,7 @@ export default function WarRoomTopShips() {
                 </tr>
               </thead>
               <tbody>
-                {filteredAndSorted.map((ship: any) => (
+                {filteredAndSorted.map((ship) => (
                   <tr key={ship.type_id}>
                     <td>
                       <Link to={`/item/${ship.type_id}`} className="item-link">

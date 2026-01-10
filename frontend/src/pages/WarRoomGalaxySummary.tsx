@@ -3,6 +3,11 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { TrendingUp, ArrowUpDown, ArrowLeft } from 'lucide-react';
 import { getWarSummary } from '../api';
+import type { RegionalSummary } from '../types/war';
+
+interface WarSummaryResponse {
+  regions: RegionalSummary[];
+}
 
 export default function WarRoomGalaxySummary() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -11,21 +16,21 @@ export default function WarRoomGalaxySummary() {
   const [sortField, setSortField] = useState<'region_name' | 'total_kills' | 'active_systems'>('total_kills');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  const summaryQuery = useQuery({
+  const summaryQuery = useQuery<WarSummaryResponse>({
     queryKey: ['warSummary', days],
     queryFn: () => getWarSummary(days),
     staleTime: 5 * 60 * 1000,
   });
 
-  const regions = useMemo(() => {
+  const regions = useMemo<RegionalSummary[]>(() => {
     if (!summaryQuery.data?.regions) return [];
     return summaryQuery.data.regions;
   }, [summaryQuery.data]);
 
   const filteredAndSorted = useMemo(() => {
-    let results = [...regions];
+    const results = [...regions];
 
-    results.sort((a: any, b: any) => {
+    results.sort((a, b) => {
       const aVal = a[sortField] || 0;
       const bVal = b[sortField] || 0;
 
@@ -33,7 +38,7 @@ export default function WarRoomGalaxySummary() {
         return sortDir === 'desc' ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
       }
 
-      return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+      return sortDir === 'desc' ? (bVal as number) - (aVal as number) : (aVal as number) - (bVal as number);
     });
 
     return results;
@@ -49,8 +54,8 @@ export default function WarRoomGalaxySummary() {
   };
 
   const stats = useMemo(() => {
-    const totalKills = regions.reduce((sum: number, r: any) => sum + r.total_kills, 0);
-    const totalSystems = regions.reduce((sum: number, r: any) => sum + r.active_systems, 0);
+    const totalKills = regions.reduce((sum, r) => sum + r.total_kills, 0);
+    const totalSystems = regions.reduce((sum, r) => sum + r.active_systems, 0);
     const avgKillsPerRegion = regions.length > 0 ? totalKills / regions.length : 0;
 
     return { totalKills, totalSystems, avgKillsPerRegion };
@@ -133,7 +138,7 @@ export default function WarRoomGalaxySummary() {
                 </tr>
               </thead>
               <tbody>
-                {filteredAndSorted.map((region: any) => {
+                {filteredAndSorted.map((region) => {
                   const activityLevel = region.total_kills > 3000 ? 'extreme' : region.total_kills > 1000 ? 'high' : region.total_kills > 500 ? 'medium' : 'low';
 
                   return (

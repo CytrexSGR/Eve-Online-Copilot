@@ -6,7 +6,8 @@ import type {
   TradeRoutes,
   AllianceWarsAnalysis,
   StrategicBriefing,
-  WarEconomy
+  WarEconomy,
+  WarEconomyAnalysis
 } from '../types/reports';
 
 const API_BASE_URL = import.meta.env.PROD
@@ -30,7 +31,7 @@ const api = axios.create({
 // API methods
 export const reportsApi = {
   getBattleReport: async (): Promise<BattleReport> => {
-    const { data } = await api.get('/war/pilot-intelligence');
+    const { data } = await api.get('/reports/battle-24h');
     return data;
   },
 
@@ -61,6 +62,11 @@ export const reportsApi = {
 
   getWarEconomy: async (): Promise<WarEconomy> => {
     const { data } = await api.get('/reports/war-economy');
+    return data;
+  },
+
+  getWarEconomyAnalysis: async (): Promise<WarEconomyAnalysis> => {
+    const { data } = await api.get('/reports/war-economy/analysis');
     return data;
   },
 

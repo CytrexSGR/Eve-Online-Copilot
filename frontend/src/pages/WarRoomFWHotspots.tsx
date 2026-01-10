@@ -3,26 +3,27 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Swords, ArrowUpDown, ArrowLeft } from 'lucide-react';
 import { getFWHotspots } from '../api';
+import type { FWHotspot, FWHotspotsResponse } from '../types/war';
 
 export default function WarRoomFWHotspots() {
   const [sortField, setSortField] = useState<'solar_system_name' | 'contested_percent'>('contested_percent');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  const fwQuery = useQuery({
+  const fwQuery = useQuery<FWHotspotsResponse>({
     queryKey: ['fwHotspots', 0],
     queryFn: () => getFWHotspots(0),
     staleTime: 5 * 60 * 1000,
   });
 
-  const hotspots = useMemo(() => {
+  const hotspots = useMemo<FWHotspot[]>(() => {
     if (!fwQuery.data?.hotspots) return [];
     return fwQuery.data.hotspots;
   }, [fwQuery.data]);
 
   const filteredAndSorted = useMemo(() => {
-    let results = [...hotspots];
+    const results = [...hotspots];
 
-    results.sort((a: any, b: any) => {
+    results.sort((a, b) => {
       const aVal = a[sortField] || 0;
       const bVal = b[sortField] || 0;
 
@@ -30,7 +31,7 @@ export default function WarRoomFWHotspots() {
         return sortDir === 'desc' ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
       }
 
-      return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+      return sortDir === 'desc' ? (bVal as number) - (aVal as number) : (aVal as number) - (bVal as number);
     });
 
     return results;
@@ -96,7 +97,7 @@ export default function WarRoomFWHotspots() {
                 </tr>
               </thead>
               <tbody>
-                {filteredAndSorted.map((hotspot: any) => (
+                {filteredAndSorted.map((hotspot) => (
                   <tr key={hotspot.solar_system_id}>
                     <td>
                       <strong>{hotspot.solar_system_name}</strong>

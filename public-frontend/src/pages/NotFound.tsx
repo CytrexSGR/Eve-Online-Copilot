@@ -118,9 +118,9 @@ export function NotFound() {
               e.currentTarget.style.borderColor = '#30363d';
             }}
           >
-            <strong>🗺️ 3D Galaxy Map</strong>
+            <strong>🗺️ Battle Map</strong>
             <div style={{ fontSize: '14px', color: '#8b949e', marginTop: '4px' }}>
-              Interactive 3D combat visualization
+              Interactive universe map with live battle tracking
             </div>
           </Link>
 

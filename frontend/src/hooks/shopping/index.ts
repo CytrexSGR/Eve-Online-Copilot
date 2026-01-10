@@ -9,3 +9,4 @@ export { useShoppingItems } from './useShoppingItems';
 export { useMaterialCalculation } from './useMaterialCalculation';
 export { useRegionalComparison } from './useRegionalComparison';
 export { useTransportPlanning } from './useTransportPlanning';
+export { useShoppingMutations, useProductMutations } from './useShoppingMutations';

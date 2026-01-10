@@ -45,7 +45,7 @@ export default function WarRoomShipsDestroyed() {
     if (!demandQuery.data?.ships_lost) return [];
 
     // Calculate opportunity score: (destroyed * price) / max(stock, 1)
-    return demandQuery.data.ships_lost.map((ship: any) => ({
+    return demandQuery.data.ships_lost.map((ship: { type_id: number; name: string; group_name?: string; quantity: number; market_stock: number; gap: number }) => ({
       ...ship,
       opportunity_score: (ship.quantity * 1000000) / Math.max(ship.market_stock, 1), // Simplified score
       material_gaps: Math.floor(Math.random() * 20), // TODO: Get actual material gap count from API
@@ -67,17 +67,14 @@ export default function WarRoomShipsDestroyed() {
 
     // Sort
     results.sort((a, b) => {
-      let aVal: any = a[sortField];
-      let bVal: any = b[sortField];
-
       if (sortField === 'name') {
-        aVal = aVal || '';
-        bVal = bVal || '';
+        const aVal = a.name || '';
+        const bVal = b.name || '';
         return sortDir === 'desc' ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
       }
 
-      aVal = aVal || 0;
-      bVal = bVal || 0;
+      const aVal = (a[sortField] as number) || 0;
+      const bVal = (b[sortField] as number) || 0;
       return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
     });
 

@@ -1,5 +1,22 @@
 // Pilot Intelligence Battle Report Types
 
+// Active Battle (from /api/war/battles/active)
+export interface ActiveBattle {
+  battle_id: number;
+  system_id: number;
+  system_name: string;
+  region_name: string;
+  security: number;
+  total_kills: number;
+  total_isk_destroyed: number;
+  last_milestone: number;
+  started_at: string;
+  last_kill_at: string;
+  duration_minutes: number;
+  telegram_sent: boolean;
+  intensity: 'extreme' | 'high' | 'moderate' | 'low';
+}
+
 export interface HotZone {
   system_id: number;
   system_name: string;
@@ -87,7 +104,7 @@ export interface BattleReport {
   danger_zones: DangerZone[];
   ship_breakdown: Record<string, ShipCategory>;
   timeline: TimelineHour[];
-  regions: any[];  // Kept for backwards compatibility
+  regions: unknown[];  // Kept for backwards compatibility
 }
 
 export interface WarProfiteering {
@@ -309,5 +326,15 @@ export interface WarEconomy {
     } | null;
     total_opportunity_value: number;
   };
+  error?: string;
+}
+
+export interface WarEconomyAnalysis {
+  summary: string;
+  insights: string[];
+  recommendations: string[];
+  doctrine_alert?: string | null;
+  risk_warnings: string[];
+  generated_at: string;
   error?: string;
 }

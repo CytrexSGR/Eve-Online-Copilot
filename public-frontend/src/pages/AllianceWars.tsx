@@ -705,7 +705,7 @@ export function AllianceWars() {
                   <div className="card" style={{ background: 'var(--bg-surface)' }}>
                     <h4 style={{ fontSize: '1rem', marginBottom: '1rem' }}>🗺️ Combat Zones</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
-                      {conflict.active_systems.map((system: any) => (
+                      {conflict.active_systems.map((system) => (
                         <div
                           key={system.system_id}
                           style={{
