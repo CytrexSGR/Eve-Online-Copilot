@@ -11,6 +11,7 @@ from decimal import Decimal
 import redis
 import requests
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Redis connection for caching
 redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
@@ -114,8 +115,8 @@ def get_corporation_name(corp_id: int) -> str:
 
 def batch_resolve_alliance_names(alliance_ids: List[int]) -> Dict[int, str]:
     """
-    Resolve multiple alliance names efficiently.
-    Uses cache where available, fetches missing from ESI.
+    Resolve multiple alliance names efficiently using parallel requests.
+    Uses cache where available, fetches missing from ESI concurrently.
 
     Args:
         alliance_ids: List of alliance IDs to resolve
@@ -140,9 +141,16 @@ def batch_resolve_alliance_names(alliance_ids: List[int]) -> Dict[int, str]:
         except redis.RedisError:
             ids_to_fetch.append(aid)
 
-    # Fetch missing from ESI (one by one, ESI doesn't have batch endpoint for names)
-    for aid in ids_to_fetch:
-        result[aid] = get_alliance_name(aid)
+    # Fetch missing from ESI in parallel (max 10 concurrent requests)
+    if ids_to_fetch:
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_aid = {executor.submit(get_alliance_name, aid): aid for aid in ids_to_fetch}
+            for future in as_completed(future_to_aid):
+                aid = future_to_aid[future]
+                try:
+                    result[aid] = future.result()
+                except Exception:
+                    result[aid] = f"Alliance {aid}"
 
     return result
 
