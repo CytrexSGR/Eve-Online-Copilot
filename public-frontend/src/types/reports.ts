@@ -258,3 +258,56 @@ export interface TradeRoutes {
     }>;
   }>;
 }
+
+// War Economy Types
+export interface WarEconomyItem {
+  item_type_id: number;
+  item_name: string;
+  quantity_destroyed: number;
+  market_price: number;
+  opportunity_value?: number;
+  demand_value?: number;
+}
+
+export interface ShipClassComposition {
+  count: number;
+  percentage: number;
+}
+
+export interface FleetComposition {
+  region_id: number;
+  region_name: string;
+  total_ships_lost: number;
+  composition: Record<string, ShipClassComposition>;
+  doctrine_hints: string[];
+}
+
+export interface RegionalDemand {
+  region_id: number;
+  region_name: string;
+  kills: number;
+  isk_destroyed: number;
+  top_demanded_items: WarEconomyItem[];
+  ship_classes: Record<string, number>;
+  demand_score: number;
+}
+
+export interface WarEconomy {
+  timestamp: string;
+  period: string;
+  regional_demand: RegionalDemand[];
+  hot_items: WarEconomyItem[];
+  fleet_compositions: FleetComposition[];
+  global_summary: {
+    total_regions_active: number;
+    total_kills_24h: number;
+    total_isk_destroyed: number;
+    hottest_region: {
+      region_id: number;
+      region_name: string;
+      kills: number;
+    } | null;
+    total_opportunity_value: number;
+  };
+  error?: string;
+}

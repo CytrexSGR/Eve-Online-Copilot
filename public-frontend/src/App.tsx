@@ -11,6 +11,7 @@ const BattleReport = lazy(() => import('./pages/BattleReport').then(m => ({ defa
 const BattleMap = lazy(() => import('./pages/BattleMap2D').then(m => ({ default: m.BattleMap2D })));
 const BattleDetail = lazy(() => import('./pages/BattleDetail').then(m => ({ default: m.BattleDetail })));
 const WarProfiteering = lazy(() => import('./pages/WarProfiteering').then(m => ({ default: m.WarProfiteering })));
+const WarEconomy = lazy(() => import('./pages/WarEconomy').then(m => ({ default: m.WarEconomy })));
 const AllianceWars = lazy(() => import('./pages/AllianceWars').then(m => ({ default: m.AllianceWars })));
 const TradeRoutes = lazy(() => import('./pages/TradeRoutes').then(m => ({ default: m.TradeRoutes })));
 const Impressum = lazy(() => import('./pages/Impressum').then(m => ({ default: m.Impressum })));
@@ -42,6 +43,7 @@ function App() {
               <Route path="/battle-map" element={<BattleMap />} />
               <Route path="/battle/:id" element={<BattleDetail />} />
               <Route path="/war-profiteering" element={<WarProfiteering />} />
+              <Route path="/war-economy" element={<WarEconomy />} />
               <Route path="/alliance-wars" element={<AllianceWars />} />
               <Route path="/trade-routes" element={<TradeRoutes />} />
               <Route path="/impressum" element={<Impressum />} />

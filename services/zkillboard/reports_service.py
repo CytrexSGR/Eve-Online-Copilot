@@ -2041,3 +2041,252 @@ class ZKillboardReportsService:
                 "unaffiliated": [],
                 "error": str(e)
             }
+
+    def get_war_economy_report(self, limit: int = 10) -> Dict:
+        """
+        Generate War Economy report combining combat data with market intelligence.
+
+        Provides:
+        - Regional Demand: Where combat is happening → where market demand rises
+        - Hot Items: Top destroyed items with market prices
+        - Fleet Compositions: Ship class breakdown by region (doctrine detection)
+        - Market Opportunities: Items with highest demand from combat
+
+        Args:
+            limit: Number of items/regions to return per section
+
+        Returns:
+            Dict with war economy intelligence
+        """
+        cache_key = "war_economy:report:cache"
+        cached = self.redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
+
+        result = {
+            "timestamp": datetime.now().isoformat(),
+            "period": "24h",
+            "regional_demand": [],
+            "hot_items": [],
+            "fleet_compositions": [],
+            "global_summary": {}
+        }
+
+        try:
+            # Get profiteering data for hot items
+            profiteering = self.get_war_profiteering_report(limit=limit * 2)
+            result["hot_items"] = profiteering.get("items", [])[:limit]
+
+            # Get regional combat data with destroyed items
+            regional_data = {}
+            region_ship_classes = {}
+
+            # Scan all region timelines
+            for key in self.redis_client.scan_iter("kill:region:*:timeline"):
+                parts = key.split(":")
+                if len(parts) < 3:
+                    continue
+                region_id = int(parts[2])
+
+                # Get kills for this region
+                kill_ids = self.redis_client.zrevrange(key, 0, -1)
+                if not kill_ids:
+                    continue
+
+                kills = []
+                for kill_id in kill_ids:
+                    kill_data = self.redis_client.get(f"kill:id:{kill_id}")
+                    if kill_data:
+                        kills.append(json.loads(kill_data))
+
+                if not kills:
+                    continue
+
+                # Calculate regional stats
+                kill_count = len(kills)
+                total_isk = sum(k.get('ship_value', 0) for k in kills)
+
+                # Track destroyed items in this region
+                region_items = {}
+                for kill in kills:
+                    for item in kill.get('destroyed_items', []):
+                        item_id = item['item_type_id']
+                        quantity = item['quantity']
+                        region_items[item_id] = region_items.get(item_id, 0) + quantity
+
+                # Track ship classes (for doctrine detection)
+                ship_class_counts = {}
+                for kill in kills:
+                    ship_class = self.get_ship_class(kill.get('ship_type_id', 0))
+                    if ship_class:
+                        ship_class_counts[ship_class] = ship_class_counts.get(ship_class, 0) + 1
+
+                regional_data[region_id] = {
+                    "region_id": region_id,
+                    "kills": kill_count,
+                    "isk_destroyed": total_isk,
+                    "destroyed_items": region_items,
+                    "ship_classes": ship_class_counts
+                }
+
+            if not regional_data:
+                # Return empty result with valid structure
+                result["global_summary"] = {
+                    "total_regions_active": 0,
+                    "total_kills_24h": 0,
+                    "total_isk_destroyed": 0,
+                    "hottest_region": None
+                }
+                return result
+
+            # Enrich with region names and calculate top items per region
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    # Get region names
+                    region_ids = list(regional_data.keys())
+                    cur.execute(
+                        '''SELECT "regionID", "regionName" FROM "mapRegions" WHERE "regionID" = ANY(%s)''',
+                        (region_ids,)
+                    )
+                    region_names = {row[0]: row[1] for row in cur.fetchall()}
+
+                    # Get all unique item IDs for price lookup
+                    all_item_ids = set()
+                    for data in regional_data.values():
+                        all_item_ids.update(data["destroyed_items"].keys())
+
+                    # Batch query for item names and prices
+                    item_info = {}
+                    if all_item_ids:
+                        cur.execute(
+                            '''SELECT
+                                t."typeID",
+                                t."typeName",
+                                g."categoryID",
+                                COALESCE(mp.lowest_sell, mpc.adjusted_price, t."basePrice"::double precision, 0) as price
+                            FROM "invTypes" t
+                            JOIN "invGroups" g ON t."groupID" = g."groupID"
+                            LEFT JOIN market_prices mp ON t."typeID" = mp.type_id AND mp.region_id = 10000002
+                            LEFT JOIN market_prices_cache mpc ON t."typeID" = mpc.type_id
+                            WHERE t."typeID" = ANY(%s)''',
+                            (list(all_item_ids),)
+                        )
+                        for row in cur.fetchall():
+                            # Exclude raw materials (category 4, 25, 43)
+                            if row[2] not in (4, 25, 43):
+                                item_info[row[0]] = {
+                                    "name": row[1],
+                                    "price": float(row[3]) if row[3] else 0
+                                }
+
+            # Build regional demand list
+            regional_demand = []
+            for region_id, data in regional_data.items():
+                region_name = region_names.get(region_id, f"Region {region_id}")
+
+                # Get top 5 items for this region with market value
+                top_items = []
+                for item_id, quantity in sorted(
+                    data["destroyed_items"].items(),
+                    key=lambda x: x[1],
+                    reverse=True
+                )[:5]:
+                    if item_id in item_info:
+                        info = item_info[item_id]
+                        top_items.append({
+                            "item_type_id": item_id,
+                            "item_name": info["name"],
+                            "quantity_destroyed": quantity,
+                            "market_price": info["price"],
+                            "demand_value": quantity * info["price"]
+                        })
+
+                regional_demand.append({
+                    "region_id": region_id,
+                    "region_name": region_name,
+                    "kills": data["kills"],
+                    "isk_destroyed": data["isk_destroyed"],
+                    "top_demanded_items": top_items,
+                    "ship_classes": data["ship_classes"],
+                    "demand_score": sum(i["demand_value"] for i in top_items)
+                })
+
+            # Sort by demand score (highest opportunity first)
+            regional_demand.sort(key=lambda x: x["demand_score"], reverse=True)
+            result["regional_demand"] = regional_demand[:limit]
+
+            # Build fleet compositions (doctrine detection) per region
+            fleet_compositions = []
+            for rd in result["regional_demand"][:5]:  # Top 5 combat regions
+                ship_classes = rd.get("ship_classes", {})
+                total_ships = sum(ship_classes.values())
+
+                if total_ships == 0:
+                    continue
+
+                # Calculate percentages
+                composition = {
+                    "region_id": rd["region_id"],
+                    "region_name": rd["region_name"],
+                    "total_ships_lost": total_ships,
+                    "composition": {}
+                }
+
+                # Detect doctrine pattern
+                doctrine_hints = []
+                for ship_class, count in sorted(ship_classes.items(), key=lambda x: x[1], reverse=True):
+                    pct = (count / total_ships) * 100
+                    composition["composition"][ship_class] = {
+                        "count": count,
+                        "percentage": round(pct, 1)
+                    }
+
+                    # Doctrine hints based on patterns
+                    if ship_class == "battleship" and pct > 30:
+                        doctrine_hints.append("Battleship fleet doctrine")
+                    elif ship_class == "cruiser" and pct > 40:
+                        doctrine_hints.append("Cruiser gang doctrine")
+                    elif ship_class == "destroyer" and pct > 35:
+                        doctrine_hints.append("Destroyer wolf pack")
+                    elif ship_class == "frigate" and pct > 40:
+                        doctrine_hints.append("Frigate swarm")
+                    elif ship_class == "capital" and count > 0:
+                        doctrine_hints.append(f"Capital engagement ({count} capitals)")
+                    elif ship_class == "stealth_bomber" and pct > 20:
+                        doctrine_hints.append("Bomber fleet")
+                    elif ship_class == "logistics" and pct > 10:
+                        doctrine_hints.append("Logistics-supported fleet")
+
+                composition["doctrine_hints"] = doctrine_hints[:3]  # Max 3 hints
+                fleet_compositions.append(composition)
+
+            result["fleet_compositions"] = fleet_compositions
+
+            # Global summary
+            total_kills = sum(rd["kills"] for rd in result["regional_demand"])
+            total_isk = sum(rd["isk_destroyed"] for rd in result["regional_demand"])
+            hottest = result["regional_demand"][0] if result["regional_demand"] else None
+
+            result["global_summary"] = {
+                "total_regions_active": len(regional_data),
+                "total_kills_24h": total_kills,
+                "total_isk_destroyed": total_isk,
+                "hottest_region": {
+                    "region_id": hottest["region_id"],
+                    "region_name": hottest["region_name"],
+                    "kills": hottest["kills"]
+                } if hottest else None,
+                "total_opportunity_value": sum(i.get("opportunity_value", 0) for i in result["hot_items"])
+            }
+
+            # Cache for 30 minutes
+            self.redis_client.setex(cache_key, 1800, json.dumps(result))
+
+            return result
+
+        except Exception as e:
+            print(f"Error generating war economy report: {e}")
+            import traceback
+            traceback.print_exc()
+            result["error"] = str(e)
+            return result

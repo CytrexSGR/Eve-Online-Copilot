@@ -5,7 +5,8 @@ import type {
   AllianceWars,
   TradeRoutes,
   AllianceWarsAnalysis,
-  StrategicBriefing
+  StrategicBriefing,
+  WarEconomy
 } from '../types/reports';
 
 const API_BASE_URL = import.meta.env.PROD
@@ -55,6 +56,11 @@ export const reportsApi = {
 
   getTradeRoutes: async (): Promise<TradeRoutes> => {
     const { data } = await api.get('/reports/trade-routes');
+    return data;
+  },
+
+  getWarEconomy: async (): Promise<WarEconomy> => {
+    const { data } = await api.get('/reports/war-economy');
     return data;
   },
 

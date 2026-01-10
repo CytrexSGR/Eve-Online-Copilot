@@ -337,6 +337,50 @@ async def get_trade_routes(
         )
 
 
+@router.get("/war-economy")
+async def get_war_economy(limit: int = Query(default=10, ge=5, le=20)) -> Dict:
+    """
+    War Economy Intelligence Report
+
+    Combines combat data with market intelligence to show:
+    - Regional Demand: Where combat is happening → where market demand rises
+    - Hot Items: Top destroyed items with market prices
+    - Fleet Compositions: Ship class breakdown by region (doctrine detection)
+    - Market Opportunities: Items with highest demand from combat
+
+    Cache: 30 minutes
+
+    Parameters:
+    - limit: Number of items/regions per section (default: 10, max: 20)
+    """
+    try:
+        report = zkill_live_service.get_war_economy_report(limit=limit)
+
+        # Convert any Decimal values to float for JSON serialization
+        def convert_decimals(obj):
+            if isinstance(obj, dict):
+                return {k: convert_decimals(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_decimals(item) for item in obj]
+            elif hasattr(obj, 'as_integer_ratio'):  # Decimal or float
+                return float(obj)
+            return obj
+
+        return convert_decimals(report)
+    except redis.RedisError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="Redis connection error. Reports temporarily unavailable."
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate war economy report: {str(e)}"
+        )
+
+
 @router.get("/strategic-briefing")
 async def get_strategic_briefing() -> Dict:
     """

@@ -70,6 +70,10 @@ class CombinedZKillboardService(ZKillboardLiveService):
         self._reports_service.session = await self._get_session()
         return await self._reports_service.detect_coalitions(days=days)
 
+    def get_war_economy_report(self, limit: int = 10):
+        """Generate war economy intelligence report"""
+        return self._reports_service.get_war_economy_report(limit=limit)
+
 
 # Singleton instance for backwards compatibility
 zkill_live_service = CombinedZKillboardService()
